@@ -3,9 +3,11 @@
 #include <cstring>
 
 #include "crsf/CrsfFrameAssembler.hpp"
+#include "crsf/CrsfFrameBuilder.hpp"
 #include "crsf/CrsfParser.hpp"
 #include "crsf/CrsfReceiver.hpp"
 
+using crsf::buildFrame;
 using crsf::CrsfFrameAssembler;
 using crsf::CrsfLinkStatistics;
 using crsf::CrsfReceiver;
@@ -14,58 +16,28 @@ using crsf::RcChannelsFrame;
 
 namespace {
 
-// Inverse of crsf::unpackChannels -- packs 16 raw 11-bit channel values into
-// the 22-byte RC_CHANNELS_PACKED payload, for building canned test frames.
-void packChannels(const uint16_t channels[crsf::kNumChannels],
-                   uint8_t payload[crsf::kRcChannelsPayloadLen]) {
-    std::memset(payload, 0, crsf::kRcChannelsPayloadLen);
-    for (size_t ch = 0; ch < crsf::kNumChannels; ++ch) {
-        const size_t bitPos = ch * 11;
-        const uint16_t value = channels[ch] & 0x07FF;
-        for (int bit = 0; bit < 11; ++bit) {
-            if ((value & (1u << bit)) == 0) {
-                continue;
-            }
-            const size_t overallBit = bitPos + static_cast<size_t>(bit);
-            payload[overallBit / 8] |= static_cast<uint8_t>(1u << (overallBit % 8));
-        }
-    }
-}
-
-// Builds a complete, CRC-valid CRSF frame of any type into `outFrame`
-// (sized at least 4 + payloadLen). Returns the total frame length.
-size_t buildFrame(uint8_t type, const uint8_t* payload, uint8_t payloadLen, uint8_t* outFrame) {
-    outFrame[0] = crsf::kSyncByte;
-    outFrame[1] = static_cast<uint8_t>(payloadLen + 2); // type + payload + crc
-    outFrame[2] = type;
-    std::memcpy(outFrame + 3, payload, payloadLen);
-    outFrame[3 + payloadLen] = crsf::computeCrc8(outFrame + 2, 1 + payloadLen);
-    return 4 + static_cast<size_t>(payloadLen);
-}
+// Frame construction lives in crsf/CrsfFrameBuilder.hpp (shared with the
+// Wokwi sim feeder); these are thin canned-value wrappers for the tests.
 
 // Builds a complete, CRC-valid RC_CHANNELS_PACKED frame (26 bytes).
 void buildValidFrame(const uint16_t channels[crsf::kNumChannels], uint8_t* outFrame) {
-    uint8_t payload[crsf::kRcChannelsPayloadLen];
-    packChannels(channels, payload);
-    buildFrame(crsf::kFrameTypeRcChannelsPacked, payload, crsf::kRcChannelsPayloadLen, outFrame);
+    crsf::buildRcChannelsFrame(channels, outFrame);
 }
 
 // Builds a CRC-valid LINK_STATISTICS frame (14 bytes) with the given uplink LQ.
 size_t buildLinkStatsFrame(uint8_t uplinkLq, uint8_t* outFrame) {
-    const uint8_t payload[crsf::kLinkStatisticsPayloadLen] = {
-        75,       // uplinkRssiAnt1 (-75 dBm)
-        108,      // uplinkRssiAnt2 (-108 dBm)
-        uplinkLq, // uplinkLinkQuality
-        0xF6,     // uplinkSnr = -10 dB (signed byte)
-        1,        // activeAntenna
-        4,        // rfMode (ELRS packet-rate index, raw)
-        3,        // uplinkTxPower (enum index, raw)
-        80,       // downlinkRssi
-        99,       // downlinkLinkQuality
-        0x05,     // downlinkSnr = +5 dB
-    };
-    return buildFrame(crsf::kFrameTypeLinkStatistics, payload,
-                      crsf::kLinkStatisticsPayloadLen, outFrame);
+    CrsfLinkStatistics stats;
+    stats.uplinkRssiAnt1 = 75;  // -75 dBm
+    stats.uplinkRssiAnt2 = 108; // -108 dBm
+    stats.uplinkLinkQuality = uplinkLq;
+    stats.uplinkSnr = -10; // encodes as 0xF6: pins signed-byte handling
+    stats.activeAntenna = 1;
+    stats.rfMode = 4;        // ELRS packet-rate index, raw
+    stats.uplinkTxPower = 3; // enum index, raw
+    stats.downlinkRssi = 80;
+    stats.downlinkLinkQuality = 99;
+    stats.downlinkSnr = 5;
+    return crsf::buildLinkStatisticsFrame(stats, outFrame);
 }
 
 void fillChannels(uint16_t channels[crsf::kNumChannels], uint16_t value) {

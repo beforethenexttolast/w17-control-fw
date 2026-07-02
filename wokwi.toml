@@ -1,0 +1,6 @@
+# Wokwi simulation config (validation Stage 2 -- see docs/SIMULATION.md).
+# Build first: pio run -e esp32dev_sim
+[wokwi]
+version = 1
+firmware = '.pio/build/esp32dev_sim/firmware.bin'
+elf = '.pio/build/esp32dev_sim/firmware.elf'

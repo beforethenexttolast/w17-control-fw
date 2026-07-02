@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "author": "w17-control-fw",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    {
+      "type": "wokwi-servo",
+      "id": "servoSteering",
+      "top": -150,
+      "left": 250,
+      "attrs": { "hornColor": "cyan" }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servoEsc",
+      "top": -20,
+      "left": 250,
+      "attrs": { "hornColor": "red" }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servoDrs",
+      "top": 110,
+      "left": 250,
+      "attrs": { "hornColor": "yellow" }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "potBattery",
+      "top": 250,
+      "left": 30,
+      "attrs": { "value": "69" }
+    },
+    { "type": "wokwi-pushbutton", "id": "btnHall", "top": 250, "left": 150, "attrs": { "color": "green" } },
+    { "type": "wokwi-resistor", "id": "rHallPullup", "top": 200, "left": 120, "attrs": { "value": "10000" } }
+  ],
+  "connections": [
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:TX2", "esp:RX2", "gold", [] ],
+
+    [ "servoSteering:PWM", "esp:D13", "cyan", [] ],
+    [ "servoSteering:V+", "esp:VIN", "red", [] ],
+    [ "servoSteering:GND", "esp:GND.1", "black", [] ],
+
+    [ "servoEsc:PWM", "esp:D14", "orange", [] ],
+    [ "servoEsc:V+", "esp:VIN", "red", [] ],
+    [ "servoEsc:GND", "esp:GND.1", "black", [] ],
+
+    [ "servoDrs:PWM", "esp:D18", "yellow", [] ],
+    [ "servoDrs:V+", "esp:VIN", "red", [] ],
+    [ "servoDrs:GND", "esp:GND.1", "black", [] ],
+
+    [ "potBattery:SIG", "esp:D34", "purple", [] ],
+    [ "potBattery:VCC", "esp:3V3", "red", [] ],
+    [ "potBattery:GND", "esp:GND.2", "black", [] ],
+
+    [ "rHallPullup:1", "esp:3V3", "red", [] ],
+    [ "rHallPullup:2", "esp:D35", "green", [] ],
+    [ "btnHall:1.l", "esp:D35", "green", [] ],
+    [ "btnHall:2.l", "esp:GND.2", "black", [] ]
+  ]
+}

@@ -143,9 +143,23 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
   during failsafe** (caught in design review), boot-safe initial snapshot.
 - Verified: 101/101 native tests (13 new), esp32dev clean, lib/link2 Arduino-free.
 
-### D7 — Wokwi simulation (Stage 2) — S/M, ~1 day
-- `wokwi.toml` + `diagram.json`: servos on 13/14/18, pot on GPIO34, button on GPIO35;
-  canned-CRSF feeder into UART2. End-to-end sanity without hardware.
+### D7 — Wokwi simulation (Stage 2) — ✅ DONE 2026-07-02
+- `wokwi.toml` + `diagram.json`: devkit-v1, servos on D13/D14/D18, pot on D34 (battery,
+  preset ≈8.4V), button+10k pull-up on D35 (Hall; one click = one pulse on release),
+  UART2 TX→RX loopback wire for CRSF self-feeding.
+- `[env:esp32dev_sim]` = esp32dev + `-DW17_SIM_CRSF_FEEDER`; `src/SimCrsfFeeder.cpp` scripts
+  a ~25s loop showing all three failsafe behaviors DISTINCTLY (boot never-received, pure
+  timeout, LQ=0-while-RC-flowing hold-position instant drop — the A8 demo), arm-gate block,
+  fresh-neutral recovery, gear shifts, DRS; stats-before-RC recovery ordering and gearDown
+  cooldown for loop idempotency (both design-review catches). Serial monitor narrates phases
+  + 2Hz state line.
+- `crsf/CrsfFrameBuilder.hpp`: frame construction lifted out of the tests, shared with the
+  feeder (zero duplication, still pure).
+- `docs/SIMULATION.md`: run instructions, phase table, cosmetic quirks, first-run VERIFY
+  checklist for low-confidence Wokwi platform facts (pin label names, 420k baud, pot attr,
+  merged-bin fallback, bounce timing).
+- Verified: 101/101 native tests, esp32dev AND esp32dev_sim build clean. First interactive
+  Wokwi run = user's checklist (needs the free Wokwi license).
 
 ### D8 — Hardware bring-up (Stage 3) — bench days, gated on parts
 Checklist: flash/bind RP1 + TX (same ELRS version + bind phrase); **set RP1 failsafe = No

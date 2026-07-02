@@ -19,6 +19,10 @@
 #include "telemetry_hal_esp32/Esp32BatteryAdc.hpp"
 #include "telemetry_hal_esp32/Esp32HallPulseCounter.hpp"
 
+#ifdef W17_SIM_CRSF_FEEDER
+#include "SimCrsfFeeder.hpp" // Wokwi Stage-2 harness, absent from real firmware
+#endif
+
 namespace {
 
 // Real-clock hal::IClock backed by millis(), used by EscOutput's boot-arm hold.
@@ -98,6 +102,11 @@ link2::ControlSnapshot controlSnapshot;
 } // namespace
 
 void setup() {
+#ifdef W17_SIM_CRSF_FEEDER
+    Serial.begin(115200); // sim status/narration only; real firmware opens no UART0
+    Serial.println("[sim] W17 control firmware -- Wokwi Stage-2 demo build");
+#endif
+
     crsfUart.begin();
     link2Uart.begin();
     batteryAdc.begin();
@@ -116,6 +125,12 @@ void setup() {
 
 void loop() {
     const uint32_t nowMs = millis();
+
+#ifdef W17_SIM_CRSF_FEEDER
+    // Feed the scripted CRSF demo stream into Serial2 TX; the diagram loops
+    // it back into the CRSF RX pin, so everything below runs unmodified.
+    simfeeder::tick(nowMs);
+#endif
 
     // --- Always: drain the CRSF UART (the RX buffer fills in ~6ms at 420k;
     // bytes must never back up behind the tick guards below). Accumulate (|=)
@@ -220,4 +235,17 @@ void loop() {
         controlSnapshot.batteryMv = batteryMonitor.batteryMv();
         link2Sender.send(controlSnapshot);
     }
+
+#ifdef W17_SIM_CRSF_FEEDER
+    // Live state readout for the Wokwi serial monitor.
+    static uint32_t lastStatusPrintMs = 0;
+    if (nowMs - lastStatusPrintMs >= 500) {
+        lastStatusPrintMs = nowMs;
+        Serial.printf("[state] failsafe=%d armed=%d gear=%u thr=%d steer=%d rpm=%u batt=%umV lowBatt=%d\n",
+                      controlSnapshot.failsafe, controlSnapshot.armed,
+                      virtualGearbox.currentGear() + 1, controlSnapshot.commandedThrottle,
+                      controlSnapshot.steering, wheelSpeed.rpm(), batteryMonitor.batteryMv(),
+                      batteryMonitor.lowVoltageWarning());
+    }
+#endif
 }
