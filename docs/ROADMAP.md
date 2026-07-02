@@ -71,12 +71,16 @@ Scope: findings A1, A2(minimal), A4, A5, A6. All landed:
 - `EscOutput`: arm-hold anchored to the first `setThrottle()` call; new regression test.
 Verified: 29/29 native tests pass, esp32dev builds clean.
 
-### D2 — `channels` module + full arm gate (safety §6.2) — M, ~1–2 days
-- Config-table raw→named mapping (throttle ch3, steering ch1, DRS, arm, gearUp/gearDown),
-  normalization to ±1000, switch thresholding + edge detection.
-- Arm-gate state machine: armed ⇔ switch ON ∧ throttle-seen-neutral since switch-on;
-  disarm on switch-off or failsafe; after failsafe recovery, require neutral again (closes A3).
-- Rewire main.cpp; heavy unit tests (map, edges, arm/disarm/rearm sequences).
+### D2 — `channels` module + full arm gate (safety §6.2) — ✅ DONE 2026-07-02
+- `lib/channels/ChannelDecoder`: config-table raw→named mapping (defaults: steering ch1,
+  throttle ch3, arm ch5, DRS ch6, gearUp ch7, gearDown ch8 — placeholders, verify at bench),
+  piecewise-exact ±1000 normalization, invert flags, switch hysteresis (+250/−250),
+  first-decode level seeding (no phantom edges at boot), OFF→ON edge detection.
+- `lib/channels/ArmGate`: armed ⇔ switch ON ∧ throttle-seen-neutral since last disarm;
+  instant disarm on switch-off or failsafe; recovery requires fresh neutral (closes A3).
+- main.cpp: decode on every frame (phantom-edge-proof), steering live while disarmed,
+  temporary neutral-latch and rawChannelToNormalized placeholders removed.
+- Verified: 45/45 native tests (16 new), esp32dev clean, lib/channels Arduino-free.
 
 ### D3 — `gearbox` — S/M, ~1 day
 - Pure `(throttle, gear) → output` with per-gear max cap + expo curve (3–4 gears);
@@ -105,10 +109,13 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
 
 ### D8 — Hardware bring-up (Stage 3) — bench days, gated on parts
 Checklist: flash/bind RP1 + TX (same ELRS version + bind phrase); **set RP1 failsafe = No
-Pulses** (A8); verify CRSF at GPIO16 (420 k, not inverted); servo center in firmware BEFORE
-attaching steering linkage (atlas MECH-02); Hobbywing ESC neutral/range calibration + sensored
-mode; wheels-off-ground throttle tests only until failsafe + arm gate proven on the bench;
-Hall pulse + ADC calibration (write factor into config); link2 smoke test with board #2.
+Pulses** (A8); verify CRSF at GPIO16 (420 k, not inverted); **confirm the channel-map defaults
+in `lib/channels/ChannelDecoder.hpp` against the actual TX mapping, and verify every switch
+traverses BOTH hysteresis thresholds (±250) — especially the ARM switch's OFF direction**;
+servo center in firmware BEFORE attaching steering linkage (atlas MECH-02); Hobbywing ESC
+neutral/range calibration + sensored mode; wheels-off-ground throttle tests only until
+failsafe + arm gate proven on the bench; Hall pulse + ADC calibration (write factor into
+config); link2 smoke test with board #2.
 
 ### Deferable past 2026-07-21 without hurting the gift
 Gimbal pan/tilt (already optional), CRSF telemetry uplink to TX, BX100-style low-voltage

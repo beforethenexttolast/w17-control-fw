@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#include "channels/ArmGate.hpp"
+#include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
 #include "crsf/CrsfFrameAssembler.hpp"
 #include "crsf_hal_esp32/Esp32CrsfUart.hpp"
@@ -23,9 +25,16 @@ crsf::CrsfFrameAssembler crsfAssembler;
 
 // Own copy of the most recent channels: CrsfFrameAssembler::lastFrame() is
 // documented valid only immediately after FrameReady, so it is copied out at
-// that moment instead of being re-read every tick. Only meaningful once the
-// failsafe machine reports Active (which requires real frames to have arrived).
+// that moment instead of being re-read every tick.
 crsf::RcChannelsFrame latestChannels{};
+
+// The channel map lives here, in one place; a bad index fails the build.
+constexpr channels::ChannelMapConfig kChannelMap{};
+static_assert(kChannelMap.valid(), "channel map: index out of range or bad thresholds");
+
+channels::ChannelDecoder channelDecoder(kChannelMap);
+channels::ArmGate armGate;
+channels::Controls controls; // most recently decoded controls (all-neutral until a frame)
 
 failsafe::FailsafeStateMachine failsafeStateMachine;
 
@@ -44,34 +53,6 @@ outputs_hal_esp32::Esp32LedcPwm drsPwm(pinmap::kDrsServoPin, /*channel=*/2);
 outputs::ServoOutput steering(steeringPwm, steeringConfig);
 outputs::EscOutput esc(escPwm, clock, escConfig);
 outputs::DrsOutput drs(drsPwm, drsConfig);
-
-// Minimal half of the CLAUDE.md section 6.2 arm gate ("no arm-into-full-
-// throttle"): throttle stays neutral until the throttle channel has been
-// observed at neutral once -- and again after every failsafe episode, so a
-// link recovery mid-stick-input cannot snap the motor on.
-// TODO(deliverable-2): replaced by the full arm-switch gate in the channels module.
-bool throttleSeenNeutral = false;
-
-// Raw CRSF units around center (992) accepted as "neutral" for the latch
-// above: ~6% of the 819-unit half-travel, a small deadband per CLAUDE.md
-// section 3.
-constexpr int32_t kThrottleNeutralDeadbandRaw = 50;
-
-// Linearly maps a raw CRSF channel value onto the [-1000, +1000] range used
-// by the outputs:: classes. TODO(deliverable-2): replace this whole
-// placeholder mapping with the configurable channels module (CLAUDE.md
-// section 3) and the gearbox.
-int16_t rawChannelToNormalized(uint16_t raw) {
-    const int32_t centered = static_cast<int32_t>(raw) - crsf::kChannelRawCenter;
-    const int32_t span = crsf::kChannelRawMax - crsf::kChannelRawCenter;
-    int32_t normalized = (centered * 1000) / span;
-    if (normalized > 1000) {
-        normalized = 1000;
-    } else if (normalized < -1000) {
-        normalized = -1000;
-    }
-    return static_cast<int16_t>(normalized);
-}
 
 } // namespace
 
@@ -100,30 +81,36 @@ void loop() {
         }
     }
 
+    // Decode on every new frame, including while failsafe is Safe: pausing
+    // decode during an outage would make a switch moved during the outage
+    // look like a fresh transition (phantom gear edge) on recovery. Decoding
+    // is pure -- only the actuation below is gated on failsafe state.
+    if (frameArrived) {
+        controls = channelDecoder.decode(latestChannels);
+    }
+
     const failsafe::State state =
         failsafeStateMachine.update(millis(), frameArrived, /*rxFailsafeFlag=*/false);
 
+    // The arm gate runs every tick so a failsafe episode clears its
+    // neutral-seen latch: after recovery, throttle must be re-observed at
+    // neutral before the motor may run again (CLAUDE.md 6.2).
+    const bool armed = armGate.update(controls.armSwitch, controls.throttle,
+                                      /*forceDisarm=*/state == failsafe::State::Safe);
+
     if (state == failsafe::State::Safe) {
-        throttleSeenNeutral = false; // neutral must be re-observed after any failsafe
         steering.setPosition(0);
         esc.setThrottle(0);
         drs.setOpen(false);
         return;
     }
 
-    // TODO(deliverable-2): replace with the channels/gearbox modules. Raw
-    // channel indices below follow CLAUDE.md section 3 defaults: steering =
-    // ch1 (index 0), throttle = ch3 (index 2).
-    const uint16_t rawThrottle = latestChannels.channels[2];
-    if (!throttleSeenNeutral) {
-        const int32_t deviation =
-            static_cast<int32_t>(rawThrottle) - crsf::kChannelRawCenter;
-        if (deviation >= -kThrottleNeutralDeadbandRaw &&
-            deviation <= kThrottleNeutralDeadbandRaw) {
-            throttleSeenNeutral = true;
-        }
-    }
+    // Steering stays live while disarmed: CLAUDE.md 6.2 gates throttle only,
+    // and bench setup needs steering without arming the motor.
+    steering.setPosition(controls.steering);
+    esc.setThrottle(armed ? controls.throttle : 0);
+    drs.setOpen(controls.drsSwitch);
 
-    steering.setPosition(rawChannelToNormalized(latestChannels.channels[0]));
-    esc.setThrottle(throttleSeenNeutral ? rawChannelToNormalized(rawThrottle) : 0);
+    // controls.gearUpEdge / gearDownEdge are decoded but unconsumed until the
+    // gearbox module lands (docs/ROADMAP.md D3).
 }

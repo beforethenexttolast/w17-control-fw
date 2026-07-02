@@ -1,0 +1,10 @@
+{
+  "name": "channels",
+  "version": "0.1.0",
+  "description": "Logical channel map (raw CRSF -> named controls) + arm-switch gate. Pure logic, no hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "crsf": "*"
+  }
+}
