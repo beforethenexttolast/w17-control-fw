@@ -6,6 +6,7 @@
 #include "crsf/CrsfFrameAssembler.hpp"
 #include "crsf_hal_esp32/Esp32CrsfUart.hpp"
 #include "failsafe/FailsafeStateMachine.hpp"
+#include "gearbox/Gearbox.hpp"
 #include "hal/IClock.hpp"
 #include "outputs/DrsOutput.hpp"
 #include "outputs/EscOutput.hpp"
@@ -35,6 +36,10 @@ static_assert(kChannelMap.valid(), "channel map: index out of range or bad thres
 channels::ChannelDecoder channelDecoder(kChannelMap);
 channels::ArmGate armGate;
 channels::Controls controls; // most recently decoded controls (all-neutral until a frame)
+
+constexpr gearbox::GearboxConfig kGearboxConfig{};
+static_assert(kGearboxConfig.valid(), "gearbox: bad gear table (range or non-monotonic)");
+gearbox::Gearbox virtualGearbox(kGearboxConfig);
 
 failsafe::FailsafeStateMachine failsafeStateMachine;
 
@@ -87,6 +92,19 @@ void loop() {
     // is pure -- only the actuation below is gated on failsafe state.
     if (frameArrived) {
         controls = channelDecoder.decode(latestChannels);
+
+        // Gear edges are consume-on-read and `controls` is cached across
+        // loop ticks, so shifts MUST happen here -- in the free-running loop
+        // body one press would re-fire every tick until the next frame.
+        // A gear shift is state, not actuation, so it is not gated on
+        // failsafe (and gear deliberately survives failsafe/disarm: ArmGate
+        // already forces a fresh throttle-neutral after every episode).
+        if (controls.gearUpEdge) {
+            virtualGearbox.shiftUp();
+        }
+        if (controls.gearDownEdge) {
+            virtualGearbox.shiftDown();
+        }
     }
 
     const failsafe::State state =
@@ -108,9 +126,11 @@ void loop() {
     // Steering stays live while disarmed: CLAUDE.md 6.2 gates throttle only,
     // and bench setup needs steering without arming the motor.
     steering.setPosition(controls.steering);
-    esc.setThrottle(armed ? controls.throttle : 0);
-    drs.setOpen(controls.drsSwitch);
 
-    // controls.gearUpEdge / gearDownEdge are decoded but unconsumed until the
-    // gearbox module lands (docs/ROADMAP.md D3).
+    // Named local: link2 (D6) will report this post-gearbox value so the
+    // engine sound tracks actual motor output, not stick position.
+    const int16_t shapedThrottle = virtualGearbox.apply(controls.throttle);
+    esc.setThrottle(armed ? shapedThrottle : 0);
+
+    drs.setOpen(controls.drsSwitch);
 }

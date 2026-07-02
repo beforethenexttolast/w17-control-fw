@@ -82,9 +82,16 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
   temporary neutral-latch and rawChannelToNormalized placeholders removed.
 - Verified: 45/45 native tests (16 new), esp32dev clean, lib/channels Arduino-free.
 
-### D3 — `gearbox` — S/M, ~1 day
-- Pure `(throttle, gear) → output` with per-gear max cap + expo curve (3–4 gears);
-  gear up/down on switch edges from channels. Table-driven, heavily tested.
+### D3 — `gearbox` — ✅ DONE 2026-07-02
+- `lib/gearbox`: pure `shapeThrottle(throttle, gear)` — expo blend (endpoint-exact integer
+  math) then scale-by-maxOutput (not clip: full stick travel maps to each gear's range);
+  brake/reverse passes through unshaped. `Gearbox` state: shiftUp/shiftDown (saturating),
+  `setGear()` for a future 3-pos selector, gear survives failsafe/disarm (ArmGate's fresh-
+  neutral interlock covers the re-arm surprise). Default table: 400/50, 600/35, 800/20, 1000/0.
+- main.cpp: shift edges consumed inside the frameArrived block (a bare loop-body check would
+  re-fire one press every tick — caught in design review); post-gearbox throttle kept in a
+  named local for link2 (D6).
+- Verified: 59/59 native tests (14 new), esp32dev clean, lib/gearbox Arduino-free.
 
 ### D4 — CRSF LinkStatistics + receiver facade — S/M, ~1 day
 - Parse frame 0x14 (LQ, RSSI, RX failsafe indication where available); route a real
@@ -113,9 +120,11 @@ Pulses** (A8); verify CRSF at GPIO16 (420 k, not inverted); **confirm the channe
 in `lib/channels/ChannelDecoder.hpp` against the actual TX mapping, and verify every switch
 traverses BOTH hysteresis thresholds (±250) — especially the ARM switch's OFF direction**;
 servo center in firmware BEFORE attaching steering linkage (atlas MECH-02); Hobbywing ESC
-neutral/range calibration + sensored mode; wheels-off-ground throttle tests only until
-failsafe + arm gate proven on the bench; Hall pulse + ADC calibration (write factor into
-config); link2 smoke test with board #2.
+neutral/range calibration + sensored mode; **ESC must be configured forward/brake (not
+fwd/reverse) — the gearbox does not govern reverse (brake/reverse PWM is indistinguishable
+below neutral, so reverse would be full-speed in any gear)**; wheels-off-ground throttle
+tests only until failsafe + arm gate proven on the bench; Hall pulse + ADC calibration
+(write factor into config); link2 smoke test with board #2.
 
 ### Deferable past 2026-07-21 without hurting the gift
 Gimbal pan/tilt (already optional), CRSF telemetry uplink to TX, BX100-style low-voltage
