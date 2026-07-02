@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W17 Build — Wiring &amp; Assembly Atlas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<style>
+  :root{
+    --ink:#16201d; --paper:#f6f8f7; --card:#ffffff;
+    --teal:#00a19c; --slate:#5b6b66; --hair:#dce3e0; --amber:#c8832b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+    background-image:linear-gradient(var(--hair) 1px,transparent 1px),linear-gradient(90deg,var(--hair) 1px,transparent 1px);
+    background-size:26px 26px;background-position:-1px -1px;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px}
+  header{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:clamp(26px,5vw,40px);margin:0 0 6px;letter-spacing:-.02em;font-weight:800}
+  .sub{font-family:var(--mono);font-size:13px;color:var(--slate);text-transform:uppercase;letter-spacing:.08em}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0 30px;font-family:var(--mono);font-size:12.5px;color:var(--slate)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .legend b{color:var(--ink);font-weight:600}
+  .ar{font-weight:700;color:var(--teal)}
+  .sectlabel{font-family:var(--mono);font-size:13px;letter-spacing:.18em;color:var(--teal);text-transform:uppercase;
+    margin:48px 0 4px;display:flex;align-items:center;gap:12px}
+  .sectlabel::after{content:"";flex:1;height:2px;background:var(--teal);opacity:.35}
+  .secttitle{font-size:24px;font-weight:800;margin:0 0 22px;letter-spacing:-.01em}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:10px;padding:20px 20px 22px;margin:0 0 26px;
+    box-shadow:0 1px 0 var(--hair),0 8px 24px -18px rgba(22,32,29,.4)}
+  .tag{font-family:var(--mono);font-size:11.5px;font-weight:600;color:#fff;background:var(--ink);
+    padding:3px 8px;border-radius:5px;letter-spacing:.06em}
+  .tag.m{background:var(--teal)}
+  h3{font-size:18px;margin:12px 0 4px;font-weight:700}
+  .card p{margin:8px 0 0;font-size:15px;color:#27332f}
+  .card p .k{font-family:var(--mono);font-size:13px;background:#eef2f0;padding:1px 6px;border-radius:4px;color:var(--ink)}
+  .diagram{overflow-x:auto;margin:14px -4px 0;padding:14px 4px;background:#fbfdfc;border:1px dashed var(--hair);border-radius:8px}
+  .mermaid{min-width:min-content}
+  .note{font-size:13.5px;color:var(--slate);border-left:3px solid var(--amber);padding:6px 0 6px 12px;margin:12px 0 0}
+  footer{margin-top:40px;font-family:var(--mono);font-size:12px;color:var(--slate);border-top:1px solid var(--hair);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>W17 Build — Wiring &amp; Assembly Atlas</h1>
+  <div class="sub">FPV Mercedes W17 · RC-01 chassis · every rail, UART &amp; linkage</div>
+</header>
+
+<div class="legend">
+  <span><span class="ar">→</span> <b>feed / signal</b> (as labelled)</span>
+  <span><span class="ar">⇢</span> <b>power</b></span>
+  <span><span class="ar">⇒</span> <b>wireless</b> (RF / WiFi)</span>
+  <span><span class="ar">—</span> <b>mechanical join / shared GND</b></span>
+</div>
+
+<div class="sectlabel">Part A</div>
+<div class="secttitle">Electrical — what connects to where</div>
+
+<div class="card">
+  <span class="tag">ELEC-01</span>
+  <h3>System overview</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph G["GROUND SIDE (you)"]
+    DS["DualShock"] -->|USB| PC["PC<br/>elrs-joystick-control"]
+    PC -->|USB| FT["USB-UART FT232"]
+    FT -->|CRSF| TX["ELRS TX module"]
+    TX16["TX16S backup"]
+  end
+  subgraph C["CAR"]
+    RX["ELRS RX"] -->|CRSF| E1["ESP32 #1 control"]
+    E1 -->|UART| E2["ESP32 #2 sound+light"]
+    E1 -->|PWM| ACT["ESC + servos"]
+    CAM["OpenIPC camera"] --- WIFI["WiFi module"]
+  end
+  TX ==>|2.4 GHz| RX
+  TX16 ==>|2.4 GHz| RX
+  WIFI ==>|5.8 GHz| LAP["Laptop video"]
+</pre></div>
+  <p>Two completely separate radio links. The <b>control link</b> (2.4 GHz ELRS) and the <b>video link</b> (5.8 GHz WiFi) share nothing but the battery — that's why TX power never affects video range. Everything below is a zoom-in on one box of this picture.</p>
+</div>
+
+<div class="card">
+  <span class="tag">ELEC-02</span>
+  <h3>Power distribution — the two rails</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  BAT["2S LiPo 7.4V<br/>XT60"] --> Y["XT60 Y-split"]
+  Y --> ESC["ESC"]
+  Y --> B1["BEC #1<br/>5V 5A — clean rail"]
+  Y --> B2["BEC #2<br/>5-6V 5A — servo rail"]
+  ESC --> MOT["Brushless motor"]
+  B1 --> CAM["Camera"]
+  B1 --> WIFI["WiFi module VDD5.0"]
+  B1 --> E1["ESP32 #1"]
+  B1 --> E2["ESP32 #2"]
+  B1 --> RX["ELRS RX"]
+  B1 --> LED["WS2812 LEDs"]
+  B2 --> SVS["Steering servo"]
+  B2 --> PAN["Pan servo"]
+  B2 --> TILT["Tilt servo"]
+  B2 --> DRS["DRS servo"]
+</pre></div>
+  <p>One battery, split at an <span class="k">XT60 Y</span> into three: the ESC (motor), and two BECs. <b>BEC #1</b> is the quiet rail for everything sensitive — camera, WiFi, both ESP32s, the RX, LEDs. <b>BEC #2</b> feeds only the servos, so their current spikes and electrical noise never reach the video.</p>
+  <p class="note">Critical: every GND must be tied together (battery, ESC, both BECs, ESP32s, camera, module). A shared ground is what makes the signals between boards actually work.</p>
+</div>
+
+<div class="card">
+  <span class="tag">ELEC-03</span>
+  <h3>Control signal chain (gamepad → car)</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  DS["DualShock"] -->|USB| PC["PC<br/>maps buttons to channels"]
+  PC -->|USB serial| FT["FT232<br/>3.3V"]
+  FT -->|CRSF TX to RX pin| TX["ELRS TX module<br/>set 25-100 mW"]
+  P5["5V"] -.-> TX
+  TX ==>|2.4 GHz| RX["ELRS RX RP1"]
+  TX16["TX16S<br/>same bind phrase"] ==>|2.4 GHz| RX
+  RX -->|CRSF over UART| E1["ESP32 #1"]
+</pre></div>
+  <p>The PC turns your gamepad into <b>CRSF</b> (the same data a normal radio sends) and pushes it out the FT232's TX line into the TX module's signal pin; the module needs its own 5 V. The <b>TX16S binds to the same RX</b> with the same bind phrase, so it's a drop-in backup transmitter — only one transmits at a time.</p>
+</div>
+
+<div class="card">
+  <span class="tag">ELEC-04</span>
+  <h3>ESP32 #1 (control) — inputs &amp; outputs</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  RX["ELRS RX"] -->|CRSF in| E1["ESP32 #1<br/>control"]
+  VD["Voltage divider<br/>2 resistors"] -->|ADC pin| E1
+  E1 -->|CH2 PWM| ESC["ESC throttle"]
+  E1 -->|CH1 PWM| SVS["Steering servo"]
+  E1 -->|CH3 PWM| PAN["Pan servo"]
+  E1 -->|CH4 PWM| TILT["Tilt servo"]
+  E1 -->|CH6 PWM| DRS["DRS servo"]
+  E1 -->|UART| E2["ESP32 #2"]
+</pre></div>
+  <p>This is the brain. It reads one CRSF stream in, then fans out a <b>PWM (servo) signal</b> to the ESC and each servo — one signal wire each, all sharing the rail's 5 V and a common ground. <span class="k">CH5 gear</span>, <span class="k">CH7 boost</span>, <span class="k">CH8 overtake</span> have no wire of their own — they're handled in firmware (virtual gearbox / ERS) and passed to ESP32 #2.</p>
+  <p class="note">Pin names are examples — the actual GPIO numbers live in your <span class="k">esp32_car_control.ino</span>. What matters is the topology: one signal wire per actuator.</p>
+</div>
+
+<div class="card">
+  <span class="tag">ELEC-05</span>
+  <h3>ESP32 #2 (sound &amp; light) — outputs</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  E1["ESP32 #1"] -->|UART| E2["ESP32 #2<br/>sound + light"]
+  E2 -->|I2S: BCLK LRC DIN| AMP["MAX98357A amp"]
+  AMP -->|2 wires| SPK["Speaker 4 ohm"]
+  E2 -->|data via 330 ohm| LED["WS2812 strip<br/>brake + halo"]
+</pre></div>
+  <p>The second ESP32 takes commands from the first over a 3-wire UART, then drives two things: the engine sound via <b>I2S</b> (three signal wires — BCLK, LRC, DIN — into the MAX98357A, which powers the speaker), and the addressable LEDs via a single <b>data line</b> through a ~330 Ω resistor. Brake-red and halo are just different pixels in code.</p>
+</div>
+
+<div class="card">
+  <span class="tag">ELEC-06</span>
+  <h3>Video — camera ↔ WiFi module</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  B1["BEC #1 5V"] -->|VDD5.0| WIFI["BL-M8812EU2"]
+  CAM["OpenIPC camera<br/>SSC338Q + IMX415"] -->|USB Dplus to DP| WIFI
+  CAM -->|USB Dminus to DM| WIFI
+  CAM ---|GND| WIFI
+  WIFI --- ANT["Antennas J0 J1<br/>connect BEFORE power"]
+  WIFI --- HS["Heatsink<br/>fit first"]
+  FT["FT232 UART"] -->|recovery + flash| CAM
+  WIFI ==>|5.8 GHz WiFi AP| LAP["Laptop"]
+</pre></div>
+  <p>Four solder joints make the camera-to-module link: <span class="k">D+</span>→DP, <span class="k">D−</span>→DM, <span class="k">GND</span>→GND, and 5 V→<span class="k">VDD5.0</span> from the clean BEC (not the camera's own USB rail). The same FT232 from the control side doubles as your camera console for flashing/recovery.</p>
+  <p class="note">Two rules that protect the module: antennas on J0/J1 <b>before</b> any power, and the heatsink fitted before first power-on.</p>
+</div>
+
+<div class="sectlabel">Part B</div>
+<div class="secttitle">Mechanical — how the parts join up</div>
+
+<div class="card">
+  <span class="tag m">MECH-01</span>
+  <h3>Drivetrain — motor to rear wheels</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  MOT["Brushless motor<br/>3.175 mm shaft"] -->|mesh 48P| PIN["Pinion 28T"]
+  PIN -->|mesh 48P| SPUR["Spur 75T"]
+  SPUR --> PUL1["Drive pulley"]
+  PUL1 -->|toothed belt| PUL2["Rear-axle pulley"]
+  PUL2 --> AXLE["Rear axle"]
+  AXLE -->|rides in| BRG["2x bearings 12x21x5"]
+  AXLE -->|spaced by| SPC["2x 14 mm spacers"]
+  AXLE --> WHL["Rear wheels 12 mm hex"]
+</pre></div>
+  <p>Power flows left to right. The <b>pinion and spur must be the same 48-pitch</b> or the teeth won't mesh — the one mechanical mistake that stops everything. The belt then carries drive to the rear axle, which spins in its bearings; the 14 mm metal spacers keep the printed holders off the hot axle.</p>
+</div>
+
+<div class="card">
+  <span class="tag m">MECH-02</span>
+  <h3>Steering — servo to front wheels</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  SV["Steering servo"] --> HORN["25T horn"]
+  HORN --> ROD["M4 40 mm rod"]
+  ROD --> TR["M4 22 mm tie rods<br/>+ 32 mm turnbuckles"]
+  TR -->|clip onto| BS["M3 ball studs"]
+  BS --> KN["Steering knuckles"]
+  KN -->|pivot on| KP["King pins 30 mm"]
+  KN --> FW["Front wheels 12 mm hex"]
+</pre></div>
+  <p>The servo arm pushes a rod that splits to both front knuckles through the tie rods. The <b>turnbuckles</b> are the adjustable links — lengthening or shortening them sets your toe (and they're the bits that snap in a crash). The knuckles swing on the king pins.</p>
+  <p class="note">Centre the servo in firmware <b>before</b> you attach the linkage, or the wheels won't sit straight at neutral.</p>
+</div>
+
+<div class="card">
+  <span class="tag m">MECH-03</span>
+  <h3>One front corner — how it all relates</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  CH["Chassis"] --> AARM["A-arm"]
+  AARM -->|pivots on| KP["King pin 30 mm"]
+  CH --> SHK["Front shock 51 mm"]
+  SHK --> AARM
+  KP --> KN["Steering knuckle"]
+  KN --> HUB["Front hub"]
+  HUB -->|holds| BRG["2x bearings 8x12x3.5"]
+  BRG --> AX["Stub axle"]
+  AX --> WH["Front wheel"]
+  TR["Tie rod"] --> KN
+</pre></div>
+  <p>A single front wheel ties four jobs together: the <b>A-arm</b> handles up/down (damped by the shock), the <b>king pin</b> lets the knuckle steer, the <b>two bearings</b> let the wheel spin, and the <b>tie rod</b> connects it to the steering. Build each corner as a unit.</p>
+</div>
+
+<div class="card">
+  <span class="tag m">MECH-04</span>
+  <h3>Rear axle assembly</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  HLD["Printed bearing holders"] -->|hold| BRG["2x bearings 12x21x5"]
+  BRG --> AXLE["Rear axle"]
+  SPC["2x 14 mm metal spacers"] --> AXLE
+  PUL["Rear pulley"] --> AXLE
+  SPUR["Spur 75T"] --> PUL
+  AXLE --> WHL["Rear wheels"]
+  SHK["Rear shock 68 mm — central"] --> HLD
+</pre></div>
+  <p>The rear axle threads through bearings held in the chassis, with the belt pulley and spur riding on it. Unlike the front's two shocks, the rear uses <b>one central 68 mm damper</b> — the F1 layout.</p>
+</div>
+
+<div class="card">
+  <span class="tag m">MECH-05</span>
+  <h3>Fasteners &amp; inserts — what holds it together</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  PART["Printed part"] -->|melt in with iron| INS["Heat-set M3 insert"]
+  BOLT["M3 bolt"] -->|screws into| INS
+  BOLT -.->|metal to metal: thread-lock| NUT["M3 nut"]
+  GUIDE["Printed guide-rod"] -->|replace with| SLV["D5xM3 metal sleeve"]
+</pre></div>
+  <p>The trick that makes a printed car durable: a brass <b>heat-set insert</b> melts into the plastic so a steel <b>M3 bolt</b> bites metal threads, not plastic. Use blue thread-lock only where metal meets metal (never into plastic). The D5×M3 sleeves replace wear-prone printed guide rods up front.</p>
+</div>
+
+<div class="card">
+  <span class="tag m">MECH-06</span>
+  <h3>Whole-chassis layout (front → rear)</h3>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph FRONT["FRONT"]
+    FW["2 front wheels"]
+    STEER["Steering + servo"]
+    FSHK["2x 51 mm shocks"]
+  end
+  subgraph MID["MIDDLE — electronics bay"]
+    BAT["2S LiPo"]
+    ESPS["ESP32 x2 + RX"]
+    BECS["2x BEC"]
+    CAMG["Camera gimbal"]
+  end
+  subgraph REAR["REAR"]
+    MOT["Motor + ESC"]
+    DRV["Pinion / spur / belt"]
+    RSHK["1x 68 mm shock"]
+    RW["2 rear wheels"]
+  end
+  FRONT --> MID --> REAR
+</pre></div>
+  <p>Where each subsystem physically sits: steering and the twin shocks up front, the electronics bay and battery in the middle (mass kept central for balance), and the whole drivetrain plus the single rear damper at the back.</p>
+</div>
+
+<footer>
+  W17 Wiring &amp; Assembly Atlas · diagrams render on open · pin numbers are illustrative — your firmware defines the real ones.
+</footer>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    securityLevel:'loose',
+    theme:'base',
+    themeVariables:{
+      fontFamily:'ui-monospace,Menlo,Consolas,monospace',
+      fontSize:'14px',
+      primaryColor:'#ffffff',
+      primaryTextColor:'#16201d',
+      primaryBorderColor:'#00a19c',
+      lineColor:'#5b6b66',
+      tertiaryColor:'#eef2f0',
+      clusterBkg:'#f2f6f4',
+      clusterBorder:'#c4d3ce'
+    },
+    flowchart:{ curve:'basis', nodeSpacing:42, rankSpacing:46, padding:10 }
+  });
+</script>
+</body>
+</html>

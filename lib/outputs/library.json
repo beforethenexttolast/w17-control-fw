@@ -1,0 +1,10 @@
+{
+  "name": "outputs",
+  "version": "0.1.0",
+  "description": "Servo/ESC/DRS PWM scaling logic, behind the hal::IPwmOutput/IClock interfaces. No hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "hal": "*"
+  }
+}

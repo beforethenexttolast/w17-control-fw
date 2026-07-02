@@ -1,0 +1,7 @@
+{
+  "name": "config",
+  "version": "0.1.0",
+  "description": "Header-only project configuration constants (pin map). No implementation, safe in any environment.",
+  "frameworks": "*",
+  "platforms": "*"
+}

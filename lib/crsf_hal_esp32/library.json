@@ -1,0 +1,10 @@
+{
+  "name": "crsf_hal_esp32",
+  "version": "0.1.0",
+  "description": "ESP32 (Arduino) concrete CRSF UART wrapper. Hardware-only; referenced only from src/main.cpp.",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "crsf": "*"
+  }
+}

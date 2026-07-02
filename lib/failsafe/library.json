@@ -1,0 +1,7 @@
+{
+  "name": "failsafe",
+  "version": "0.1.0",
+  "description": "Safety-critical link-loss failsafe state machine. Pure logic, no hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*"
+}

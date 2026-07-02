@@ -1,0 +1,7 @@
+{
+  "name": "hal",
+  "version": "0.1.0",
+  "description": "Hardware-abstraction interfaces shared by pure-logic libs (no implementation, no Arduino dependency).",
+  "frameworks": "*",
+  "platforms": "*"
+}

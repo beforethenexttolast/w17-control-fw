@@ -1,0 +1,7 @@
+{
+  "name": "crsf",
+  "version": "0.1.0",
+  "description": "Pure CRSF (Crossfire/ELRS) RC_CHANNELS_PACKED parser. No hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*"
+}
