@@ -93,10 +93,20 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
   named local for link2 (D6).
 - Verified: 59/59 native tests (14 new), esp32dev clean, lib/gearbox Arduino-free.
 
-### D4 — CRSF LinkStatistics + receiver facade — S/M, ~1 day
-- Parse frame 0x14 (LQ, RSSI, RX failsafe indication where available); route a real
-  `rxFailsafeFlag` into the failsafe FSM. `CrsfReceiver` facade exposing
-  `channels / linkUp / lastFrameMicros / failsafe` per CLAUDE.md §2.1 (closes A7, A13).
+### D4 — CRSF LinkStatistics + receiver facade — ✅ DONE 2026-07-02
+- `CrsfLinkStatistics` + pure `decodeLinkStatistics` (0x14, 10-byte payload, layout confirmed
+  vs Betaflight/TBS). `CrsfFrameAssembler` generalized to framing+CRC only: FrameReady = any
+  CRC-valid type (closes A7 — telemetry no longer misreported as corruption); per-type payload
+  length validation moved to the facade.
+- `CrsfReceiver` facade (CLAUDE.md §2.1, closes A13): owned `channels()` copy, `linkStats()`,
+  `lastRcFrameMs()`, `linkUp()` (reporting only — the FSM stays the actuation authority), and
+  `rxSignalsFailsafe()`: **latched** uplink-LQ==0, cleared ONLY by a LQ>0 stats frame — never
+  by RC frames or staleness, so hold-position RC frames during an outage can't re-arm the car
+  (mitigates A8). Real `rxFailsafeFlag` now feeds the failsafe FSM in main.cpp.
+- Verified: 72/72 native tests (13 new), esp32dev clean.
+- **Bench-verify (added to D8):** ELRS LQ=0 forced burst on disconnect (count/cadence),
+  ~100ms connected stats cadence, RX disconnect-declaration latency at the chosen packet
+  rate, whether serial-CRSF ELRS even has a Set-Position mode, no-RC-output-before-first-bind.
 
 ### D5 — `telemetry` — M, ~1–2 days
 - `IAdc` seam + battery volts conversion (27k/10k divider, calibration factor constant,
@@ -124,7 +134,10 @@ neutral/range calibration + sensored mode; **ESC must be configured forward/brak
 fwd/reverse) — the gearbox does not govern reverse (brake/reverse PWM is indistinguishable
 below neutral, so reverse would be full-speed in any gear)**; wheels-off-ground throttle
 tests only until failsafe + arm gate proven on the bench; Hall pulse + ADC calibration
-(write factor into config); link2 smoke test with board #2.
+(write factor into config); link2 smoke test with board #2; **verify ELRS link-loss behavior
+with a serial dump: LQ=0 LINK_STATISTICS burst on disconnect (count + timing), ~100ms stats
+cadence while connected, disconnect-declaration latency at the chosen packet rate, and that
+the RX emits no RC frames before first connection** (D4 failsafe-flag assumptions).
 
 ### Deferable past 2026-07-21 without hurting the gift
 Gimbal pan/tilt (already optional), CRSF telemetry uplink to TX, BX100-style low-voltage

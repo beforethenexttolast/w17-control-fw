@@ -36,6 +36,20 @@ void unpackChannels(const uint8_t payload[kRcChannelsPayloadLen],
     }
 }
 
+void decodeLinkStatistics(const uint8_t payload[kLinkStatisticsPayloadLen],
+                           CrsfLinkStatistics& out) {
+    out.uplinkRssiAnt1 = payload[0];
+    out.uplinkRssiAnt2 = payload[1];
+    out.uplinkLinkQuality = payload[2];
+    out.uplinkSnr = static_cast<int8_t>(payload[3]);
+    out.activeAntenna = payload[4];
+    out.rfMode = payload[5];
+    out.uplinkTxPower = payload[6];
+    out.downlinkRssi = payload[7];
+    out.downlinkLinkQuality = payload[8];
+    out.downlinkSnr = static_cast<int8_t>(payload[9]);
+}
+
 DecodeResult decodeFrame(const uint8_t* frame, size_t frameLen, RcChannelsFrame& out) {
     if (frameLen < 4) {
         return DecodeResult::BadLength;

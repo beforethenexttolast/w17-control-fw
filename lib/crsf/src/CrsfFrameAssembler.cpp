@@ -33,9 +33,18 @@ CrsfFrameAssembler::FeedResult CrsfFrameAssembler::feedByte(uint8_t b) {
             if (bufferLen_ < totalFrameLen) {
                 return FeedResult::Incomplete;
             }
-            const DecodeResult result = decodeFrame(buffer_, bufferLen_, lastFrame_);
+
+            // Complete frame buffered: CRC8 over [type + payload] (not sync,
+            // not length, not the CRC byte itself), any frame type.
+            const uint8_t crcSpan = expectedLength_ - 1; // type + payload
+            const uint8_t receivedCrc = buffer_[2 + crcSpan];
+            const uint8_t computedCrc = computeCrc8(buffer_ + 2, crcSpan);
+
+            // Snapshot before reset so accessors stay valid until the next byte.
+            lastFrameType_ = buffer_[2];
+            lastPayloadLen_ = static_cast<uint8_t>(expectedLength_ - 2); // minus type, minus crc
             reset();
-            return result == DecodeResult::Ok ? FeedResult::FrameReady : FeedResult::FrameInvalid;
+            return computedCrc == receivedCrc ? FeedResult::FrameReady : FeedResult::FrameInvalid;
         }
     }
     return FeedResult::Incomplete; // unreachable

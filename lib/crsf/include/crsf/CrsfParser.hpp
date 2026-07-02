@@ -25,4 +25,10 @@ DecodeResult decodeFrame(const uint8_t* frame, size_t frameLen, RcChannelsFrame&
 void unpackChannels(const uint8_t payload[kRcChannelsPayloadLen],
                      uint16_t outChannels[kNumChannels]);
 
+// Decodes the 10-byte LINK_STATISTICS payload (field-by-field copy; RSSI/SNR
+// semantics documented on CrsfLinkStatistics). Caller must have verified the
+// payload length and CRC (CrsfReceiver does both).
+void decodeLinkStatistics(const uint8_t payload[kLinkStatisticsPayloadLen],
+                           CrsfLinkStatistics& out);
+
 } // namespace crsf

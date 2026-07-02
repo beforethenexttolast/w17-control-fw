@@ -22,6 +22,11 @@ inline constexpr uint8_t kSyncByte = 0xC8;
 // RC_CHANNELS_PACKED frame type: 16 x 11-bit channels.
 inline constexpr uint8_t kFrameTypeRcChannelsPacked = 0x16;
 
+// LINK_STATISTICS frame type: RF link health, interleaved with RC frames by
+// ELRS receivers (~10 Hz while connected, plus a short forced burst with
+// uplink LQ = 0 when the RX declares link loss).
+inline constexpr uint8_t kFrameTypeLinkStatistics = 0x14;
+
 // CRSF CRC8 polynomial (DVB-S2 style), per CRSF spec.
 inline constexpr uint8_t kCrc8Poly = 0xD5;
 
@@ -46,6 +51,25 @@ inline constexpr uint32_t kCrsfBaud = 420000;
 
 struct RcChannelsFrame {
     uint16_t channels[kNumChannels];
+};
+
+// LINK_STATISTICS payload: 10 bytes, per TBS CRSF rev / Betaflight
+// crsfLinkStatistics_t. "Uplink" = the TX-module -> receiver control link as
+// seen by the receiver (the one that matters for failsafe); "downlink" = the
+// telemetry return as seen by the TX module.
+inline constexpr size_t kLinkStatisticsPayloadLen = 10;
+
+struct CrsfLinkStatistics {
+    uint8_t uplinkRssiAnt1 = 0;    // dBm * -1 as sent on the wire (e.g. 75 = -75 dBm)
+    uint8_t uplinkRssiAnt2 = 0;    // dBm * -1
+    uint8_t uplinkLinkQuality = 0; // 0-100 %; ELRS forces 0 on link loss
+    int8_t uplinkSnr = 0;          // dB, signed
+    uint8_t activeAntenna = 0;
+    uint8_t rfMode = 0;            // ELRS overloads this with its packet-rate index -- store raw
+    uint8_t uplinkTxPower = 0;     // enum index, not mW -- store raw
+    uint8_t downlinkRssi = 0;      // dBm * -1
+    uint8_t downlinkLinkQuality = 0;
+    int8_t downlinkSnr = 0;
 };
 
 enum class DecodeResult : uint8_t {

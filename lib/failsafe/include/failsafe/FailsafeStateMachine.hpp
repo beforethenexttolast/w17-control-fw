@@ -37,9 +37,9 @@ public:
     //                          actually been received (it must not infer link
     //                          health from timestamps alone -- doing so was a
     //                          boot-time full-lock bug, see docs/ROADMAP.md A1).
-    //   rxFailsafeFlag       - true if the RX itself signals failsafe. Always
-    //                          false today: RC_CHANNELS_PACKED carries no such
-    //                          flag; a future LinkStatistics parser sets this.
+    //   rxFailsafeFlag       - true if the RX itself signals failsafe. Fed by
+    //                          CrsfReceiver::rxSignalsFailsafe() (latched
+    //                          uplink-LQ==0 from LINK_STATISTICS frames).
     //
     // Dropping into Safe is immediate (timeout exceeded OR flag set) -- no
     // debounce on the way in, since that is the safety-critical direction.

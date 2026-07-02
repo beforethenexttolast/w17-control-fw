@@ -3,7 +3,7 @@
 #include "channels/ArmGate.hpp"
 #include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
-#include "crsf/CrsfFrameAssembler.hpp"
+#include "crsf/CrsfReceiver.hpp"
 #include "crsf_hal_esp32/Esp32CrsfUart.hpp"
 #include "failsafe/FailsafeStateMachine.hpp"
 #include "gearbox/Gearbox.hpp"
@@ -22,12 +22,10 @@ public:
 };
 
 crsf_hal_esp32::Esp32CrsfUart crsfUart(pinmap::kCrsfUartRxPin, pinmap::kCrsfUartTxPin);
-crsf::CrsfFrameAssembler crsfAssembler;
 
-// Own copy of the most recent channels: CrsfFrameAssembler::lastFrame() is
-// documented valid only immediately after FrameReady, so it is copied out at
-// that moment instead of being re-read every tick.
-crsf::RcChannelsFrame latestChannels{};
+// Owns frame assembly + typed dispatch; exposes channels, link stats, and the
+// RX failsafe signal (latched uplink-LQ==0 from LINK_STATISTICS frames).
+crsf::CrsfReceiver crsfReceiver;
 
 // The channel map lives here, in one place; a bad index fails the build.
 constexpr channels::ChannelMapConfig kChannelMap{};
@@ -76,14 +74,16 @@ void setup() {
 }
 
 void loop() {
+    const uint32_t nowMs = millis();
+
+    // Accumulate (|=) rather than assign: an RC frame and a stats frame can
+    // both complete in one drain pass, and the last result must not mask the
+    // RC arrival.
     bool frameArrived = false;
     while (crsfUart.available() > 0) {
-        const crsf::CrsfFrameAssembler::FeedResult result =
-            crsfAssembler.feedByte(static_cast<uint8_t>(crsfUart.read()));
-        if (result == crsf::CrsfFrameAssembler::FeedResult::FrameReady) {
-            latestChannels = crsfAssembler.lastFrame();
-            frameArrived = true;
-        }
+        const crsf::CrsfReceiver::ByteResult result =
+            crsfReceiver.feedByte(static_cast<uint8_t>(crsfUart.read()), nowMs);
+        frameArrived |= (result == crsf::CrsfReceiver::ByteResult::NewRcFrame);
     }
 
     // Decode on every new frame, including while failsafe is Safe: pausing
@@ -91,7 +91,7 @@ void loop() {
     // look like a fresh transition (phantom gear edge) on recovery. Decoding
     // is pure -- only the actuation below is gated on failsafe state.
     if (frameArrived) {
-        controls = channelDecoder.decode(latestChannels);
+        controls = channelDecoder.decode(crsfReceiver.channels());
 
         // Gear edges are consume-on-read and `controls` is cached across
         // loop ticks, so shifts MUST happen here -- in the free-running loop
@@ -107,8 +107,11 @@ void loop() {
         }
     }
 
+    // rxSignalsFailsafe: latched uplink-LQ==0 from the RX's LINK_STATISTICS
+    // -- an independent loss signal alongside the frame timeout, and the only
+    // one that fires if the RX keeps sending hold-position RC frames.
     const failsafe::State state =
-        failsafeStateMachine.update(millis(), frameArrived, /*rxFailsafeFlag=*/false);
+        failsafeStateMachine.update(nowMs, frameArrived, crsfReceiver.rxSignalsFailsafe());
 
     // The arm gate runs every tick so a failsafe episode clears its
     // neutral-seen latch: after recovery, throttle must be re-observed at
