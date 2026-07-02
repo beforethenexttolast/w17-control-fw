@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W17 — FPV HUD</title>
+<style>
+  :root{
+    /* Palette — Mercedes-AMG Petronas */
+    --teal:#00D2BE;          /* petronas */
+    --teal-bright:#27F5DD;
+    --teal-deep:#007E76;
+    --carbon:#070A0B;
+    --panel:rgba(16,22,24,.78);
+    --panel-edge:rgba(0,210,190,.35);
+    --silver:#E4EAEC;
+    --muted:#7E898E;
+    --red:#FF2D2D;
+    --green:#00E676;
+    --violet:#B98BFF;
+    --amber:#FFB200;
+    --gap:clamp(8px,1.4vw,18px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:#000;
+    color:var(--silver);
+    font-family:"Arial Narrow","Roboto Condensed","Segoe UI",system-ui,sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .mono{font-family:"SF Mono",ui-monospace,"Consolas","Roboto Mono",monospace}
+
+  /* ---- Stage: video sits in the center; HUD frames it ---- */
+  .stage{
+    position:fixed;inset:0;
+    /* placeholder for the FPV video feed */
+    background:
+      radial-gradient(120% 90% at 50% 42%, #11181a 0%, #0a0f10 55%, #050708 100%);
+  }
+  .feed-note{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    text-align:center;color:#1d2a2d;letter-spacing:.5em;
+    font-size:clamp(11px,1.4vw,15px);text-transform:uppercase;font-weight:700;
+    pointer-events:none;user-select:none;
+  }
+  .feed-note small{display:block;letter-spacing:.2em;font-size:.7em;color:#16201f;margin-top:.6em}
+  /* faint scanline texture so the placeholder reads as a screen */
+  .stage::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px);
+    mix-blend-mode:overlay;
+  }
+  /* vignette to keep HUD legible over any video */
+  .vignette{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 18% 78%,rgba(0,0,0,.6) 100%);}
+
+  .hud{position:fixed;inset:0;pointer-events:none;}
+
+  /* chamfered F1 panel */
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--panel-edge);
+    backdrop-filter:blur(3px);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  }
+
+  /* ---------- TOP BAR ---------- */
+  .top{
+    position:absolute;top:var(--gap);left:var(--gap);right:var(--gap);
+    display:flex;justify-content:space-between;align-items:flex-start;gap:var(--gap);
+  }
+  .driver{padding:.5em .9em;display:flex;align-items:center;gap:.7em}
+  .numplate{
+    font-style:italic;font-weight:800;font-size:clamp(20px,2.6vw,34px);
+    color:var(--carbon);background:var(--teal);
+    padding:.04em .34em;line-height:1;transform:skewX(-8deg);
+    clip-path:polygon(8% 0,100% 0,92% 100%,0 100%);
+  }
+  .driver .who{line-height:1.05}
+  .driver .name{font-weight:800;letter-spacing:.12em;font-size:clamp(13px,1.7vw,20px);text-transform:uppercase}
+  .driver .team{color:var(--teal);letter-spacing:.26em;font-size:clamp(8px,1vw,11px);text-transform:uppercase;font-weight:700}
+
+  /* shift lights */
+  .revwrap{align-self:center;display:flex;flex-direction:column;align-items:center;gap:.4em}
+  .revlabel{color:var(--muted);letter-spacing:.4em;font-size:clamp(7px,.9vw,10px);text-transform:uppercase}
+  .rev{display:flex;gap:clamp(3px,.5vw,7px);padding:.5em .7em}
+  .rev i{
+    width:clamp(9px,1.2vw,15px);height:clamp(9px,1.2vw,15px);border-radius:50%;
+    background:#11191b;border:1px solid #243033;transition:background .04s,box-shadow .04s;
+  }
+  .rev i.g{background:var(--green);box-shadow:0 0 10px var(--green)}
+  .rev i.r{background:var(--red);box-shadow:0 0 10px var(--red)}
+  .rev i.v{background:var(--violet);box-shadow:0 0 12px var(--violet)}
+  .rev.redline i{animation:flash .12s steps(1) infinite}
+  @keyframes flash{50%{background:#11191b;box-shadow:none}}
+
+  .session{text-align:right;padding:.5em .9em;min-width:9em}
+  .session .clock{font-style:italic;font-weight:800;font-size:clamp(16px,2vw,26px);letter-spacing:.04em}
+  .session .live{color:var(--teal);letter-spacing:.34em;font-size:clamp(8px,1vw,11px);text-transform:uppercase;font-weight:700;display:flex;gap:.5em;justify-content:flex-end;align-items:center}
+  .dot{width:.6em;height:.6em;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.25}}
+  .gp{font-size:clamp(8px,1vw,11px);letter-spacing:.18em;color:var(--muted);margin-top:.3em;text-transform:uppercase}
+  .gp.on{color:var(--green)}
+
+  /* ---------- BOTTOM CLUSTER ---------- */
+  .bottom{
+    position:absolute;left:var(--gap);right:var(--gap);bottom:var(--gap);
+    display:flex;align-items:flex-end;justify-content:space-between;gap:var(--gap);
+  }
+
+  /* left: speed + pedals + steering */
+  .left{display:flex;flex-direction:column;gap:.5em;min-width:clamp(170px,22vw,300px)}
+  .speedbox{padding:.4em .9em .55em}
+  .speed{font-style:italic;font-weight:800;font-size:clamp(46px,8.5vw,108px);line-height:.82;letter-spacing:-.01em;transform:skewX(-6deg)}
+  .speed small{font-size:.22em;letter-spacing:.4em;font-weight:700;color:var(--muted);display:block;transform:skewX(6deg);margin-top:.2em}
+  .bars{display:flex;flex-direction:column;gap:.35em;padding:.55em .8em}
+  .bar{display:flex;align-items:center;gap:.6em}
+  .bar b{width:2.4em;font-size:clamp(8px,1vw,11px);letter-spacing:.18em;color:var(--muted);font-weight:700}
+  .track{flex:1;height:clamp(7px,.9vw,11px);background:#10181a;overflow:hidden;clip-path:polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)}
+  .fill{height:100%;width:0%;transition:width .05s linear}
+  .fill.thr{background:linear-gradient(90deg,var(--teal-deep),var(--green))}
+  .fill.brk{background:linear-gradient(90deg,#7a0f0f,var(--red))}
+  .steer{display:flex;align-items:center;gap:.6em;padding:.4em .8em}
+  .steer b{font-size:clamp(8px,1vw,11px);letter-spacing:.18em;color:var(--muted);font-weight:700}
+  .steerbar{position:relative;flex:1;height:clamp(6px,.8vw,10px);background:#10181a;clip-path:polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)}
+  .steerbar::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#2a3639}
+  .steerdot{position:absolute;top:50%;width:clamp(12px,1.6vw,18px);height:100%;background:var(--teal);box-shadow:0 0 10px var(--teal);transform:translate(-50%,-50%);transition:left .05s linear;left:50%}
+
+  /* center: GEAR */
+  .gearbox{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:.2em}
+  .gearlabel{color:var(--muted);letter-spacing:.5em;font-size:clamp(8px,1vw,12px);text-transform:uppercase;margin-bottom:.1em}
+  .gear{
+    font-style:italic;font-weight:800;line-height:.8;
+    font-size:clamp(96px,17vw,210px);
+    color:var(--silver);transform:skewX(-6deg);
+    text-shadow:0 0 28px rgba(0,210,190,.55),0 0 6px rgba(0,210,190,.7);
+    transition:color .1s;
+  }
+  .gear.shift{color:var(--violet);text-shadow:0 0 34px var(--violet)}
+
+  /* right: ERS + DRS + overtake */
+  .right{display:flex;flex-direction:column;gap:.5em;align-items:flex-end;min-width:clamp(150px,18vw,250px)}
+  .pillrow{display:flex;gap:.5em;justify-content:flex-end;flex-wrap:wrap}
+  .pill{
+    padding:.42em .9em;font-weight:800;letter-spacing:.18em;font-size:clamp(10px,1.3vw,15px);
+    text-transform:uppercase;color:var(--muted);background:var(--panel);
+    border:1px solid #233033;
+    clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);
+    transition:all .08s;
+  }
+  .pill.drs.on{color:var(--carbon);background:var(--green);border-color:var(--green);box-shadow:0 0 16px rgba(0,230,118,.6)}
+  .pill.ot.on{color:var(--carbon);background:var(--amber);border-color:var(--amber);box-shadow:0 0 16px rgba(255,178,0,.6)}
+  .pill.boost.on{color:var(--carbon);background:var(--teal-bright);border-color:var(--teal-bright);box-shadow:0 0 16px rgba(39,245,221,.6)}
+  .ersbox{width:100%;padding:.5em .8em}
+  .ershead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.35em}
+  .ershead b{letter-spacing:.3em;font-size:clamp(8px,1vw,11px);color:var(--teal);font-weight:700}
+  .ershead span{font-size:clamp(10px,1.3vw,15px);font-weight:800;font-style:italic}
+  .erstrack{height:clamp(9px,1.2vw,14px);background:#10181a;overflow:hidden;clip-path:polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%);position:relative}
+  .ersfill{height:100%;width:60%;background:linear-gradient(90deg,var(--teal-deep),var(--teal),var(--teal-bright));transition:width .1s linear}
+  .ersfill.deploy{animation:ersglow .5s ease-in-out infinite alternate}
+  @keyframes ersglow{to{filter:brightness(1.5)}}
+
+  /* ---------- START GATE ---------- */
+  .gate{
+    position:fixed;inset:0;z-index:10;pointer-events:auto;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.4em;
+    background:radial-gradient(120% 90% at 50% 45%,rgba(7,12,13,.86),rgba(2,4,4,.96));
+    text-align:center;padding:2em;
+  }
+  .gate.hidden{display:none}
+  .gate h1{font-style:italic;font-weight:800;font-size:clamp(30px,6vw,64px);letter-spacing:.02em;transform:skewX(-6deg)}
+  .gate h1 em{color:var(--teal);font-style:italic}
+  .gate .sub{color:var(--muted);letter-spacing:.28em;text-transform:uppercase;font-size:clamp(10px,1.3vw,14px);max-width:34ch;line-height:1.7}
+  .gate .status{font-weight:800;letter-spacing:.18em;text-transform:uppercase;font-size:clamp(12px,1.6vw,18px)}
+  .gate .status.ok{color:var(--green)}
+  .gate .status.no{color:var(--amber)}
+  .startbtn{
+    pointer-events:auto;cursor:pointer;margin-top:.3em;
+    font-family:inherit;font-weight:800;letter-spacing:.22em;text-transform:uppercase;
+    font-size:clamp(13px,1.7vw,18px);color:var(--carbon);background:var(--teal);
+    border:none;padding:.85em 2.4em;
+    clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);
+    transition:filter .12s,transform .12s;
+  }
+  .startbtn:hover,.startbtn:focus-visible{filter:brightness(1.15);transform:translateY(-1px);outline:2px solid var(--teal-bright);outline-offset:3px}
+  .keys{color:var(--muted);font-size:clamp(9px,1.1vw,12px);letter-spacing:.12em;line-height:1.9;max-width:40ch}
+  .keys kbd{background:#11191b;border:1px solid #2a3639;border-radius:3px;padding:.1em .5em;color:var(--silver);font-family:inherit;font-size:.95em}
+  .demoToggle{position:fixed;bottom:.6em;left:50%;transform:translateX(-50%);z-index:9;pointer-events:auto}
+  .demoToggle button{
+    font-family:inherit;cursor:pointer;background:rgba(16,22,24,.7);border:1px solid var(--panel-edge);
+    color:var(--muted);letter-spacing:.2em;text-transform:uppercase;font-size:11px;font-weight:700;
+    padding:.4em 1em;clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);
+  }
+  .demoToggle button.on{color:var(--carbon);background:var(--amber);border-color:var(--amber)}
+
+  @media (prefers-reduced-motion:reduce){
+    .rev.redline i,.dot,.ersfill.deploy{animation:none}
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="feed-note">FPV FEED<small>live video renders here · HUD overlays on top</small></div>
+  </div>
+  <div class="vignette"></div>
+
+  <div class="hud">
+    <!-- TOP -->
+    <div class="top">
+      <div class="driver panel">
+        <div class="numplate">63</div>
+        <div class="who">
+          <div class="name">Russell</div>
+          <div class="team">Mercedes-AMG Petronas</div>
+        </div>
+      </div>
+
+      <div class="revwrap">
+        <div class="revlabel">Revs</div>
+        <div class="rev panel" id="rev"></div>
+      </div>
+
+      <div class="session panel">
+        <div class="live"><span class="dot"></span>Live</div>
+        <div class="clock num" id="clock">00:00.0</div>
+        <div class="gp" id="gpStatus">No controller</div>
+      </div>
+    </div>
+
+    <!-- BOTTOM -->
+    <div class="bottom">
+      <div class="left">
+        <div class="speedbox panel">
+          <div class="speed num"><span id="speed">0</span><small>km/h</small></div>
+        </div>
+        <div class="bars panel">
+          <div class="bar"><b>THR</b><div class="track"><div class="fill thr" id="thr"></div></div></div>
+          <div class="bar"><b>BRK</b><div class="track"><div class="fill brk" id="brk"></div></div></div>
+        </div>
+        <div class="steer panel">
+          <b>STR</b>
+          <div class="steerbar"><div class="steerdot" id="steer"></div></div>
+        </div>
+      </div>
+
+      <div class="gearbox">
+        <div class="gearlabel">Gear</div>
+        <div class="gear num" id="gear">N</div>
+      </div>
+
+      <div class="right">
+        <div class="pillrow">
+          <div class="pill boost" id="boost">Boost</div>
+          <div class="pill ot" id="ot">Overtake</div>
+        </div>
+        <div class="pillrow"><div class="pill drs" id="drs">DRS</div></div>
+        <div class="ersbox panel">
+          <div class="ershead"><b>ERS</b><span class="num"><span id="ersPct">100</span>%</span></div>
+          <div class="erstrack"><div class="ersfill" id="ers"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- START GATE -->
+  <div class="gate" id="gate">
+    <h1>W17 <em>FPV</em></h1>
+    <div class="sub">Mercedes-AMG Petronas · No.63 · ground-station HUD</div>
+    <div class="status no" id="gateStatus">Searching for controller…</div>
+    <button class="startbtn" id="startBtn">Press Start</button>
+    <div class="keys">
+      <strong style="color:var(--silver);letter-spacing:.18em">DualShock</strong> &nbsp; L-stick steer · R2 throttle · L2 brake · R1/L1 gear · △ DRS · ○ boost · □ overtake · OPTIONS start<br>
+      <strong style="color:var(--silver);letter-spacing:.18em">Keyboard</strong> &nbsp; <kbd>←</kbd><kbd>→</kbd> steer · <kbd>↑</kbd> throttle · <kbd>↓</kbd> brake · <kbd>E</kbd>/<kbd>Q</kbd> gear · <kbd>D</kbd> DRS · <kbd>B</kbd> boost · <kbd>O</kbd> overtake · <kbd>Enter</kbd> start
+    </div>
+  </div>
+  <div class="demoToggle"><button id="demoBtn">▶ Demo mode</button></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Config (tweak to taste / to real numbers) ----
+  const GEARS = 8;
+  const TOP_SPEED = 320;        // themed top speed; set to your real measured top speed for honest readouts
+  const REV_LIGHTS = 12;
+  const BOOST_CAP_BONUS = 1.18; // boost/overtake raise the per-gear ceiling
+  // per-gear speed ceilings
+  const caps = [0];
+  for (let g = 1; g <= GEARS; g++) caps[g] = Math.round(TOP_SPEED * Math.pow(g / GEARS, 0.82));
+
+  // ---- State ----
+  const S = {
+    started:false, source:"none", connected:false,
+    gear:1, speed:0, rpm:0, ers:100,
+    throttle:0, brake:0, steer:0,
+    drs:false, boost:false, overtake:false,
+    t0:performance.now(),
+  };
+
+  // ---- DOM ----
+  const el = id => document.getElementById(id);
+  const revEl = el("rev"), speedEl = el("speed"), gearEl = el("gear"),
+        thrEl = el("thr"), brkEl = el("brk"), steerEl = el("steer"),
+        ersEl = el("ers"), ersPctEl = el("ersPct"),
+        drsEl = el("drs"), boostEl = el("boost"), otEl = el("ot"),
+        clockEl = el("clock"), gpEl = el("gpStatus"),
+        gate = el("gate"), gateStatus = el("gateStatus"),
+        startBtn = el("startBtn"), demoBtn = el("demoBtn");
+
+  for (let i = 0; i < REV_LIGHTS; i++) revEl.appendChild(document.createElement("i"));
+  const revs = [...revEl.children];
+
+  // ---- Input plumbing ----
+  const keys = {};
+  let demo = false;
+  // edge-detect helpers for buttons that toggle / step
+  const prev = { up:false, down:false, drs:false };
+
+  addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === "Enter") start();
+    if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault();
+  });
+  addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+  addEventListener("gamepadconnected", refreshPad);
+  addEventListener("gamepaddisconnected", refreshPad);
+  startBtn.addEventListener("click", start);
+  demoBtn.addEventListener("click", () => {
+    demo = !demo;
+    demoBtn.classList.toggle("on", demo);
+    demoBtn.textContent = demo ? "■ Demo running" : "▶ Demo mode";
+    if (demo) start();
+  });
+
+  function pad(){ const ps = navigator.getGamepads ? navigator.getGamepads() : []; return [...ps].find(p => p) || null; }
+  function refreshPad(){
+    const p = pad();
+    S.connected = !!p;
+    gpEl.textContent = p ? "Controller ready" : "No controller";
+    gpEl.classList.toggle("on", !!p);
+    if (!S.started){
+      gateStatus.textContent = p ? "Controller connected" : "No controller — use keyboard or Demo";
+      gateStatus.className = "status " + (p ? "ok" : "no");
+    }
+  }
+  function start(){ if (S.started) return; S.started = true; S.t0 = performance.now(); gate.classList.add("hidden"); }
+  setInterval(refreshPad, 600); refreshPad();
+
+  // ---- Read inputs into S ----
+  function readInputs(){
+    if (demo){ readDemo(); S.source = "demo"; return; }
+    const p = pad();
+    if (p){
+      S.source = "gamepad";
+      const ax = p.axes, b = p.buttons;
+      S.steer = clamp(ax[0] || 0, -1, 1);
+      // triggers: standard mapping = buttons[6] (L2/brake), buttons[7] (R2/throttle)
+      S.throttle = b[7] ? b[7].value : 0;
+      S.brake = b[6] ? b[6].value : 0;
+      const up = !!(b[5] && b[5].pressed), down = !!(b[4] && b[4].pressed); // R1 / L1
+      if (up && !prev.up) shift(+1);
+      if (down && !prev.down) shift(-1);
+      prev.up = up; prev.down = down;
+      const drsBtn = !!(b[3] && b[3].pressed); // triangle toggles
+      if (drsBtn && !prev.drs) S.drs = !S.drs;
+      prev.drs = drsBtn;
+      S.boost = !!(b[1] && b[1].pressed);    // circle
+      S.overtake = !!(b[2] && b[2].pressed); // square
+      if (b[9] && b[9].pressed) start();     // options
+    } else {
+      S.source = "keyboard";
+      S.steer = clamp((keys["arrowright"]?1:0) - (keys["arrowleft"]?1:0), -1, 1);
+      S.throttle = keys["arrowup"] ? 1 : 0;
+      S.brake = keys["arrowdown"] ? 1 : 0;
+      const up = !!keys["e"], down = !!keys["q"];
+      if (up && !prev.up) shift(+1);
+      if (down && !prev.down) shift(-1);
+      prev.up = up; prev.down = down;
+      handleKeyToggle("drs", !!keys["d"]);
+      S.boost = !!keys["b"];
+      S.overtake = !!keys["o"];
+    }
+  }
+  function handleKeyToggle(name, pressed){
+    if (pressed && !prev[name]) S[name] = !S[name];
+    prev[name] = pressed;
+  }
+  function shift(dir){ S.gear = clamp(S.gear + dir, 1, GEARS); }
+  function clamp(v,a,b){ return v<a?a:v>b?b:v; }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  // ---- Demo choreography ----
+  const demoState = { phase:0, t:0 };
+  function readDemo(){
+    demoState.t += 1/60;
+    // simple loop: build revs, upshift near redline, occasional DRS/boost, then ease & downshift
+    S.throttle = lerp(S.throttle, S.rpm > .96 && S.gear < GEARS ? .2 : .9, .04);
+    S.brake = 0; S.steer = Math.sin(demoState.t*0.7)*0.6;
+    if (S.rpm > .97 && S.gear < GEARS) shift(+1);
+    if (S.gear === GEARS && S.rpm > .9){ S.throttle = 0; S.brake = .7; }
+    if (S.speed < 8 && S.gear > 1) S.gear = 1;
+    S.drs = (Math.floor(demoState.t/6) % 2 === 1) && S.gear >= 5;
+    S.boost = (Math.floor(demoState.t/9) % 3 === 0) && S.ers > 15 && S.gear >= 4;
+    S.overtake = false;
+  }
+
+  // ---- Physics-ish model ----
+  function update(dt){
+    const boosting = (S.boost || S.overtake) && S.ers > 0;
+    const ceil = caps[S.gear] * (boosting ? BOOST_CAP_BONUS : 1);
+    const target = S.throttle * ceil;
+    if (S.brake > 0.05){
+      S.speed = Math.max(0, S.speed - (220 + S.brake*420) * dt);
+    } else {
+      const rate = (target > S.speed ? 1.6 : 1.1);
+      S.speed = lerp(S.speed, target, clamp(rate*dt,0,1));
+    }
+    S.speed = clamp(S.speed, 0, TOP_SPEED * BOOST_CAP_BONUS);
+
+    // rpm within current gear band
+    const lo = caps[S.gear-1], hi = caps[S.gear];
+    S.rpm = clamp((S.speed - lo) / Math.max(1,(hi - lo)), 0, 1);
+
+    // ERS
+    if (boosting) S.ers = Math.max(0, S.ers - 26*dt);
+    else if (S.brake > 0.1 || S.throttle < 0.1) S.ers = Math.min(100, S.ers + 11*dt);
+  }
+
+  // ---- Render ----
+  function render(){
+    speedEl.textContent = Math.round(S.speed);
+    gearEl.textContent = S.speed < 1 && S.gear === 1 ? "N" : S.gear;
+    const shifting = S.rpm > 0.96 && S.gear < GEARS;
+    gearEl.classList.toggle("shift", shifting);
+
+    const lit = Math.round(S.rpm * REV_LIGHTS);
+    const third = REV_LIGHTS/3;
+    revs.forEach((r,i) => {
+      r.className = "";
+      if (i < lit) r.classList.add(i < third ? "g" : i < third*2 ? "r" : "v");
+    });
+    revEl.classList.toggle("redline", S.rpm > 0.985 && S.gear < GEARS);
+
+    thrEl.style.width = (S.throttle*100).toFixed(0) + "%";
+    brkEl.style.width = (S.brake*100).toFixed(0) + "%";
+    steerEl.style.left = (50 + S.steer*42) + "%";
+
+    ersEl.style.width = S.ers.toFixed(0) + "%";
+    ersPctEl.textContent = Math.round(S.ers);
+    const deploying = (S.boost||S.overtake) && S.ers > 0;
+    ersEl.classList.toggle("deploy", deploying);
+
+    drsEl.classList.toggle("on", S.drs);
+    boostEl.classList.toggle("on", S.boost && S.ers > 0);
+    otEl.classList.toggle("on", S.overtake && S.ers > 0);
+
+    if (S.started){
+      const ms = performance.now() - S.t0;
+      const m = Math.floor(ms/60000), s = Math.floor(ms/1000)%60, d = Math.floor(ms/100)%10;
+      clockEl.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${d}`;
+    }
+  }
+
+  // ---- Loop ----
+  let last = performance.now();
+  function frame(now){
+    const dt = Math.min(0.05, (now - last)/1000); last = now;
+    if (S.started || demo){ readInputs(); update(dt); }
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

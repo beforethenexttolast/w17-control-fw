@@ -176,6 +176,26 @@ with a serial dump: LQ=0 LINK_STATISTICS burst on disconnect (count + timing), ~
 cadence while connected, disconnect-declaration latency at the chosen packet rate, and that
 the RX emits no RC frames before first connection** (D4 failsafe-flag assumptions).
 
+## B2. Phase 2 — approved extensions (order agreed 2026-07-02)
+
+1. **CI** — GitHub Actions: native tests + both esp32 builds on every push. ✅ DONE 2026-07-02
+2. **ERS mode + drive-mode selector + link2 amendment** — `lib/ers` energy model (boost
+   deploy raises the gear ceiling, brake/coast harvests), mode channel (direct / gearbox /
+   gearbox+ERS), `ersPercent` + boost/overtake flags added to link2 v1 (amend BEFORE board #2
+   freezes the protocol — it doesn't exist yet, so no version bump needed).
+3. **Board #2 sound/light firmware** — separate repo: I2S engine sound (MAX98357A) tracking
+   rpm/throttle, WS2812 brake/indicator/halo/hazard from link2 flags, 500ms staleness
+   failsafe per docs/link2_protocol.md. Consumes lib/link2 wholesale.
+4. **Ground station (w17-ground-station repo)** — keep elrs-joystick-control for
+   DualShock→CRSF; mediamtx for OpenIPC RTSP→WebRTC; evolve docs/f1_hud.html into the live
+   HUD (video underlay + websocket telemetry bridge). Gift-day fallback needs zero code:
+   elrs-joystick-control + VLC.
+5. **CRSF telemetry uplink** — battery/speed frames out GPIO17 → RP1 → ELRS backchannel →
+   the PC's FT232 line → real data in the HUD (chosen over camera-link OSD: no new wiring,
+   keeps video clean).
+6. **Serial tuning console + NVS persistence** — bench CLI for trim / ADC ppt / gear table,
+   saved to flash; kills the reflash-per-tweak loop during D8 bench week.
+
 ### Deferable past 2026-07-21 without hurting the gift
 Gimbal pan/tilt (already optional), CRSF telemetry uplink to TX, BX100-style low-voltage
 warning polish, gearbox curve tuning (ship conservative defaults), link2 niceties. The car
