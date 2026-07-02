@@ -64,6 +64,20 @@ bool ChannelDecoder::decodeSwitch(const crsf::RcChannelsFrame& frame, uint8_t in
     return state;
 }
 
+uint8_t ChannelDecoder::decodeTriState(const crsf::RcChannelsFrame& frame, uint8_t index) const {
+    if (index >= crsf::kNumChannels) {
+        return 1; // control absent: Gearbox, the safe middle
+    }
+    const int16_t value = normalizeRaw(frame.channels[index]);
+    if (value < -333) {
+        return 0;
+    }
+    if (value > 333) {
+        return 2;
+    }
+    return 1;
+}
+
 Controls ChannelDecoder::decode(const crsf::RcChannelsFrame& frame) {
     Controls out;
     out.steering = normalizedAnalog(frame, config_.steeringIndex, config_.invertSteering);
@@ -73,6 +87,9 @@ Controls ChannelDecoder::decode(const crsf::RcChannelsFrame& frame) {
 
     out.armSwitch = decodeSwitch(frame, config_.armIndex, armState_);
     out.drsSwitch = decodeSwitch(frame, config_.drsIndex, drsState_);
+    out.boostHeld = decodeSwitch(frame, config_.boostIndex, boostState_);
+    out.overtakeHeld = decodeSwitch(frame, config_.overtakeIndex, overtakeState_);
+    out.driveMode = decodeTriState(frame, config_.driveModeIndex);
 
     const bool gearUpWas = gearUpState_;
     const bool gearDownWas = gearDownState_;

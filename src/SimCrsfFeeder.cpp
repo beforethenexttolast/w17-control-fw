@@ -26,6 +26,9 @@ constexpr uint8_t kArmIdx = 4;
 constexpr uint8_t kDrsIdx = 5;
 constexpr uint8_t kGearUpIdx = 6;
 constexpr uint8_t kGearDownIdx = 7;
+constexpr uint8_t kBoostIdx = 10;
+constexpr uint8_t kOvertakeIdx = 11;
+constexpr uint8_t kDriveModeIdx = 12; // kMid = Gearbox (the demo's baseline mode)
 
 // Triangle wave over `periodMs`, returned as 0..1000..0 per-mille.
 uint32_t trianglePermille(uint32_t t, uint32_t periodMs) {
@@ -63,6 +66,9 @@ PhaseOutput computePhase(uint32_t t) {
     out.ch[kDrsIdx] = kOff;
     out.ch[kGearUpIdx] = kOff;
     out.ch[kGearDownIdx] = kOff;
+    out.ch[kBoostIdx] = kOff;
+    out.ch[kOvertakeIdx] = kOff;
+    out.ch[kDriveModeIdx] = kMid; // Gearbox mode: the demo's baseline behavior
 
     if (t < 2000) {
         // Boot / repeat-cycle outage: firmware must sit Safe on the
@@ -96,6 +102,13 @@ PhaseOutput computePhase(uint32_t t) {
         out.ch[kDrsIdx] = (t >= 10000 && t < 14000) ? kOn : kOff;
         const bool gearUpPulse = (t >= 9000 && t < 9100) || (t >= 12000 && t < 12100);
         out.ch[kGearUpIdx] = gearUpPulse ? kOn : kOff;
+        // ERS showcase: flip to Gearbox+ERS mode and hold boost for 1.5s --
+        // the ESC needle jumps past the current gear's cap and the [state]
+        // line shows the store draining (~26%/s).
+        if (t >= 13000 && t < 14500) {
+            out.ch[kDriveModeIdx] = kOn;
+            out.ch[kBoostIdx] = kOn;
+        }
     } else if (t < 17500) {
         // Pure silence, NO LQ=0 burst: exercises the frame-TIMEOUT failsafe
         // path distinctly (~500ms delayed drop).

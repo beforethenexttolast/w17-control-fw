@@ -183,6 +183,66 @@ void test_invalid_index_means_control_absent() {
     TEST_ASSERT_EQUAL_INT16(0, c.pan); // absent control decodes to neutral
 }
 
+void test_boost_overtake_held_switches() {
+    ChannelDecoder decoder;
+    auto frame = makeFrame();
+    frame.channels[10] = kRawOn;  // boost held
+    frame.channels[11] = kRawOff; // overtake off
+
+    Controls c = decoder.decode(frame);
+    TEST_ASSERT_TRUE(c.boostHeld); // first decode seeds from level
+    TEST_ASSERT_FALSE(c.overtakeHeld);
+
+    frame.channels[10] = kRawOff;
+    frame.channels[11] = kRawOn;
+    c = decoder.decode(frame);
+    TEST_ASSERT_FALSE(c.boostHeld);
+    TEST_ASSERT_TRUE(c.overtakeHeld);
+}
+
+void test_drive_mode_tri_state_positions() {
+    ChannelDecoder decoder;
+    auto frame = makeFrame();
+
+    frame.channels[12] = kRawOff; // low detent
+    TEST_ASSERT_EQUAL_UINT8(0, decoder.decode(frame).driveMode); // Training
+
+    frame.channels[12] = kRawMid;
+    TEST_ASSERT_EQUAL_UINT8(1, decoder.decode(frame).driveMode); // Gearbox
+
+    frame.channels[12] = kRawOn;
+    TEST_ASSERT_EQUAL_UINT8(2, decoder.decode(frame).driveMode); // Gearbox+ERS
+}
+
+void test_drive_mode_boundaries_are_exclusive() {
+    ChannelDecoder decoder;
+    auto frame = makeFrame();
+
+    // Normalized -332 (raw 719) and +333 (raw 1265) stay in the mid band;
+    // -334 (raw 718) and +334 (raw 1266) tip into the outer modes.
+    frame.channels[12] = 719;
+    TEST_ASSERT_EQUAL_UINT8(1, decoder.decode(frame).driveMode);
+    frame.channels[12] = 718;
+    TEST_ASSERT_EQUAL_UINT8(0, decoder.decode(frame).driveMode);
+    frame.channels[12] = 1265;
+    TEST_ASSERT_EQUAL_UINT8(1, decoder.decode(frame).driveMode);
+    frame.channels[12] = 1266;
+    TEST_ASSERT_EQUAL_UINT8(2, decoder.decode(frame).driveMode);
+}
+
+void test_absent_mode_and_boost_channels_degrade_safely() {
+    ChannelMapConfig config;
+    config.driveModeIndex = 255;
+    config.boostIndex = 255;
+    ChannelDecoder decoder(config);
+
+    auto frame = makeFrame(crsf::kChannelRawMax); // everything pegged high
+    const Controls c = decoder.decode(frame);
+
+    TEST_ASSERT_EQUAL_UINT8(1, c.driveMode); // absent mode channel = Gearbox
+    TEST_ASSERT_FALSE(c.boostHeld);          // absent boost = off
+}
+
 void test_config_valid_rejects_bad_values() {
     TEST_ASSERT_TRUE(ChannelMapConfig{}.valid());
 
@@ -277,6 +337,10 @@ int main(int, char**) {
     RUN_TEST(test_exactly_one_edge_per_transition);
     RUN_TEST(test_custom_channel_remap);
     RUN_TEST(test_invalid_index_means_control_absent);
+    RUN_TEST(test_boost_overtake_held_switches);
+    RUN_TEST(test_drive_mode_tri_state_positions);
+    RUN_TEST(test_drive_mode_boundaries_are_exclusive);
+    RUN_TEST(test_absent_mode_and_boost_channels_degrade_safely);
     RUN_TEST(test_config_valid_rejects_bad_values);
     RUN_TEST(test_armgate_blocks_arm_into_full_throttle);
     RUN_TEST(test_armgate_switch_on_with_neutral_arms_same_tick);

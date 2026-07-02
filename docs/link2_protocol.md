@@ -10,14 +10,14 @@ Reference implementation: `lib/link2/` in this repo — **liftable wholesale** i
 board-#2 project (no dependencies beyond a byte-sink interface; the decoder and
 `Link2FrameAssembler` are what board #2 needs).
 
-## Frame layout (12 bytes)
+## Frame layout (14 bytes)
 
 ```
 offset  size  field
 0       1     start byte, always 0xA5
-1       1     length = payload byte count (9 in v1)
-2       9     payload (below)
-11      1     crc8 over bytes [1..10]  (length + payload; start byte excluded)
+1       1     length = payload byte count (11 in v1)
+2       11    payload (below)
+13      1     crc8 over bytes [1..12]  (length + payload; start byte excluded)
 ```
 
 CRC8: polynomial 0xD5, initial value 0, MSB-first, no reflection (CRC-8/DVB-S2 — the
@@ -35,10 +35,12 @@ a corrupted 0xFF length would otherwise swallow ~1 s of following frames).
 | 0 | 1 | version | `1`. Reject anything else. |
 | 1 | 1 | throttlePercent | int8, −100…+100. **What the ESC is actually commanded** (0 while disarmed or failsafe) — engine sound should track this, not stick position. Negative = braking, **never reverse motion** (the ESC runs forward/brake). |
 | 2 | 1 | steeringPercent | int8, −100…+100. Left/right for turn indicators. Live even while disarmed. |
-| 3 | 1 | flags | bit0 braking (already hysteresis-filtered by the sender — drive the brake light from it directly), bit1 reverse (**reserved, always 0 in v1 — do not key anything off it**), bit2 drsOpen, bit3 armed, bit4 failsafe, bit5 lowBattery, bits 6–7 reserved (sender writes 0, **receivers must mask, never reject**). |
+| 3 | 1 | flags | bit0 braking (already hysteresis-filtered by the sender — drive the brake light from it directly), bit1 reverse (**reserved, always 0 in v1 — do not key anything off it**), bit2 drsOpen, bit3 armed, bit4 failsafe, bit5 lowBattery, bit6 ersDeploying (boost/overtake actively draining — e.g. an ERS whine sound layer), bit7 reserved (sender writes 0, **receivers must mask, never reject**). |
 | 4 | 1 | gear | 1-based display gear, 1…6. |
 | 5–6 | 2 | rpm | uint16. **Wheel/axle rpm** (one magnet), plausible max ~5000 — *not* engine rpm; derive engine revs from throttlePercent or scale this. |
 | 7–8 | 2 | batteryMv | uint16, 2S pack millivolts. Display garnish — the `lowBattery` flag is the authoritative judgment (calibrated, 3 s-qualified, hysteresis-latched on board #1). |
+| 9 | 1 | ersPercent | 0…100, ERS energy store. Frozen (not zero) outside ERS mode. |
+| 10 | 1 | driveMode | 0 = Training, 1 = Gearbox, 2 = Gearbox+ERS. Receivers may vary engine character per mode; treat unknown values as 1. |
 
 ## State matrix
 
@@ -64,15 +66,15 @@ The byte-identical frame is pinned by `test/test_link2/test_main.cpp`
 (`test_golden_frame_bytes`):
 
 ```
-A5 09 01 2A E7 0C 03 DC 05 DC 1E F9
-│  │  │  │  │  │  │  └─┴─ rpm = 0x05DC = 1500        └─┴─ batteryMv = 0x1EDC = 7900   └ crc8
-│  │  │  │  │  │  └ gear 3
-│  │  │  │  │  └ flags 0x0C = drsOpen | armed
-│  │  │  │  └ steeringPercent = 0xE7 = −25
+A5 0B 01 2A E7 4C 03 DC 05 DC 1E 3C 02 CE
+│  │  │  │  │  │  │  └─┴─ rpm 1500    └─┴─ battery 7900  │  │  └ crc8
+│  │  │  │  │  │  └ gear 3                               │  └ driveMode 2 (Gearbox+ERS)
+│  │  │  │  │  └ flags 0x4C = drsOpen | armed | ersDeploying
+│  │  │  │  └ steeringPercent = 0xE7 = −25                └ ersPercent 60
 │  │  │  └ throttlePercent = 0x2A = +42
 │  │  └ version 1
-│  └ length 9
+│  └ length 11
 └ start
 ```
-Decoded: throttle +42 %, steering −25 %, DRS open, armed, no failsafe, gear 3,
-wheel 1500 rpm, battery 7.900 V.
+Decoded: throttle +42 %, steering −25 %, DRS open, armed, ERS deploying at 60 %
+store in Gearbox+ERS mode, no failsafe, gear 3, wheel 1500 rpm, battery 7.900 V.

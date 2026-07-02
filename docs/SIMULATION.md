@@ -31,7 +31,7 @@ The `esp32dev_sim` env is the real firmware plus `-DW17_SIM_CRSF_FEEDER`, which 
 | 2–5 | DISARMED_STEERING | Steering servo sweeps while the ESC needle stays put: steering is live while disarmed, throttle is gated. |
 | 5–6.5 | ARM_BLOCKED | Arm switch ON with throttle at 60% — ESC stays neutral (§6.2 "no arm-into-full-throttle"). Genuinely the ArmGate: the ESC's own 2 s boot hold expired long ago. |
 | 6.5–8 | ARM_NEUTRAL | Throttle centered → arms. |
-| 8–15 | DRIVING | Throttle sweeps move the ESC needle; gear-up pulses at 9 s and 12 s visibly raise the cap; DRS servo opens 10–14 s. |
+| 8–15 | DRIVING | Throttle sweeps move the ESC needle; gear-up pulses at 9 s and 12 s visibly raise the cap; DRS servo opens 10–14 s. At 13–14.5 s the mode switch flips to Gearbox+ERS with boost held: the needle jumps past the gear cap and the `[state]` line shows the store draining `(DEPLOY)` at ~26 %/s. |
 | 15–17.5 | TIMEOUT_OUTAGE | Pure silence, **no** LQ=0 — watch the ~0.5 s **delayed** drop to safe: the frame-timeout path. |
 | 17.5–19 | RECOVERY_1 | Stats (LQ=100) lead the recovery — the LQ latch clears **only** on good stats, never on RC frames. ~150 ms re-arm window, then Active. |
 | 19–21 | HOLD_POSITION_FAILSAFE | LQ=0 stats **while RC frames keep flowing at 50% throttle** — instant drop despite fresh frames. This is the misconfigured-receiver (hold-position) mitigation and the most valuable thing this sim demonstrates. |
@@ -46,6 +46,9 @@ The `esp32dev_sim` env is the real firmware plus `-DW17_SIM_CRSF_FEEDER`, which 
 - **Hall button** (GPIO35): one full click = one wheel pulse, counted on **release** (rising
   edge through the 10 kΩ pull-up, exactly like the real A3144 wiring). Rhythmic clicking
   shows plausible low rpm; the ISR's 2 ms lockout absorbs simulated contact bounce.
+  Note: ERS **harvest** requires wheel rpm > 0, so in the sim the store only recharges
+  while you're clicking the Hall button (braking/coasting at standstill charges nothing —
+  same rule as the real car).
 
 ## Known cosmetic quirks
 

@@ -5,6 +5,7 @@
 #include "config/PinMap.hpp"
 #include "crsf/CrsfReceiver.hpp"
 #include "crsf_hal_esp32/Esp32CrsfUart.hpp"
+#include "ers/ErsSystem.hpp"
 #include "failsafe/FailsafeStateMachine.hpp"
 #include "gearbox/Gearbox.hpp"
 #include "hal/IClock.hpp"
@@ -48,6 +49,18 @@ channels::Controls controls; // most recently decoded controls (all-neutral unti
 constexpr gearbox::GearboxConfig kGearboxConfig{};
 static_assert(kGearboxConfig.valid(), "gearbox: bad gear table (range or non-monotonic)");
 gearbox::Gearbox virtualGearbox(kGearboxConfig);
+
+// Drive modes (3-pos switch): 0 = Training, 1 = Gearbox (mid = default, also
+// what an absent channel decodes to), 2 = Gearbox+ERS. There is deliberately
+// NO raw pass-through mode: gearbox top gear (cap 1000, expo 0) already IS
+// full power, and power stays monotone along the switch so a bumped switch
+// changes authority by one gentle step.
+// Training: one fixed gentle shape, gear shifts have no effect.
+constexpr gearbox::GearParams kTrainingGearParams{400, 50};
+
+constexpr ers::ErsConfig kErsConfig{};
+static_assert(kErsConfig.valid(), "ers: bad rate/bonus/threshold values");
+ers::ErsSystem ersSystem(kErsConfig);
 
 failsafe::FailsafeStateMachine failsafeStateMachine;
 
@@ -193,6 +206,23 @@ void loop() {
         const bool armed = armGate.update(controls.armSwitch, controls.throttle,
                                           /*forceDisarm=*/state == failsafe::State::Safe);
 
+        // Mode-shaped, post-arm-gate, pre-boost throttle. Training uses one
+        // fixed gentle shape (gear shifts inert); other modes use the gearbox.
+        const int16_t modeShaped =
+            (controls.driveMode == 0)
+                ? gearbox::shapeThrottle(controls.throttle, kTrainingGearParams)
+                : virtualGearbox.apply(controls.throttle);
+        const bool active = state == failsafe::State::Active;
+        const int16_t baseCommanded = (active && armed) ? modeShaped : 0;
+
+        // ERS ticks EVERY control tick: outside GearboxErs (or in failsafe)
+        // it freezes and re-seeds its clock, so mode switches and outages
+        // never produce a dt gap, and a stale boost switch during failsafe
+        // can neither drain energy nor report "deploying".
+        ersSystem.update(nowMs, /*ersActive=*/active && controls.driveMode == 2,
+                         baseCommanded, wheelSpeed.rpm(), controls.boostHeld,
+                         controls.overtakeHeld);
+
         // No early return in the Safe branch: link2 below must keep
         // transmitting during failsafe -- that flag is its whole purpose.
         if (state == failsafe::State::Safe) {
@@ -209,11 +239,9 @@ void loop() {
             // throttle only, and bench setup needs steering without arming.
             steering.setPosition(controls.steering);
 
-            const int16_t shapedThrottle = virtualGearbox.apply(controls.throttle);
-            // Record what the ESC actually receives (not the pre-gate shaped
-            // value): a disarmed car with the stick pulled must not report
-            // throttle/brake to the sound board while the motor sits neutral.
-            const int16_t commanded = armed ? shapedThrottle : 0;
+            // applyBoost is purely multiplicative (applyBoost(0) == 0,
+            // test-pinned), so boosting AFTER the arm gate cannot bypass it.
+            const int16_t commanded = ersSystem.applyBoost(baseCommanded);
             esc.setThrottle(commanded);
             drs.setOpen(controls.drsSwitch);
 
@@ -233,6 +261,9 @@ void loop() {
         controlSnapshot.displayGear = static_cast<uint8_t>(virtualGearbox.currentGear() + 1);
         controlSnapshot.rpm = wheelSpeed.rpm();
         controlSnapshot.batteryMv = batteryMonitor.batteryMv();
+        controlSnapshot.ersPercent = ersSystem.energyPercent();
+        controlSnapshot.ersDeploying = ersSystem.deploying();
+        controlSnapshot.driveMode = controls.driveMode;
         link2Sender.send(controlSnapshot);
     }
 
@@ -241,11 +272,12 @@ void loop() {
     static uint32_t lastStatusPrintMs = 0;
     if (nowMs - lastStatusPrintMs >= 500) {
         lastStatusPrintMs = nowMs;
-        Serial.printf("[state] failsafe=%d armed=%d gear=%u thr=%d steer=%d rpm=%u batt=%umV lowBatt=%d\n",
-                      controlSnapshot.failsafe, controlSnapshot.armed,
+        Serial.printf("[state] failsafe=%d armed=%d mode=%u gear=%u thr=%d steer=%d ers=%u%%%s rpm=%u batt=%umV lowBatt=%d\n",
+                      controlSnapshot.failsafe, controlSnapshot.armed, controls.driveMode,
                       virtualGearbox.currentGear() + 1, controlSnapshot.commandedThrottle,
-                      controlSnapshot.steering, wheelSpeed.rpm(), batteryMonitor.batteryMv(),
-                      batteryMonitor.lowVoltageWarning());
+                      controlSnapshot.steering, ersSystem.energyPercent(),
+                      ersSystem.deploying() ? "(DEPLOY)" : "", wheelSpeed.rpm(),
+                      batteryMonitor.batteryMv(), batteryMonitor.lowVoltageWarning());
     }
 #endif
 }

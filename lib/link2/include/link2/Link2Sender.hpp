@@ -13,9 +13,12 @@ struct ControlSnapshot {
     bool armed = false;
     bool failsafe = true; // boot-safe default
     bool lowBattery = false;
+    bool ersDeploying = false;
     uint8_t displayGear = 1; // 1-based
     uint16_t rpm = 0;
     uint16_t batteryMv = 0;
+    uint8_t ersPercent = 100;
+    uint8_t driveMode = 1; // 0 Training / 1 Gearbox / 2 Gearbox+ERS
 };
 
 struct Link2SenderConfig {

@@ -179,10 +179,20 @@ the RX emits no RC frames before first connection** (D4 failsafe-flag assumption
 ## B2. Phase 2 — approved extensions (order agreed 2026-07-02)
 
 1. **CI** — GitHub Actions: native tests + both esp32 builds on every push. ✅ DONE 2026-07-02
-2. **ERS mode + drive-mode selector + link2 amendment** — `lib/ers` energy model (boost
-   deploy raises the gear ceiling, brake/coast harvests), mode channel (direct / gearbox /
-   gearbox+ERS), `ersPercent` + boost/overtake flags added to link2 v1 (amend BEFORE board #2
-   freezes the protocol — it doesn't exist yet, so no version bump needed).
+2. **ERS mode + drive-mode selector + link2 amendment** — ✅ DONE 2026-07-02
+   `lib/ers`: micro-permille energy store (drain/harvest exact at any tick rate), boost +18%
+   / overtake +25% post-gearbox multipliers (HUD-matched rates: deploy 26%/s, brake harvest
+   11%/s), deploy needs positive commanded throttle, ALL harvest rpm-gated (parked car never
+   creeps), freeze-with-clock-reseed outside ERS mode (no dt gaps; stale boost in failsafe
+   inert), applyBoost(0)==0 invariant test-pinned (can't bypass the arm gate).
+   Modes on ch13 3-pos: 0=Training (fixed 400-cap+expo, shifts inert), 1=Gearbox
+   (mid/default), 2=Gearbox+ERS. **Design change from the original wording: no raw
+   "Direct" mode** — gearbox top gear already IS full power (scale-not-clip), so Direct
+   only removed the shifts between a bumped switch and full throttle; Training replaces it.
+   Boost ch11 / overtake ch12 (held switches); all three absent-tolerant.
+   link2 v1 amended (board #2 unwritten, no version bump): payload 11 bytes (+ersPercent,
+   +driveMode), flags bit6=ersDeploying, frame 14 bytes; golden test + protocol doc updated.
+   Wokwi demo: ERS showcase at t=13-14.5s. 119/119 native tests (18 new).
 3. **Board #2 sound/light firmware** — separate repo: I2S engine sound (MAX98357A) tracking
    rpm/throttle, WS2812 brake/indicator/halo/hazard from link2 flags, 500ms staleness
    failsafe per docs/link2_protocol.md. Consumes lib/link2 wholesale.

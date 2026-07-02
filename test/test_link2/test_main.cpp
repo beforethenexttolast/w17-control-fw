@@ -29,9 +29,12 @@ VehicleState makeGoldenState() {
     s.armed = true;
     s.failsafe = false;
     s.lowBattery = false;
+    s.ersDeploying = true;
     s.gear = 3;
     s.rpm = 1500;
     s.batteryMv = 7900;
+    s.ersPercent = 60;
+    s.driveMode = 2;
     return s;
 }
 
@@ -40,15 +43,17 @@ VehicleState makeGoldenState() {
 // changed and the doc + board #2 must change with it.
 const uint8_t kGoldenFrame[link2::kFrameLen] = {
     0xA5,             // start
-    0x09,             // length
+    0x0B,             // length 11
     0x01,             // version
     0x2A,             // throttlePercent = +42
     0xE7,             // steeringPercent = -25
-    0x0C,             // flags: drsOpen | armed
+    0x4C,             // flags: drsOpen | armed | ersDeploying
     0x03,             // gear 3
     0xDC, 0x05,       // rpm = 1500 LE
     0xDC, 0x1E,       // batteryMv = 7900 LE
-    0xF9,             // crc8 over [length + payload]
+    0x3C,             // ersPercent = 60
+    0x02,             // driveMode = Gearbox+ERS
+    0xCE,             // crc8 over [length + payload]
 };
 
 } // namespace
@@ -65,7 +70,7 @@ void test_golden_frame_bytes() {
 }
 
 void test_crc_matches_crsf_implementation() {
-    const uint8_t data[] = {0x09, 0x01, 0x2A, 0xE7, 0x0C, 0x03, 0xDC, 0x05, 0xDC, 0x1E};
+    const uint8_t data[] = {0x0B, 0x01, 0x2A, 0xE7, 0x4C, 0x03, 0xDC, 0x05, 0xDC, 0x1E, 0x3C, 0x02};
     TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(data, sizeof(data)),
                            link2::computeCrc8(data, sizeof(data)));
 }
@@ -79,9 +84,12 @@ void test_encode_decode_roundtrip() {
     in.armed = true;
     in.failsafe = false;
     in.lowBattery = true;
+    in.ersDeploying = true;
     in.gear = 6;
     in.rpm = 65535;
     in.batteryMv = 8400;
+    in.ersPercent = 0;
+    in.driveMode = 0;
 
     uint8_t frame[link2::kFrameLen];
     link2::encodeFrame(in, frame);
@@ -95,9 +103,12 @@ void test_encode_decode_roundtrip() {
     TEST_ASSERT_EQUAL(in.armed, out.armed);
     TEST_ASSERT_EQUAL(in.failsafe, out.failsafe);
     TEST_ASSERT_EQUAL(in.lowBattery, out.lowBattery);
+    TEST_ASSERT_EQUAL(in.ersDeploying, out.ersDeploying);
     TEST_ASSERT_EQUAL_UINT8(in.gear, out.gear);
     TEST_ASSERT_EQUAL_UINT16(in.rpm, out.rpm);
     TEST_ASSERT_EQUAL_UINT16(in.batteryMv, out.batteryMv);
+    TEST_ASSERT_EQUAL_UINT8(in.ersPercent, out.ersPercent);
+    TEST_ASSERT_EQUAL_UINT8(in.driveMode, out.driveMode);
 }
 
 void test_each_flag_bit_pinned() {
@@ -112,6 +123,7 @@ void test_each_flag_bit_pinned() {
         {&VehicleState::armed, link2::kFlagArmed},
         {&VehicleState::failsafe, link2::kFlagFailsafe},
         {&VehicleState::lowBattery, link2::kFlagLowBattery},
+        {&VehicleState::ersDeploying, link2::kFlagErsDeploying},
     };
     for (const Case& c : cases) {
         VehicleState s;
@@ -247,9 +259,12 @@ void test_sender_writes_one_frame() {
     snapshot.drsOpen = true;
     snapshot.armed = true;
     snapshot.failsafe = false;
+    snapshot.ersDeploying = true;
     snapshot.displayGear = 3;
     snapshot.rpm = 1500;
     snapshot.batteryMv = 7900;
+    snapshot.ersPercent = 60;
+    snapshot.driveMode = 2;
     sender.send(snapshot);
 
     TEST_ASSERT_EQUAL_UINT32(1, sink.writeCount);

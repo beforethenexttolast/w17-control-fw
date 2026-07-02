@@ -37,9 +37,12 @@ void Link2Sender::send(const ControlSnapshot& snapshot) {
     state.armed = snapshot.armed;
     state.failsafe = snapshot.failsafe;
     state.lowBattery = snapshot.lowBattery;
+    state.ersDeploying = snapshot.ersDeploying;
     state.gear = snapshot.displayGear;
     state.rpm = snapshot.rpm;
     state.batteryMv = snapshot.batteryMv;
+    state.ersPercent = snapshot.ersPercent;
+    state.driveMode = snapshot.driveMode;
 
     uint8_t frame[kFrameLen];
     encodeFrame(state, frame);

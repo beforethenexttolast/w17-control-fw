@@ -27,13 +27,16 @@ size_t encodeFrame(const VehicleState& state, uint8_t out[kFrameLen]) {
     if (state.armed) flags |= kFlagArmed;
     if (state.failsafe) flags |= kFlagFailsafe;
     if (state.lowBattery) flags |= kFlagLowBattery;
+    if (state.ersDeploying) flags |= kFlagErsDeploying;
     out[5] = flags;
     out[6] = state.gear;
     out[7] = static_cast<uint8_t>(state.rpm & 0xFF);
     out[8] = static_cast<uint8_t>(state.rpm >> 8);
     out[9] = static_cast<uint8_t>(state.batteryMv & 0xFF);
     out[10] = static_cast<uint8_t>(state.batteryMv >> 8);
-    out[11] = computeCrc8(out + 1, 1 + kPayloadLen); // over [length + payload]
+    out[11] = state.ersPercent;
+    out[12] = state.driveMode;
+    out[13] = computeCrc8(out + 1, 1 + kPayloadLen); // over [length + payload]
     return kFrameLen;
 }
 
@@ -64,9 +67,12 @@ DecodeResult decodeFrame(const uint8_t* data, size_t len, VehicleState& out) {
     out.armed = (flags & kFlagArmed) != 0;
     out.failsafe = (flags & kFlagFailsafe) != 0;
     out.lowBattery = (flags & kFlagLowBattery) != 0;
+    out.ersDeploying = (flags & kFlagErsDeploying) != 0;
     out.gear = data[6];
     out.rpm = static_cast<uint16_t>(data[7] | (data[8] << 8));
     out.batteryMv = static_cast<uint16_t>(data[9] | (data[10] << 8));
+    out.ersPercent = data[11];
+    out.driveMode = data[12];
     return DecodeResult::Ok;
 }
 

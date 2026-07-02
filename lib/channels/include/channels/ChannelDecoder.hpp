@@ -19,6 +19,10 @@ struct ChannelMapConfig {
     uint8_t gearDownIndex = 7; // ch8, momentary
     uint8_t panIndex = 8;      // ch9  -- gimbal, deferred: decoded but unwired
     uint8_t tiltIndex = 9;     // ch10 -- gimbal, deferred: decoded but unwired
+    uint8_t boostIndex = 10;   // ch11, held switch: ERS boost deploy
+    uint8_t overtakeIndex = 11; // ch12, held switch: ERS overtake deploy
+    // ch13, 3-pos: low = Training, mid = Gearbox, high = Gearbox+ERS.
+    uint8_t driveModeIndex = 12;
 
     // Bench conveniences for reversed TX axes (flips the normalized sign).
     bool invertSteering = false;
@@ -39,9 +43,9 @@ struct ChannelMapConfig {
                armIndex < crsf::kNumChannels && drsIndex < crsf::kNumChannels &&
                gearUpIndex < crsf::kNumChannels && gearDownIndex < crsf::kNumChannels &&
                switchOnAbove > switchOffBelow;
-        // panIndex/tiltIndex deliberately unchecked: >= kNumChannels means
-        // "control absent" (decodes to 0), the intended state while the
-        // gimbal is deferred.
+        // panIndex/tiltIndex/boostIndex/overtakeIndex/driveModeIndex are
+        // deliberately unchecked: >= kNumChannels means "control absent" with
+        // safe degraded behavior (analog 0, switch OFF, drive mode Gearbox).
     }
 };
 
@@ -53,6 +57,12 @@ struct Controls {
     int16_t tilt = 0;
     bool armSwitch = false;
     bool drsSwitch = false;
+    bool boostHeld = false;    // held (level) switches, not edges
+    bool overtakeHeld = false;
+    // 0 = Training, 1 = Gearbox, 2 = Gearbox+ERS. Stateless tri-state decode
+    // (a 3-pos switch never dwells between detents); default/absent = 1 so
+    // pre-first-frame ticks and a missing channel equal plain gearbox.
+    uint8_t driveMode = 1;
     // Edge flags are consume-on-read: true ONLY in the Controls returned by
     // the decode() call that observed the OFF->ON transition. Act on them the
     // same tick or lose them.
@@ -83,11 +93,17 @@ private:
     // Applies hysteresis to one switch channel; `state` is that switch's
     // persistent ON/OFF memory.
     bool decodeSwitch(const crsf::RcChannelsFrame& frame, uint8_t index, bool& state) const;
+    // Stateless 3-pos decode: < -333 -> 0, > +333 -> 2, else (incl. exactly
+    // +/-333 and absent index) -> 1. No hysteresis/seeding needed: it is a
+    // pure level classification and a real 3-pos never dwells between detents.
+    uint8_t decodeTriState(const crsf::RcChannelsFrame& frame, uint8_t index) const;
 
     ChannelMapConfig config_;
     bool firstDecodeDone_ = false; // first decode seeds switch states, fires no edges
     bool armState_ = false;
     bool drsState_ = false;
+    bool boostState_ = false;
+    bool overtakeState_ = false;
     bool gearUpState_ = false;
     bool gearDownState_ = false;
 };

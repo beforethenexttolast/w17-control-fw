@@ -1,0 +1,7 @@
+{
+  "name": "ers",
+  "version": "0.1.0",
+  "description": "ERS energy simulation: boost deploy raises the post-gearbox throttle ceiling, braking/coasting harvests. Pure logic, no hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*"
+}
