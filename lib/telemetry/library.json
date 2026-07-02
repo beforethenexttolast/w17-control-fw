@@ -1,0 +1,10 @@
+{
+  "name": "telemetry",
+  "version": "0.1.0",
+  "description": "Battery voltage monitor + Hall wheel-speed conversion. Pure logic, no hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "hal": "*"
+  }
+}

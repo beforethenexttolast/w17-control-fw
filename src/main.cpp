@@ -12,6 +12,10 @@
 #include "outputs/EscOutput.hpp"
 #include "outputs/ServoOutput.hpp"
 #include "outputs_hal_esp32/Esp32LedcPwm.hpp"
+#include "telemetry/BatteryMonitor.hpp"
+#include "telemetry/WheelSpeed.hpp"
+#include "telemetry_hal_esp32/Esp32BatteryAdc.hpp"
+#include "telemetry_hal_esp32/Esp32HallPulseCounter.hpp"
 
 namespace {
 
@@ -57,10 +61,25 @@ outputs::ServoOutput steering(steeringPwm, steeringConfig);
 outputs::EscOutput esc(escPwm, clock, escConfig);
 outputs::DrsOutput drs(drsPwm, drsConfig);
 
+constexpr telemetry::BatteryConfig kBatteryConfig{};
+static_assert(kBatteryConfig.valid(), "battery config: bad divider/trim/EMA/warn values");
+constexpr telemetry::WheelSpeedConfig kWheelSpeedConfig{};
+static_assert(kWheelSpeedConfig.valid(), "wheel speed config: bad values");
+
+telemetry_hal_esp32::Esp32BatteryAdc batteryAdc(pinmap::kBatterySenseAdcPin);
+telemetry_hal_esp32::Esp32HallPulseCounter hallSensor(pinmap::kWheelSpeedHallPin);
+telemetry::BatteryMonitor batteryMonitor(batteryAdc, kBatteryConfig);
+telemetry::WheelSpeed wheelSpeed(hallSensor, kWheelSpeedConfig);
+
+constexpr uint32_t kBatterySampleIntervalMs = 100;
+uint32_t lastBatterySampleMs = 0;
+
 } // namespace
 
 void setup() {
     crsfUart.begin();
+    batteryAdc.begin();
+    hallSensor.begin();
 
     // Attach PWM with an explicit safe initial pulse (center/neutral/closed)
     // so the outputs never depend on the ordering of the calls below.
@@ -106,6 +125,15 @@ void loop() {
             virtualGearbox.shiftDown();
         }
     }
+
+    // Telemetry runs on every tick regardless of failsafe state (monitoring
+    // only, CLAUDE.md 6.4). Values are unconsumed until link2 (D6) reports
+    // them to the sound/light board.
+    if (nowMs - lastBatterySampleMs >= kBatterySampleIntervalMs) {
+        lastBatterySampleMs = nowMs;
+        batteryMonitor.sample(nowMs);
+    }
+    wheelSpeed.update(nowMs);
 
     // rxSignalsFailsafe: latched uplink-LQ==0 from the RX's LINK_STATISTICS
     // -- an independent loss signal alongside the frame timeout, and the only

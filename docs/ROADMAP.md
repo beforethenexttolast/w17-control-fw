@@ -108,11 +108,24 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
   ~100ms connected stats cadence, RX disconnect-declaration latency at the chosen packet
   rate, whether serial-CRSF ELRS even has a Set-Position mode, no-RC-output-before-first-bind.
 
-### D5 — `telemetry` — M, ~1–2 days
-- `IAdc` seam + battery volts conversion (27k/10k divider, calibration factor constant,
-  trimmed on bench with multimeter); Hall rising-edge ISR behind a thin wrapper +
-  pure pulses→RPM/ground-speed conversion (`magnetsPerRev=1`, wheel circumference const).
-  Conversions unit-tested; ISR/ADC are esp32-only glue.
+### D5 — `telemetry` — ✅ DONE 2026-07-02
+- Seams: `IVoltageSensor` (calibrated pin-mV — deliberate upgrade over the planned raw-counts
+  `IAdc`: esp_adc_cal/analogReadMilliVolts keeps chip nonlinearity below the seam, the board's
+  divider above it) and `IWheelPulseSensor` (count + ISR-timestamped pulse period — count-only
+  would quantize speed to the tick rate and flap 2:1 at top speed under D6's fixed 50Hz tick).
+- `BatteryMonitor`: rounded combined divider+trim conversion, stall-free scaled-accumulator
+  EMA seeded from the first sample (kills a boot false-warning), low-voltage warn latched only
+  after 3s sustained below 7.0V, cleared above 7.4V — sag-proof, monitoring only per §6.4.
+- `WheelSpeed`: rpm from measured pulse period, EMI plausibility clamp (5000rpm), graceful
+  silence decay (report capped by 60000/elapsedMs) with a 1.5s hard-zero tail.
+- esp32 impls: burst-averaged `analogReadMilliVolts` (11dB), Hall ISR with IRAM_ATTR
+  trampoline via `attachInterruptArg`, `std::atomic` counters, 2ms edge lockout (9× margin
+  at ~55Hz max pulse rate).
+- Verified: 88/88 native tests (16 new), esp32dev clean, lib/telemetry + lib/hal Arduino-free.
+- **Bench-verify (added to D8):** two-point ADC check (~6.5V and 8.4V) vs multimeter + log
+  which eFuse cal type characterization reports; scope the Hall line at full throttle near
+  the motor (add 1-10nF across the sensor output if ugly); add 100nF GPIO34→GND (divider
+  source impedance ~7.3kΩ makes single reads noisy).
 
 ### D6 — `link2` UART frame to ESP32 #2 — M, ~1–2 days
 - Documented frame: start byte, length, payload (throttlePercent, flags: braking/reverse/
