@@ -8,6 +8,8 @@
 #include "failsafe/FailsafeStateMachine.hpp"
 #include "gearbox/Gearbox.hpp"
 #include "hal/IClock.hpp"
+#include "link2/Link2Sender.hpp"
+#include "link2_hal_esp32/Esp32Link2Uart.hpp"
 #include "outputs/DrsOutput.hpp"
 #include "outputs/EscOutput.hpp"
 #include "outputs/ServoOutput.hpp"
@@ -71,13 +73,33 @@ telemetry_hal_esp32::Esp32HallPulseCounter hallSensor(pinmap::kWheelSpeedHallPin
 telemetry::BatteryMonitor batteryMonitor(batteryAdc, kBatteryConfig);
 telemetry::WheelSpeed wheelSpeed(hallSensor, kWheelSpeedConfig);
 
+constexpr link2::Link2SenderConfig kLink2Config{};
+static_assert(kLink2Config.valid(), "link2: brake hysteresis thresholds inverted");
+link2_hal_esp32::Esp32Link2Uart link2Uart(pinmap::kBoard2UartTxPin);
+link2::Link2Sender link2Sender(link2Uart, kLink2Config);
+
+// Loop cadences (CLAUDE.md 2.8: fixed >=50Hz control, no delay()).
+constexpr uint32_t kControlPeriodMs = 20;         // 50 Hz: failsafe + outputs
+constexpr uint32_t kLink2PeriodMs = 50;           // 20 Hz: state frame to board #2
 constexpr uint32_t kBatterySampleIntervalMs = 100;
+uint32_t lastControlTickMs = 0;
+uint32_t lastLink2TickMs = 0;
 uint32_t lastBatterySampleMs = 0;
+
+// RC-frame arrivals accumulated between control ticks, consumed by the
+// failsafe update. Distinct from the per-pass decode flag: merging them would
+// either double-decode or drop frame events that land between ticks.
+bool rcFrameSinceTick = false;
+
+// What the last control tick actually commanded, for link2 reporting.
+// Boot-safe defaults: the first frame must never report a phantom Active.
+link2::ControlSnapshot controlSnapshot;
 
 } // namespace
 
 void setup() {
     crsfUart.begin();
+    link2Uart.begin();
     batteryAdc.begin();
     hallSensor.begin();
 
@@ -95,28 +117,28 @@ void setup() {
 void loop() {
     const uint32_t nowMs = millis();
 
-    // Accumulate (|=) rather than assign: an RC frame and a stats frame can
-    // both complete in one drain pass, and the last result must not mask the
-    // RC arrival.
+    // --- Always: drain the CRSF UART (the RX buffer fills in ~6ms at 420k;
+    // bytes must never back up behind the tick guards below). Accumulate (|=)
+    // rather than assign: an RC frame and a stats frame can both complete in
+    // one drain pass.
     bool frameArrived = false;
     while (crsfUart.available() > 0) {
         const crsf::CrsfReceiver::ByteResult result =
             crsfReceiver.feedByte(static_cast<uint8_t>(crsfUart.read()), nowMs);
         frameArrived |= (result == crsf::CrsfReceiver::ByteResult::NewRcFrame);
     }
+    rcFrameSinceTick |= frameArrived;
 
-    // Decode on every new frame, including while failsafe is Safe: pausing
-    // decode during an outage would make a switch moved during the outage
-    // look like a fresh transition (phantom gear edge) on recovery. Decoding
-    // is pure -- only the actuation below is gated on failsafe state.
+    // --- Event-driven: decode on every new frame, including while failsafe
+    // is Safe (pausing decode during an outage would turn a switch moved
+    // during the outage into a phantom gear edge on recovery).
     if (frameArrived) {
         controls = channelDecoder.decode(crsfReceiver.channels());
 
         // Gear edges are consume-on-read and `controls` is cached across
-        // loop ticks, so shifts MUST happen here -- in the free-running loop
-        // body one press would re-fire every tick until the next frame.
+        // loop passes, so shifts MUST happen here, exactly once per edge.
         // A gear shift is state, not actuation, so it is not gated on
-        // failsafe (and gear deliberately survives failsafe/disarm: ArmGate
+        // failsafe (gear deliberately survives failsafe/disarm: ArmGate
         // already forces a fresh throttle-neutral after every episode).
         if (controls.gearUpEdge) {
             virtualGearbox.shiftUp();
@@ -126,42 +148,76 @@ void loop() {
         }
     }
 
-    // Telemetry runs on every tick regardless of failsafe state (monitoring
-    // only, CLAUDE.md 6.4). Values are unconsumed until link2 (D6) reports
-    // them to the sound/light board.
+    // --- 10 Hz: battery sampling (monitoring only, CLAUDE.md 6.4).
     if (nowMs - lastBatterySampleMs >= kBatterySampleIntervalMs) {
         lastBatterySampleMs = nowMs;
         batteryMonitor.sample(nowMs);
     }
-    wheelSpeed.update(nowMs);
 
-    // rxSignalsFailsafe: latched uplink-LQ==0 from the RX's LINK_STATISTICS
-    // -- an independent loss signal alongside the frame timeout, and the only
-    // one that fires if the RX keeps sending hold-position RC frames.
-    const failsafe::State state =
-        failsafeStateMachine.update(nowMs, frameArrived, crsfReceiver.rxSignalsFailsafe());
+    // --- 50 Hz control tick: failsafe + arm gate + outputs (CLAUDE.md 2.8).
+    // Tick guard is `last = now` (phase-accumulating) on purpose: `last +=
+    // period` would burst to catch up after any stall, and nothing here
+    // integrates tick count. Failsafe timestamps land at worst ~20ms late
+    // (~540ms worst-case detection vs the 500ms budget) -- and actuation was
+    // already quantized to 20ms by the 50 Hz PWM hardware.
+    if (nowMs - lastControlTickMs >= kControlPeriodMs) {
+        lastControlTickMs = nowMs;
 
-    // The arm gate runs every tick so a failsafe episode clears its
-    // neutral-seen latch: after recovery, throttle must be re-observed at
-    // neutral before the motor may run again (CLAUDE.md 6.2).
-    const bool armed = armGate.update(controls.armSwitch, controls.throttle,
-                                      /*forceDisarm=*/state == failsafe::State::Safe);
+        wheelSpeed.update(nowMs);
 
-    if (state == failsafe::State::Safe) {
-        steering.setPosition(0);
-        esc.setThrottle(0);
-        drs.setOpen(false);
-        return;
+        // rxSignalsFailsafe: latched uplink-LQ==0 from LINK_STATISTICS -- an
+        // independent loss signal alongside the frame timeout, and the only
+        // one that fires if the RX keeps sending hold-position RC frames.
+        const failsafe::State state = failsafeStateMachine.update(
+            nowMs, rcFrameSinceTick, crsfReceiver.rxSignalsFailsafe());
+        rcFrameSinceTick = false;
+
+        // The arm gate runs every control tick so a failsafe episode clears
+        // its neutral-seen latch: after recovery, throttle must be observed
+        // at neutral again before the motor may run (CLAUDE.md 6.2).
+        const bool armed = armGate.update(controls.armSwitch, controls.throttle,
+                                          /*forceDisarm=*/state == failsafe::State::Safe);
+
+        // No early return in the Safe branch: link2 below must keep
+        // transmitting during failsafe -- that flag is its whole purpose.
+        if (state == failsafe::State::Safe) {
+            steering.setPosition(0);
+            esc.setThrottle(0);
+            drs.setOpen(false);
+            controlSnapshot.commandedThrottle = 0;
+            controlSnapshot.steering = 0;
+            controlSnapshot.drsOpen = false;
+            controlSnapshot.armed = false;
+            controlSnapshot.failsafe = true;
+        } else {
+            // Steering stays live while disarmed: CLAUDE.md 6.2 gates
+            // throttle only, and bench setup needs steering without arming.
+            steering.setPosition(controls.steering);
+
+            const int16_t shapedThrottle = virtualGearbox.apply(controls.throttle);
+            // Record what the ESC actually receives (not the pre-gate shaped
+            // value): a disarmed car with the stick pulled must not report
+            // throttle/brake to the sound board while the motor sits neutral.
+            const int16_t commanded = armed ? shapedThrottle : 0;
+            esc.setThrottle(commanded);
+            drs.setOpen(controls.drsSwitch);
+
+            controlSnapshot.commandedThrottle = commanded;
+            controlSnapshot.steering = controls.steering;
+            controlSnapshot.drsOpen = controls.drsSwitch;
+            controlSnapshot.armed = armed;
+            controlSnapshot.failsafe = false;
+        }
     }
 
-    // Steering stays live while disarmed: CLAUDE.md 6.2 gates throttle only,
-    // and bench setup needs steering without arming the motor.
-    steering.setPosition(controls.steering);
+    // --- 20 Hz: vehicle-state frame to the sound/light board.
+    if (nowMs - lastLink2TickMs >= kLink2PeriodMs) {
+        lastLink2TickMs = nowMs;
 
-    // Named local: link2 (D6) will report this post-gearbox value so the
-    // engine sound tracks actual motor output, not stick position.
-    const int16_t shapedThrottle = virtualGearbox.apply(controls.throttle);
-    esc.setThrottle(armed ? shapedThrottle : 0);
-
-    drs.setOpen(controls.drsSwitch);
+        controlSnapshot.lowBattery = batteryMonitor.lowVoltageWarning();
+        controlSnapshot.displayGear = static_cast<uint8_t>(virtualGearbox.currentGear() + 1);
+        controlSnapshot.rpm = wheelSpeed.rpm();
+        controlSnapshot.batteryMv = batteryMonitor.batteryMv();
+        link2Sender.send(controlSnapshot);
+    }
 }

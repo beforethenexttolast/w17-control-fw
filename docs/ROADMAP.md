@@ -127,11 +127,21 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
   the motor (add 1-10nF across the sensor output if ugly); add 100nF GPIO34→GND (divider
   source impedance ~7.3kΩ makes single reads noisy).
 
-### D6 — `link2` UART frame to ESP32 #2 — M, ~1–2 days
-- Documented frame: start byte, length, payload (throttlePercent, flags: braking/reverse/
-  drsOpen/armed/failsafe, gear, rpm, battery mV), CRC8 (reuse 0xD5 impl). Pure encode+decode
-  with round-trip tests; esp32 UART1 (GPIO25/26) sender at 115200.
-- Restructure loop to fixed cadences (50 Hz control, ~20 Hz link2) — closes A12.
+### D6 — `link2` UART frame to ESP32 #2 — ✅ DONE 2026-07-02
+- Wire format v1 (12 bytes, `docs/link2_protocol.md` with worked hex example pinned by a
+  golden-frame test): start 0xA5, length, payload (version, throttle% as-commanded,
+  steering% for indicators — replaced the redundant speed field, flags incl. hysteresis-
+  filtered braking, 1-based gear, wheel rpm, battery mV), CRC8 0xD5 over length+payload.
+  CRC deliberately duplicated (lib liftable wholesale into board #2; test cross-checks vs
+  crsf). Validation order start→length→CRC→version pinned; assembler hard-rejects bad
+  length bytes immediately. Doc mandates receiver 500ms staleness → local failsafe.
+- `Link2Sender` over new `hal::IByteSink`; esp32 UART1 TX-only (GPIO25, RX deliberately
+  unopened; remap mandatory — UART1 defaults are flash pins).
+- main.cpp restructured to fixed cadences (closes A12): always-drain UART, event-driven
+  decode/shifts, 50Hz control tick (failsafe/armgate/outputs, `rcFrameSinceTick`
+  accumulator), 20Hz link2 — **no Safe-branch early return: link2 keeps transmitting
+  during failsafe** (caught in design review), boot-safe initial snapshot.
+- Verified: 101/101 native tests (13 new), esp32dev clean, lib/link2 Arduino-free.
 
 ### D7 — Wokwi simulation (Stage 2) — S/M, ~1 day
 - `wokwi.toml` + `diagram.json`: servos on 13/14/18, pot on GPIO34, button on GPIO35;
