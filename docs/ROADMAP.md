@@ -202,13 +202,24 @@ the RX emits no RC frames before first connection** (D4 failsafe-flag assumption
    enginesim, soundsynth, lights (F1 rain light flashes on ERS *harvest*, hazard override,
    power budget). Dual-core: control on core 1, audio pump on core 0, one atomic param word +
    heartbeat dead-man. 40 native tests, esp32dev + esp32dev_sim build clean, own CI.
-4. **Ground station (w17-ground-station repo)** — keep elrs-joystick-control for
-   DualShock→CRSF; mediamtx for OpenIPC RTSP→WebRTC; evolve docs/f1_hud.html into the live
-   HUD (video underlay + websocket telemetry bridge). Gift-day fallback needs zero code:
-   elrs-joystick-control + VLC.
-5. **CRSF telemetry uplink** — battery/speed frames out GPIO17 → RP1 → ELRS backchannel →
-   the PC's FT232 line → real data in the HUD (chosen over camera-link OSD: no new wiring,
-   keeps video clean).
+4. **Ground station (w17-ground-station repo)** — ✅ DONE 2026-07-03 (committed locally; push
+   to GitHub pending user). Viewer-only Electron app: WebRTC/WHEP video (bundled mediamtx)
+   under an F1 HUD that mirrors the DualShock and overlays car telemetry. Does NOT command the
+   car — elrs-joystick-control keeps the control link (gift-day safety); zero-code fallback is
+   elrs-joystick-control + VLC. Pure core unit-tested (14 vitest): CRSF decoder ported from the
+   firmware (golden-vector tested), transport-agnostic TelemetrySource + replay/demo source,
+   shared ERS feel-constants (numbers only — the models differ, so no logic port). Two design-
+   review course-corrections: **item-5's CRSF uplink lands on the same FT232 port
+   elrs-joystick-control holds** (so telemetry should return over WiFi, not that serial), and
+   the H.265→WebRTC codec check is the #1 bench risk (docs/SETUP.md). Live video + the .exe are
+   bench steps on the Windows machine.
+5. **Telemetry uplink to the HUD** — battery/speed/armed/failsafe/LQ to the ground station.
+   **REVISED by the item-4 review:** the CRSF backchannel (GPIO17 → RP1 → ELRS → PC FT232)
+   lands on the *same serial port elrs-joystick-control holds*, so it only works if that tool
+   forwards telemetry (verify). Cleaner path for battery/speed/armed: the car ESP32 publishes
+   a small JSON/UDP packet over the **OpenIPC WiFi AP** the laptop is already on — no serial
+   contention. LQ/RSSI still wants CRSF LinkStatistics. Contract + both paths already specified
+   in w17-ground-station/docs/TELEMETRY.md; the ground station's TelemetrySource is ready.
 6. **Serial tuning console + NVS persistence** — bench CLI for trim / ADC ppt / gear table,
    saved to flash; kills the reflash-per-tweak loop during D8 bench week.
 
