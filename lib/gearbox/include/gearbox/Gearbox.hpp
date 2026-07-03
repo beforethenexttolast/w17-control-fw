@@ -79,7 +79,15 @@ public:
     void shiftDown();           // saturates at gear 0, no wrap
     void setGear(uint8_t gear); // clamped to the top gear; future 3-pos selector path
 
+    // Runtime reconfiguration (bench tuning console). Applies a new gear
+    // table with the same defensive clamping as the constructor, but only
+    // RE-CLAMPS currentGear into the new range -- it does NOT reset the gear
+    // to initialGear (a table edit must not silently change which gear the
+    // car is in). Caller is responsible for having validated the config.
+    void setConfig(const GearboxConfig& config);
+
     uint8_t currentGear() const { return currentGear_; } // 0-based; display gear = +1
+    const GearboxConfig& config() const { return config_; }
 
     int16_t apply(int16_t normalizedThrottle) const;
 

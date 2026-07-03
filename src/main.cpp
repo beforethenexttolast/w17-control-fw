@@ -24,6 +24,13 @@
 #include "SimCrsfFeeder.hpp" // Wokwi Stage-2 harness, absent from real firmware
 #endif
 
+#ifdef W17_TUNING_CONSOLE
+#include "console/ConsoleRunner.hpp"
+#include "settings/Settings.hpp"
+#include "settings_hal_esp32/Esp32NvsStore.hpp"
+#include "settings_hal_esp32/Esp32SerialConsole.hpp"
+#endif
+
 namespace {
 
 // Real-clock hal::IClock backed by millis(), used by EscOutput's boot-arm hold.
@@ -112,6 +119,25 @@ bool rcFrameSinceTick = false;
 // Boot-safe defaults: the first frame must never report a phantom Active.
 link2::ControlSnapshot controlSnapshot;
 
+#ifdef W17_TUNING_CONSOLE
+// Bench tuning console (opt-in build only; the delivered firmware ships
+// without this flag and opens no UART0). Compile-time net: the tunable
+// defaults must be valid, composed from every sub-config's own valid().
+static_assert(settings::kDefaults.valid(), "default tunable Settings are invalid");
+settings_hal_esp32::Esp32NvsStore nvsStore;
+settings_hal_esp32::Esp32SerialConsole serialConsole;
+console::ConsoleRunner consoleRunner(serialConsole, nvsStore);
+
+// Push the runtime Settings into the live modules (pure config-copies; no
+// state reset -- ESC arm anchor + gearbox current gear are preserved). ESC
+// endpoints, failsafe, channel map are deliberately NOT tunable.
+void applyTuning() {
+    steering.setConfig(consoleRunner.settings().steering);
+    virtualGearbox.setConfig(consoleRunner.settings().gearbox);
+    batteryMonitor.setConfig(consoleRunner.settings().battery);
+}
+#endif
+
 } // namespace
 
 void setup() {
@@ -134,6 +160,14 @@ void setup() {
     steering.setPosition(0);
     esc.setThrottle(0); // first command: starts the ESC boot-arm hold window
     drs.setOpen(false);
+
+#ifdef W17_TUNING_CONSOLE
+    // Load persisted tuning (guard chain -> defaults on any failure) and push
+    // it into the live modules. UART0 is opened ONLY in this build.
+    serialConsole.begin(115200);
+    consoleRunner.loadAtBoot();
+    applyTuning();
+#endif
 }
 
 void loop() {
@@ -156,6 +190,15 @@ void loop() {
         frameArrived |= (result == crsf::CrsfReceiver::ByteResult::NewRcFrame);
     }
     rcFrameSinceTick |= frameArrived;
+
+#ifdef W17_TUNING_CONSOLE
+    // Bench console: polled outside the control tick, non-blocking, one capped
+    // line per pass. Mutations are gated on DISARMED inside the console; a
+    // change is applied to the live modules immediately (RAM-only until save).
+    if (consoleRunner.poll(armGate.isArmed())) {
+        applyTuning();
+    }
+#endif
 
     // --- Event-driven: decode on every new frame, including while failsafe
     // is Safe (pausing decode during an outage would turn a switch moved

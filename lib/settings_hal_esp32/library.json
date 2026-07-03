@@ -1,0 +1,7 @@
+{
+  "name": "settings_hal_esp32",
+  "version": "0.1.0",
+  "description": "ESP32 NVS (Preferences) settings store + UART0 console char IO. Hardware-only; referenced only from src/main.cpp.",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

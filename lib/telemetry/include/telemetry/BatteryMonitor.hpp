@@ -59,6 +59,18 @@ public:
     // boot artifact).
     bool lowVoltageWarning() const { return warning_; }
 
+    // Runtime reconfiguration (bench tuning console; only calibrationPpt is
+    // exposed today). If emaShift changes the accumulator scale is stale, so
+    // force a re-seed on the next sample; a calibrationPpt change just
+    // converges over the EMA. Caller validates the config.
+    void setConfig(const BatteryConfig& config) {
+        if (config.emaShift != config_.emaShift) {
+            seeded_ = false;
+        }
+        config_ = config;
+    }
+    const BatteryConfig& config() const { return config_; }
+
 private:
     uint16_t convertPinToBatteryMv(uint16_t pinMv) const;
 

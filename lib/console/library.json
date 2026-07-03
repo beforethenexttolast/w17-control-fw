@@ -1,0 +1,11 @@
+{
+  "name": "console",
+  "version": "0.1.0",
+  "description": "Pure line-oriented tuning command handler over a Settings struct. No hardware.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "settings": "*",
+    "hal": "*"
+  }
+}

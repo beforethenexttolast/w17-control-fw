@@ -220,8 +220,21 @@ the RX emits no RC frames before first connection** (D4 failsafe-flag assumption
    a small JSON/UDP packet over the **OpenIPC WiFi AP** the laptop is already on — no serial
    contention. LQ/RSSI still wants CRSF LinkStatistics. Contract + both paths already specified
    in w17-ground-station/docs/TELEMETRY.md; the ground station's TelemetrySource is ready.
-6. **Serial tuning console + NVS persistence** — bench CLI for trim / ADC ppt / gear table,
-   saved to flash; kills the reflash-per-tweak loop during D8 bench week.
+6. **Serial tuning console + NVS persistence** — ✅ DONE 2026-07-03
+   `lib/settings` (pure): `Settings` aggregates the tunable subset (steering center/trim,
+   battery calibrationPpt, gear feel table), `constexpr kDefaults` + composed
+   `static_assert(kDefaults.valid())` (keeps the "bad config can't compile" net), versioned
+   CRC blob (de)serialize with the never-brick guard chain (length→CRC→version→valid()→apply;
+   any failure ⇒ defaults). `lib/console` (pure): dotted-key handler (`get/set/save/load/
+   reset/status/help`), mutations gated on DISARMED, every `set` runs the sub-config's valid()
+   (incl. gear monotonicity + the A11 trim-past-endpoint rule now in `ServoConfig::valid()`);
+   `ConsoleRunner` glues the char-IO + store seams (`hal::ICharIO`, `hal::ISettingsStore`).
+   `set` is RAM-only, only `save` writes NVS. Modules gained `setConfig()` (pure config-copy;
+   ESC arm anchor + gearbox current-gear preserved). esp32 impls: `Esp32NvsStore` (Preferences)
+   + `Esp32SerialConsole` (UART0). **Behind `-DW17_TUNING_CONSOLE` (`[env:esp32dev_tuning]`) —
+   the delivered gift firmware builds plain `esp32dev` with no UART0/console surface.**
+   Verified: 141 native tests (22 new), esp32dev + esp32dev_tuning build clean, libs pure.
+   D8 checklist: tune `steer.trim`/`batt.ppt`/gears over the console, then `save`.
 
 ### Deferable past 2026-07-21 without hurting the gift
 Gimbal pan/tilt (already optional), CRSF telemetry uplink to TX, BX100-style low-voltage

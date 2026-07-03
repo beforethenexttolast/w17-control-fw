@@ -53,6 +53,20 @@ void Gearbox::setGear(uint8_t gear) {
     currentGear_ = (gear < config_.numGears) ? gear : static_cast<uint8_t>(config_.numGears - 1);
 }
 
+void Gearbox::setConfig(const GearboxConfig& config) {
+    config_ = config;
+    if (config_.numGears < 1) {
+        config_.numGears = 1;
+    } else if (config_.numGears > GearboxConfig::kMaxGears) {
+        config_.numGears = GearboxConfig::kMaxGears;
+    }
+    // Re-clamp the CURRENT gear into the (possibly smaller) new range; do not
+    // reset to initialGear.
+    if (currentGear_ >= config_.numGears) {
+        currentGear_ = static_cast<uint8_t>(config_.numGears - 1);
+    }
+}
+
 int16_t Gearbox::apply(int16_t normalizedThrottle) const {
     return shapeThrottle(normalizedThrottle, config_.gears[currentGear_]);
 }
