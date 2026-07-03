@@ -162,19 +162,11 @@ Verified: 29/29 native tests pass, esp32dev builds clean.
   Wokwi run = user's checklist (needs the free Wokwi license).
 
 ### D8 — Hardware bring-up (Stage 3) — bench days, gated on parts
-Checklist: flash/bind RP1 + TX (same ELRS version + bind phrase); **set RP1 failsafe = No
-Pulses** (A8); verify CRSF at GPIO16 (420 k, not inverted); **confirm the channel-map defaults
-in `lib/channels/ChannelDecoder.hpp` against the actual TX mapping, and verify every switch
-traverses BOTH hysteresis thresholds (±250) — especially the ARM switch's OFF direction**;
-servo center in firmware BEFORE attaching steering linkage (atlas MECH-02); Hobbywing ESC
-neutral/range calibration + sensored mode; **ESC must be configured forward/brake (not
-fwd/reverse) — the gearbox does not govern reverse (brake/reverse PWM is indistinguishable
-below neutral, so reverse would be full-speed in any gear)**; wheels-off-ground throttle
-tests only until failsafe + arm gate proven on the bench; Hall pulse + ADC calibration
-(write factor into config); link2 smoke test with board #2; **verify ELRS link-loss behavior
-with a serial dump: LQ=0 LINK_STATISTICS burst on disconnect (count + timing), ~100ms stats
-cadence while connected, disconnect-declaration latency at the chosen packet rate, and that
-the RX emits no RC frames before first connection** (D4 failsafe-flag assumptions).
+**Consolidated into an ordered runbook: `docs/D8_BENCH_BRINGUP.md`** (11 phases, safety-gated,
+with pass/fail and the tuning-console commands). All the accumulated bench-verify items from the
+Phase-1/2 design reviews (RP1 failsafe = No Pulses, channel-map + switch thresholds, servo-center
+-before-linkage, ESC forward/brake, wheels-off until failsafe+arm proven, ADC two-point cal,
+Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live there.
 
 ## B2. Phase 2 — approved extensions (order agreed 2026-07-02)
 
