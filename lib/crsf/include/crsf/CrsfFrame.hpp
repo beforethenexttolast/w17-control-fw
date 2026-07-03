@@ -27,6 +27,12 @@ inline constexpr uint8_t kFrameTypeRcChannelsPacked = 0x16;
 // uplink LQ = 0 when the RX declares link loss).
 inline constexpr uint8_t kFrameTypeLinkStatistics = 0x14;
 
+// BATTERY_SENSOR frame type: standard CRSF battery telemetry the control board
+// emits UP to the RX (ELRS relays it to the handset/PC). 8-byte payload,
+// big-endian: voltage(dV,u16) current(dA,u16) capacity(mAh,u24) remaining(%,u8).
+inline constexpr uint8_t kFrameTypeBattery = 0x08;
+inline constexpr size_t kBatteryPayloadLen = 8;
+
 // CRSF CRC8 polynomial (DVB-S2 style), per CRSF spec.
 inline constexpr uint8_t kCrc8Poly = 0xD5;
 

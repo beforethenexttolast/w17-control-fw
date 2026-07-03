@@ -3,6 +3,7 @@
 #include "channels/ArmGate.hpp"
 #include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
+#include "crsf/CrsfFrameBuilder.hpp"
 #include "crsf/CrsfReceiver.hpp"
 #include "crsf_hal_esp32/Esp32CrsfUart.hpp"
 #include "ers/ErsSystem.hpp"
@@ -106,9 +107,23 @@ link2::Link2Sender link2Sender(link2Uart, kLink2Config);
 constexpr uint32_t kControlPeriodMs = 20;         // 50 Hz: failsafe + outputs
 constexpr uint32_t kLink2PeriodMs = 50;           // 20 Hz: state frame to board #2
 constexpr uint32_t kBatterySampleIntervalMs = 100;
+constexpr uint32_t kTelemetryPeriodMs = 200;      // 5 Hz: CRSF battery telemetry up to RP1
 uint32_t lastControlTickMs = 0;
 uint32_t lastLink2TickMs = 0;
 uint32_t lastBatterySampleMs = 0;
+uint32_t lastTelemetryMs = 0;
+
+// Rough 2S remaining-percent estimate from resting pack voltage (6.6V empty ->
+// 8.4V full), for the CRSF battery frame's percent field. Voltage itself is
+// the honest value; percent is a coarse gauge (no coulomb counting).
+uint8_t estimate2sPercent(uint16_t batteryMv) {
+    constexpr int32_t kEmptyMv = 6600;
+    constexpr int32_t kFullMv = 8400;
+    if (batteryMv <= kEmptyMv) return 0;
+    if (batteryMv >= kFullMv) return 100;
+    return static_cast<uint8_t>((static_cast<int32_t>(batteryMv) - kEmptyMv) * 100 /
+                                (kFullMv - kEmptyMv));
+}
 
 // RC-frame arrivals accumulated between control ticks, consumed by the
 // failsafe update. Distinct from the per-pass decode flag: merging them would
@@ -223,6 +238,22 @@ void loop() {
     if (nowMs - lastBatterySampleMs >= kBatterySampleIntervalMs) {
         lastBatterySampleMs = nowMs;
         batteryMonitor.sample(nowMs);
+    }
+
+    // --- 5 Hz: CRSF battery telemetry up to RP1 (GPIO17 TX). Standard sensor
+    // frame; RP1 relays it over the ELRS downlink to the ground station.
+    // Outside the control tick, non-blocking (~10 byte write). Link quality
+    // is reported by the ground TX module itself, so it needs nothing here.
+    if (nowMs - lastTelemetryMs >= kTelemetryPeriodMs) {
+        lastTelemetryMs = nowMs;
+        const uint16_t mv = batteryMonitor.batteryMv();
+        if (mv > 0) { // skip until the monitor has a real reading
+            uint8_t frame[4 + crsf::kBatteryPayloadLen];
+            const uint16_t deciVolt = static_cast<uint16_t>(mv / 100); // mV -> 0.1V
+            const size_t n = crsf::buildBatteryFrame(deciVolt, /*current*/ 0, /*capacity*/ 0,
+                                                     estimate2sPercent(mv), frame);
+            crsfUart.write(frame, n);
+        }
     }
 
     // --- 50 Hz control tick: failsafe + arm gate + outputs (CLAUDE.md 2.8).

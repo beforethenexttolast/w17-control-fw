@@ -438,8 +438,35 @@ void test_receiver_link_up_summary() {
     TEST_ASSERT_FALSE(receiver.linkUp(230));
 }
 
+void test_build_battery_frame_bytes() {
+    // 7.9V = 79 dV = 0x004F; current 0; capacity 0; 72%. Big-endian payload,
+    // matching the ground station's decodeBattery.
+    uint8_t frame[4 + crsf::kBatteryPayloadLen];
+    const size_t n = crsf::buildBatteryFrame(79, 0, 0, 72, frame);
+
+    TEST_ASSERT_EQUAL_UINT32(4 + crsf::kBatteryPayloadLen, n);
+    TEST_ASSERT_EQUAL_HEX8(crsf::kSyncByte, frame[0]);
+    TEST_ASSERT_EQUAL_UINT8(crsf::kBatteryPayloadLen + 2, frame[1]); // length
+    TEST_ASSERT_EQUAL_HEX8(crsf::kFrameTypeBattery, frame[2]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, frame[3]); // voltage hi
+    TEST_ASSERT_EQUAL_HEX8(0x4F, frame[4]); // voltage lo
+    TEST_ASSERT_EQUAL_UINT8(72, frame[10]); // remaining %
+    // CRC over [type + payload], verifiable via the same computeCrc8.
+    TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(frame + 2, 1 + crsf::kBatteryPayloadLen), frame[11]);
+}
+
+void test_build_battery_frame_capacity_is_24bit_be() {
+    uint8_t frame[4 + crsf::kBatteryPayloadLen];
+    crsf::buildBatteryFrame(80, 15, 0x0004D2, 55, frame); // capacity 1234 = 0x0004D2
+    TEST_ASSERT_EQUAL_HEX8(0x00, frame[7]);
+    TEST_ASSERT_EQUAL_HEX8(0x04, frame[8]);
+    TEST_ASSERT_EQUAL_HEX8(0xD2, frame[9]);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_build_battery_frame_bytes);
+    RUN_TEST(test_build_battery_frame_capacity_is_24bit_be);
     RUN_TEST(test_decode_valid_frame_roundtrips_channels);
     RUN_TEST(test_decode_all_channels_at_center);
     RUN_TEST(test_decode_endpoint_values);

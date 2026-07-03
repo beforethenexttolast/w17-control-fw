@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace crsf_hal_esp32 {
@@ -19,6 +20,11 @@ public:
 
     // Reads one byte. Caller must check available() > 0 first.
     uint8_t read();
+
+    // Writes bytes out UART2 TX (GPIO17 -> RP1 RX pad) -- e.g. CRSF battery
+    // telemetry up to the RX. TX is a separate pad from the RX (GPIO16), so
+    // this never collides with inbound RC-frame parsing.
+    void write(const uint8_t* data, size_t len);
 
 private:
     uint8_t rxPin_;

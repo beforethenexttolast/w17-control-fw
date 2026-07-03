@@ -65,4 +65,18 @@ inline size_t buildLinkStatisticsFrame(const CrsfLinkStatistics& stats, uint8_t*
     return buildFrame(kFrameTypeLinkStatistics, payload, kLinkStatisticsPayloadLen, outFrame);
 }
 
+// Builds a complete CRSF BATTERY_SENSOR frame (0x08). Payload is big-endian
+// per the CRSF spec: voltage (decivolts), current (deciamps), capacity used
+// (mAh, 24-bit), remaining percent. `outFrame` needs >= 4 + 8 bytes.
+inline size_t buildBatteryFrame(uint16_t voltageDeciVolt, uint16_t currentDeciAmp,
+                                 uint32_t capacityMah, uint8_t remainingPct, uint8_t* outFrame) {
+    const uint8_t payload[kBatteryPayloadLen] = {
+        static_cast<uint8_t>(voltageDeciVolt >> 8), static_cast<uint8_t>(voltageDeciVolt & 0xFF),
+        static_cast<uint8_t>(currentDeciAmp >> 8), static_cast<uint8_t>(currentDeciAmp & 0xFF),
+        static_cast<uint8_t>((capacityMah >> 16) & 0xFF), static_cast<uint8_t>((capacityMah >> 8) & 0xFF),
+        static_cast<uint8_t>(capacityMah & 0xFF), remainingPct,
+    };
+    return buildFrame(kFrameTypeBattery, payload, kBatteryPayloadLen, outFrame);
+}
+
 } // namespace crsf

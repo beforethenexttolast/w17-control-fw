@@ -213,13 +213,20 @@ the RX emits no RC frames before first connection** (D4 failsafe-flag assumption
    elrs-joystick-control holds** (so telemetry should return over WiFi, not that serial), and
    the H.265→WebRTC codec check is the #1 bench risk (docs/SETUP.md). Live video + the .exe are
    bench steps on the Windows machine.
-5. **Telemetry uplink to the HUD** — battery/speed/armed/failsafe/LQ to the ground station.
-   **REVISED by the item-4 review:** the CRSF backchannel (GPIO17 → RP1 → ELRS → PC FT232)
-   lands on the *same serial port elrs-joystick-control holds*, so it only works if that tool
-   forwards telemetry (verify). Cleaner path for battery/speed/armed: the car ESP32 publishes
-   a small JSON/UDP packet over the **OpenIPC WiFi AP** the laptop is already on — no serial
-   contention. LQ/RSSI still wants CRSF LinkStatistics. Contract + both paths already specified
-   in w17-ground-station/docs/TELEMETRY.md; the ground station's TelemetrySource is ready.
+5. **Telemetry uplink to the HUD (battery + LQ over ELRS backchannel)** — ✅ DONE 2026-07-03
+   Scoped with the user to **battery voltage + link quality** over the existing two-way ELRS
+   link (WiFi/ESP-NOW paths declined: ESP32-WROOM is 2.4GHz-only, the video AP is 5.8GHz, and
+   this needs no new radio; ELRS relays standard sensor frames + MSP, not arbitrary data, so
+   speed/gear/ERS stay HUD-simulated). Control board emits a standard CRSF **battery frame
+   (0x08)** out GPIO17 → RP1 → ELRS downlink → ground TX → FT232 (new `CrsfFrameBuilder::
+   buildBatteryFrame` + `Esp32CrsfUart::write`; ~5Hz, outside the control tick; voltage real,
+   percent a coarse 2S estimate). **LQ needs no firmware** — the ground TX module reports
+   LINK_STATISTICS to the host natively. Ground station: `CrsfSerialSource` +
+   `shared/crsfTelemetry.js` map battery+LQ into a partial Telemetry the existing HUD overlays.
+   No link2 change, no board #2, no WiFi. Verified: 143 control native tests (+2), esp32dev +
+   esp32dev_tuning clean; ground 18 vitest (+4). **Bench-gated:** the FT232 COM port is held
+   exclusively by elrs-joystick-control — read telemetry via its forward flag (verify) or a
+   com0com splitter (docs/TELEMETRY.md + SETUP.md in the ground repo).
 6. **Serial tuning console + NVS persistence** — ✅ DONE 2026-07-03
    `lib/settings` (pure): `Settings` aggregates the tunable subset (steering center/trim,
    battery calibrationPpt, gear feel table), `constexpr kDefaults` + composed
