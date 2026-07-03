@@ -183,6 +183,25 @@ void test_invalid_index_means_control_absent() {
     TEST_ASSERT_EQUAL_INT16(0, c.pan); // absent control decodes to neutral
 }
 
+void test_pan_tilt_decode_and_invert() {
+    ChannelDecoder decoder;
+    auto frame = makeFrame();
+    frame.channels[8] = crsf::kChannelRawMax;  // pan (ch9) full one way
+    frame.channels[9] = crsf::kChannelRawMin;  // tilt (ch10) full the other
+    Controls c = decoder.decode(frame);
+    TEST_ASSERT_EQUAL_INT16(1000, c.pan);
+    TEST_ASSERT_EQUAL_INT16(-1000, c.tilt);
+
+    // Invert flags flip the camera axes (bench direction fix).
+    ChannelMapConfig inv;
+    inv.invertPan = true;
+    inv.invertTilt = true;
+    ChannelDecoder decoder2(inv);
+    c = decoder2.decode(frame);
+    TEST_ASSERT_EQUAL_INT16(-1000, c.pan);
+    TEST_ASSERT_EQUAL_INT16(1000, c.tilt);
+}
+
 void test_boost_overtake_held_switches() {
     ChannelDecoder decoder;
     auto frame = makeFrame();
@@ -337,6 +356,7 @@ int main(int, char**) {
     RUN_TEST(test_exactly_one_edge_per_transition);
     RUN_TEST(test_custom_channel_remap);
     RUN_TEST(test_invalid_index_means_control_absent);
+    RUN_TEST(test_pan_tilt_decode_and_invert);
     RUN_TEST(test_boost_overtake_held_switches);
     RUN_TEST(test_drive_mode_tri_state_positions);
     RUN_TEST(test_drive_mode_boundaries_are_exclusive);

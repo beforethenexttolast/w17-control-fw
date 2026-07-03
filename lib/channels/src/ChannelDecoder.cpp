@@ -82,8 +82,8 @@ Controls ChannelDecoder::decode(const crsf::RcChannelsFrame& frame) {
     Controls out;
     out.steering = normalizedAnalog(frame, config_.steeringIndex, config_.invertSteering);
     out.throttle = normalizedAnalog(frame, config_.throttleIndex, config_.invertThrottle);
-    out.pan = normalizedAnalog(frame, config_.panIndex, /*invert=*/false);
-    out.tilt = normalizedAnalog(frame, config_.tiltIndex, /*invert=*/false);
+    out.pan = normalizedAnalog(frame, config_.panIndex, config_.invertPan);
+    out.tilt = normalizedAnalog(frame, config_.tiltIndex, config_.invertTilt);
 
     out.armSwitch = decodeSwitch(frame, config_.armIndex, armState_);
     out.drsSwitch = decodeSwitch(frame, config_.drsIndex, drsState_);

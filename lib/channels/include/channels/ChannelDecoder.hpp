@@ -17,8 +17,8 @@ struct ChannelMapConfig {
     uint8_t drsIndex = 5;      // ch6, 2-pos switch
     uint8_t gearUpIndex = 6;   // ch7, momentary
     uint8_t gearDownIndex = 7; // ch8, momentary
-    uint8_t panIndex = 8;      // ch9  -- gimbal, deferred: decoded but unwired
-    uint8_t tiltIndex = 9;     // ch10 -- gimbal, deferred: decoded but unwired
+    uint8_t panIndex = 8;      // ch9  -- camera gimbal pan (right stick X)
+    uint8_t tiltIndex = 9;     // ch10 -- camera gimbal tilt (right stick Y)
     uint8_t boostIndex = 10;   // ch11, held switch: ERS boost deploy
     uint8_t overtakeIndex = 11; // ch12, held switch: ERS overtake deploy
     // ch13, 3-pos: low = Training, mid = Gearbox, high = Gearbox+ERS.
@@ -27,6 +27,8 @@ struct ChannelMapConfig {
     // Bench conveniences for reversed TX axes (flips the normalized sign).
     bool invertSteering = false;
     bool invertThrottle = false;
+    bool invertPan = false;  // camera left/right, to taste
+    bool invertTilt = false; // camera up/down, to taste
 
     // Switch hysteresis on the normalized [-1000, +1000] value: ON above
     // switchOnAbove, OFF below switchOffBelow, previous state held in between

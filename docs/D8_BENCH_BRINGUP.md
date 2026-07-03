@@ -105,6 +105,16 @@ Do not power the ESC until every box here passes.
       while braking/coasting with the wheels turning.
 - [ ] Only after all the above feel right and safe: wheels on the ground.
 
+## Phase 7b — Camera gimbal (right stick)
+
+- [ ] In **elrs-joystick-control**, map the **right DualShock stick** X → ch9, Y → ch10 (the
+      right stick is otherwise unused; steering is the left stick).
+- [ ] Fit the two MG90S to the camera pod; power up disarmed — they center. Move the right
+      stick: pan (GPIO19) and tilt (GPIO23) follow. Flip `invertPan`/`invertTilt` in
+      `ChannelMapConfig` + reflash if an axis is backwards.
+- [ ] Camera holds its last aim on a link drop (not safety-gated; `controls` freezes on
+      failsafe). Confirm the pod doesn't bind at the travel extremes.
+
 ## Phase 8 — Telemetry sensors
 
 - [ ] **Battery ADC two-point calibration**: measure real pack voltage with a multimeter at

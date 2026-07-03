@@ -25,9 +25,9 @@ inline constexpr uint8_t kSteeringServoPin = 13;
 inline constexpr uint8_t kEscThrottlePin = 14;
 // DRS servo (MG90S, 2-position). LEDC 50Hz.
 inline constexpr uint8_t kDrsServoPin = 18;
-// Gimbal pan (MG90S) -- optional/deferred.
+// Camera gimbal pan (MG90S), LEDC 50Hz -- right stick X via ch9.
 inline constexpr uint8_t kGimbalPanPin = 19;
-// Gimbal tilt (MG90S) -- optional/deferred.
+// Camera gimbal tilt (MG90S), LEDC 50Hz -- right stick Y via ch10.
 inline constexpr uint8_t kGimbalTiltPin = 23;
 
 // Battery sense (27k/10k divider). ADC1_CH6, input-only, 11dB attenuation.

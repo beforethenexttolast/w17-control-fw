@@ -235,10 +235,20 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
    Verified: 141 native tests (22 new), esp32dev + esp32dev_tuning build clean, libs pure.
    D8 checklist: tune `steer.trim`/`batt.ppt`/gears over the console, then `save`.
 
-### Deferable past 2026-07-21 without hurting the gift
-Gimbal pan/tilt (already optional), CRSF telemetry uplink to TX, BX100-style low-voltage
-warning polish, gearbox curve tuning (ship conservative defaults), link2 niceties. The car
-drives and is gift-ready with D1.5→D4 + D8; sound/light (D6) is the biggest "wow" optional.
+## B3. Phase 3 — post-Phase-2 extras
+
+7. **Camera gimbal pan/tilt** — ✅ DONE 2026-07-03. Two MG90S servos (GPIO19 pan / GPIO23 tilt,
+   LEDC ch3/ch4) driven each control tick from the already-decoded `controls.pan`/`.tilt`
+   (ch9/ch10), with `invertPan`/`invertTilt` bench flags. Not safety-gated (aiming a camera is
+   harmless armed or disarmed); holds last position on failsafe (`controls` frozen).
+   **Input:** map the right DualShock stick X/Y → ch9/ch10 in elrs-joystick-control (the right
+   stick is otherwise unused). 144 native tests (+1), both esp32 builds clean.
+
+### Still deferable / optional
+MSP telemetry for speed/gear/ERS over the radio (real values vs the HUD's simulated ones — most
+work, rides the contended FT232 port), code-signing the ground-station .exe (removes the
+one-time SmartScreen prompt), BX100 low-voltage buzzer polish, gearbox curve tuning (ship
+conservative defaults), a HUD camera-direction indicator.
 
 ### Calendar sketch (19 days)
 - Jul 02–03: D1.5 + start D2 · Jul 04–06: D2 + D3 · Jul 07–08: D4 + D7 (Wokwi early — parts

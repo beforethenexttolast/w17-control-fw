@@ -80,13 +80,20 @@ constexpr outputs::ServoConfig steeringConfig{};
 constexpr outputs::EscConfig escConfig{};
 constexpr outputs::DrsConfig drsConfig{};
 
+// Camera gimbal servos (MG90S positional): default ServoConfig endpoints work.
+constexpr outputs::ServoConfig gimbalConfig{};
+
 outputs_hal_esp32::Esp32LedcPwm steeringPwm(pinmap::kSteeringServoPin, /*channel=*/0);
 outputs_hal_esp32::Esp32LedcPwm escPwm(pinmap::kEscThrottlePin, /*channel=*/1);
 outputs_hal_esp32::Esp32LedcPwm drsPwm(pinmap::kDrsServoPin, /*channel=*/2);
+outputs_hal_esp32::Esp32LedcPwm panPwm(pinmap::kGimbalPanPin, /*channel=*/3);
+outputs_hal_esp32::Esp32LedcPwm tiltPwm(pinmap::kGimbalTiltPin, /*channel=*/4);
 
 outputs::ServoOutput steering(steeringPwm, steeringConfig);
 outputs::EscOutput esc(escPwm, clock, escConfig);
 outputs::DrsOutput drs(drsPwm, drsConfig);
+outputs::ServoOutput panServo(panPwm, gimbalConfig);
+outputs::ServoOutput tiltServo(tiltPwm, gimbalConfig);
 
 constexpr telemetry::BatteryConfig kBatteryConfig{};
 static_assert(kBatteryConfig.valid(), "battery config: bad divider/trim/EMA/warn values");
@@ -171,10 +178,14 @@ void setup() {
     steeringPwm.begin(steeringConfig.centerMicros);
     escPwm.begin(escConfig.neutralMicros);
     drsPwm.begin(drsConfig.closedMicros);
+    panPwm.begin(gimbalConfig.centerMicros);
+    tiltPwm.begin(gimbalConfig.centerMicros);
 
     steering.setPosition(0);
     esc.setThrottle(0); // first command: starts the ESC boot-arm hold window
     drs.setOpen(false);
+    panServo.setPosition(0); // camera centered
+    tiltServo.setPosition(0);
 
 #ifdef W17_TUNING_CONSOLE
     // Load persisted tuning (guard chain -> defaults on any failure) and push
@@ -325,6 +336,14 @@ void loop() {
             controlSnapshot.armed = armed;
             controlSnapshot.failsafe = false;
         }
+
+        // Camera gimbal (right stick -> ch9/ch10 in elrs-joystick-control).
+        // Not safety-gated: aiming the camera is harmless armed or disarmed,
+        // so it just follows the last commanded look direction. During a
+        // failsafe `controls` is frozen (no decode), so the camera holds its
+        // last position rather than snapping to center.
+        panServo.setPosition(controls.pan);
+        tiltServo.setPosition(controls.tilt);
     }
 
     // --- 20 Hz: vehicle-state frame to the sound/light board.
