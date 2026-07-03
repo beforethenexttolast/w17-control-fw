@@ -33,6 +33,21 @@ inline constexpr uint8_t kFrameTypeLinkStatistics = 0x14;
 inline constexpr uint8_t kFrameTypeBattery = 0x08;
 inline constexpr size_t kBatteryPayloadLen = 8;
 
+// GPS frame type: standard CRSF GPS telemetry (ELRS relays it to the PC). We
+// only carry the groundspeed field (real wheel speed); the rest is benign. 15
+// bytes, big-endian: lat(i32,1e-7deg) lon(i32) speed(u16,0.1km/h) heading(u16,
+// 0.01deg) altitude(u16,m+1000) sats(u8). See CLAUDE.md section 2.6.
+inline constexpr uint8_t kFrameTypeGps = 0x02;
+inline constexpr size_t kGpsPayloadLen = 15;
+
+// FLIGHTMODE frame type: standard CRSF status string (ELRS relays it, handsets
+// display it). We use it to carry car-authoritative gear/drive-mode/ERS as a
+// compact ASCII status ("G3 M2 E55"), decoded on the ground -- these are
+// computed on the car, so they can't be inferred on the ground without drift.
+// Payload is a NUL-terminated string. See CLAUDE.md section 2.6.
+inline constexpr uint8_t kFrameTypeFlightMode = 0x21;
+inline constexpr size_t kFlightModeMaxLen = 16; // incl. NUL terminator
+
 // CRSF CRC8 polynomial (DVB-S2 style), per CRSF spec.
 inline constexpr uint8_t kCrc8Poly = 0xD5;
 

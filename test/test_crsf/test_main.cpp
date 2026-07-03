@@ -463,10 +463,56 @@ void test_build_battery_frame_capacity_is_24bit_be() {
     TEST_ASSERT_EQUAL_HEX8(0xD2, frame[9]);
 }
 
+void test_build_gps_frame_groundspeed_be() {
+    // 36.1 km/h -> 361 = 0x0169 in the 0.1-km/h groundspeed field (bytes 8-9).
+    // Altitude baseline 1000 = 0x03E8 (bytes 12-13). Big-endian, CRC over type+payload.
+    uint8_t frame[4 + crsf::kGpsPayloadLen];
+    const size_t n = crsf::buildGpsFrame(0, 0, 361, 0, 1000, 0, frame);
+
+    TEST_ASSERT_EQUAL_UINT32(4 + crsf::kGpsPayloadLen, n);
+    TEST_ASSERT_EQUAL_HEX8(crsf::kSyncByte, frame[0]);
+    TEST_ASSERT_EQUAL_UINT8(crsf::kGpsPayloadLen + 2, frame[1]); // length
+    TEST_ASSERT_EQUAL_HEX8(crsf::kFrameTypeGps, frame[2]);
+    TEST_ASSERT_EQUAL_HEX8(0x01, frame[11]); // groundspeed hi (payload offset 8 -> frame 11)
+    TEST_ASSERT_EQUAL_HEX8(0x69, frame[12]); // groundspeed lo
+    TEST_ASSERT_EQUAL_HEX8(0x03, frame[15]); // altitude hi
+    TEST_ASSERT_EQUAL_HEX8(0xE8, frame[16]); // altitude lo
+    // payload is 15 bytes (frame[3..17]); CRC follows at frame[18].
+    TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(frame + 2, 1 + crsf::kGpsPayloadLen), frame[18]);
+}
+
+void test_build_flight_mode_frame_string_nul_terminated() {
+    // "G3 M2 E55" -> payload is the 9 chars + a NUL, so payloadLen 10.
+    uint8_t frame[4 + crsf::kFlightModeMaxLen];
+    const size_t n = crsf::buildFlightModeFrame("G3 M2 E55", frame);
+
+    const uint8_t payloadLen = 10; // 9 chars + NUL
+    TEST_ASSERT_EQUAL_UINT32(4u + payloadLen, n);
+    TEST_ASSERT_EQUAL_HEX8(crsf::kSyncByte, frame[0]);
+    TEST_ASSERT_EQUAL_UINT8(payloadLen + 2, frame[1]); // length = type + payload + crc
+    TEST_ASSERT_EQUAL_HEX8(crsf::kFrameTypeFlightMode, frame[2]);
+    TEST_ASSERT_EQUAL_HEX8('G', frame[3]);
+    TEST_ASSERT_EQUAL_HEX8('5', frame[11]); // last char
+    TEST_ASSERT_EQUAL_HEX8(0x00, frame[12]); // NUL terminator in payload
+    TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(frame + 2, 1 + payloadLen), frame[13]);
+}
+
+void test_build_flight_mode_frame_truncates_overlong() {
+    // 20 chars -> truncated to kFlightModeMaxLen-1 (15) + NUL.
+    uint8_t frame[4 + crsf::kFlightModeMaxLen];
+    const size_t n = crsf::buildFlightModeFrame("ABCDEFGHIJKLMNOPQRST", frame);
+    TEST_ASSERT_EQUAL_UINT32(4u + crsf::kFlightModeMaxLen, n); // 15 chars + NUL = 16 payload
+    TEST_ASSERT_EQUAL_HEX8('O', frame[3 + 14]);                // 15th char kept
+    TEST_ASSERT_EQUAL_HEX8(0x00, frame[3 + 15]);               // NUL at the end
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_build_battery_frame_bytes);
     RUN_TEST(test_build_battery_frame_capacity_is_24bit_be);
+    RUN_TEST(test_build_gps_frame_groundspeed_be);
+    RUN_TEST(test_build_flight_mode_frame_string_nul_terminated);
+    RUN_TEST(test_build_flight_mode_frame_truncates_overlong);
     RUN_TEST(test_decode_valid_frame_roundtrips_channels);
     RUN_TEST(test_decode_all_channels_at_center);
     RUN_TEST(test_decode_endpoint_values);

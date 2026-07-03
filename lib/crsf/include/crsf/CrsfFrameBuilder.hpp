@@ -79,4 +79,40 @@ inline size_t buildBatteryFrame(uint16_t voltageDeciVolt, uint16_t currentDeciAm
     return buildFrame(kFrameTypeBattery, payload, kBatteryPayloadLen, outFrame);
 }
 
+// Builds a standard CRSF GPS frame (0x02). All fields big-endian. We only
+// populate groundspeed (0.1 km/h units) with real wheel speed; lat/lon/heading/
+// sats are 0 and altitude is the 1000 = 0 m baseline. `outFrame` needs >= 4+15.
+inline size_t buildGpsFrame(int32_t latitude, int32_t longitude, uint16_t groundspeedKmhX10,
+                            uint16_t headingDegX100, uint16_t altitudeMPlus1000,
+                            uint8_t satellites, uint8_t* outFrame) {
+    const uint32_t lat = static_cast<uint32_t>(latitude);
+    const uint32_t lon = static_cast<uint32_t>(longitude);
+    const uint8_t payload[kGpsPayloadLen] = {
+        static_cast<uint8_t>((lat >> 24) & 0xFF), static_cast<uint8_t>((lat >> 16) & 0xFF),
+        static_cast<uint8_t>((lat >> 8) & 0xFF),  static_cast<uint8_t>(lat & 0xFF),
+        static_cast<uint8_t>((lon >> 24) & 0xFF), static_cast<uint8_t>((lon >> 16) & 0xFF),
+        static_cast<uint8_t>((lon >> 8) & 0xFF),  static_cast<uint8_t>(lon & 0xFF),
+        static_cast<uint8_t>(groundspeedKmhX10 >> 8), static_cast<uint8_t>(groundspeedKmhX10 & 0xFF),
+        static_cast<uint8_t>(headingDegX100 >> 8), static_cast<uint8_t>(headingDegX100 & 0xFF),
+        static_cast<uint8_t>(altitudeMPlus1000 >> 8), static_cast<uint8_t>(altitudeMPlus1000 & 0xFF),
+        satellites,
+    };
+    return buildFrame(kFrameTypeGps, payload, kGpsPayloadLen, outFrame);
+}
+
+// Builds a CRSF FLIGHTMODE frame (0x21) from a NUL-terminated ASCII string.
+// The NUL terminator is included in the payload (matching CRSF/Betaflight).
+// `text` is truncated to kFlightModeMaxLen-1 chars. `outFrame` needs
+// >= 4 + strlen(text) + 1 bytes.
+inline size_t buildFlightModeFrame(const char* text, uint8_t* outFrame) {
+    uint8_t payload[kFlightModeMaxLen];
+    size_t len = 0;
+    while (text[len] != '\0' && len < kFlightModeMaxLen - 1) {
+        payload[len] = static_cast<uint8_t>(text[len]);
+        ++len;
+    }
+    payload[len++] = 0; // NUL terminator, counted in the payload
+    return buildFrame(kFrameTypeFlightMode, payload, static_cast<uint8_t>(len), outFrame);
+}
+
 } // namespace crsf

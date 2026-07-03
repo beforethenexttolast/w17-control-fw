@@ -243,12 +243,26 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
    harmless armed or disarmed); holds last position on failsafe (`controls` frozen).
    **Input:** map the right DualShock stick X/Y → ch9/ch10 in elrs-joystick-control (the right
    stick is otherwise unused). 144 native tests (+1), both esp32 builds clean.
+8. **Real speed + gear + drive-mode + ERS to the HUD (standard CRSF frames, no MSP)** —
+   ✅ DONE 2026-07-03. Extends item 5's ELRS backchannel to carry the remaining car-side truths
+   over *standard, ELRS-relayed* frames instead of MSP: real wheel speed as a **GPS frame (0x02)
+   groundspeed** field (`buildGpsFrame`; km/h·10 = mm/s·36/1000 from `WheelSpeed`), and
+   car-authoritative **gear / drive-mode / ERS%** as a **FLIGHTMODE frame (0x21)** status string
+   `"G3 M2 E55"` (`buildFlightModeFrame`; read from `controlSnapshot`). Both emitted in the same
+   ~5 Hz telemetry cadence as the battery frame. **Why send gear/ERS rather than let the HUD
+   mirror them:** the HUD's independent gamepad-driven gear/ERS drifts from the car's (a dropped
+   shift edge desyncs; the display model even used a different gear count) — sending the actual
+   values shows ground truth; speed isn't inferable on the ground at all. Ground station:
+   `decodeGps`/`decodeFlightMode`/`parseFlightMode` in `shared/crsf.js`, mapper extended, and
+   `CrsfSerialSource` now *merges* frame types into one running snapshot (a battery frame must
+   not blank speed/gear). HUD needed no change — it already prefers telemetry over its mirror
+   when live. Verified: 147 control native tests (+3 frame-builder golden vectors), esp32dev +
+   esp32dev_tuning clean; ground 20 vitest (+2). Same bench gate as item 5 (FT232 COM access).
 
 ### Still deferable / optional
-MSP telemetry for speed/gear/ERS over the radio (real values vs the HUD's simulated ones — most
-work, rides the contended FT232 port), code-signing the ground-station .exe (removes the
-one-time SmartScreen prompt), BX100 low-voltage buzzer polish, gearbox curve tuning (ship
-conservative defaults), a HUD camera-direction indicator.
+Code-signing the ground-station .exe (plumbing + docs ready — `electron-builder.yml` +
+docs/CODESIGNING.md; actual signing opt-in, removes the one-time SmartScreen prompt), BX100
+low-voltage buzzer polish, gearbox curve tuning (ship conservative defaults).
 
 ### Calendar sketch (19 days)
 - Jul 02–03: D1.5 + start D2 · Jul 04–06: D2 + D3 · Jul 07–08: D4 + D7 (Wokwi early — parts

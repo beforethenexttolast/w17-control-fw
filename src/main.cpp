@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#include <cstdio>
+
 #include "channels/ArmGate.hpp"
 #include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
@@ -263,6 +265,31 @@ void loop() {
             const uint16_t deciVolt = static_cast<uint16_t>(mv / 100); // mV -> 0.1V
             const size_t n = crsf::buildBatteryFrame(deciVolt, /*current*/ 0, /*capacity*/ 0,
                                                      estimate2sPercent(mv), frame);
+            crsfUart.write(frame, n);
+        }
+
+        // Real wheel speed as a standard GPS groundspeed frame (0.1 km/h units).
+        // km/h*10 = mm/s * 3.6 / 1000 * 10 = mm/s * 36 / 1000.
+        {
+            const uint32_t mmPerSec = wheelSpeed.speedMmPerSec();
+            const uint16_t speedKmhX10 = static_cast<uint16_t>((mmPerSec * 36u) / 1000u);
+            uint8_t frame[4 + crsf::kGpsPayloadLen];
+            const size_t n = crsf::buildGpsFrame(/*lat*/ 0, /*lon*/ 0, speedKmhX10, /*heading*/ 0,
+                                                 /*altitude*/ 1000, /*sats*/ 0, frame);
+            crsfUart.write(frame, n);
+        }
+
+        // Car-authoritative gear / drive-mode / ERS% as a FLIGHTMODE status
+        // string ("G3 M2 E55"): the ground can't infer these without drift, so
+        // the HUD prefers these over its own mirror when a source is live.
+        {
+            char status[crsf::kFlightModeMaxLen];
+            std::snprintf(status, sizeof(status), "G%u M%u E%u",
+                          static_cast<unsigned>(controlSnapshot.displayGear),
+                          static_cast<unsigned>(controlSnapshot.driveMode),
+                          static_cast<unsigned>(controlSnapshot.ersPercent));
+            uint8_t frame[4 + crsf::kFlightModeMaxLen];
+            const size_t n = crsf::buildFlightModeFrame(status, frame);
             crsfUart.write(frame, n);
         }
     }
