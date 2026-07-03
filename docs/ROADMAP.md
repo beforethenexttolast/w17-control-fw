@@ -193,9 +193,15 @@ the RX emits no RC frames before first connection** (D4 failsafe-flag assumption
    link2 v1 amended (board #2 unwritten, no version bump): payload 11 bytes (+ersPercent,
    +driveMode), flags bit6=ersDeploying, frame 14 bytes; golden test + protocol doc updated.
    Wokwi demo: ERS showcase at t=13-14.5s. 119/119 native tests (18 new).
-3. **Board #2 sound/light firmware** — separate repo: I2S engine sound (MAX98357A) tracking
-   rpm/throttle, WS2812 brake/indicator/halo/hazard from link2 flags, 500ms staleness
-   failsafe per docs/link2_protocol.md. Consumes lib/link2 wholesale.
+3. **Board #2 sound/light firmware** — ✅ DONE 2026-07-03 in the sibling repo
+   `w17-soundlight-fw` (committed locally; push to GitHub pending user action). Hybrid sound:
+   testable procedural V10-flavored synthesis now (harmonic partial stack shifted up so the
+   fundamental sits in a small speaker's band, ERS whine, rev limiter, overrun crackle,
+   starter sequence) behind an `ISampleSource` seam for a future PCM player. Pure libs:
+   link2 (copied verbatim), link2monitor (500ms staleness + per-field failsafe + LinkStatus),
+   enginesim, soundsynth, lights (F1 rain light flashes on ERS *harvest*, hazard override,
+   power budget). Dual-core: control on core 1, audio pump on core 0, one atomic param word +
+   heartbeat dead-man. 40 native tests, esp32dev + esp32dev_sim build clean, own CI.
 4. **Ground station (w17-ground-station repo)** — keep elrs-joystick-control for
    DualShock→CRSF; mediamtx for OpenIPC RTSP→WebRTC; evolve docs/f1_hud.html into the live
    HUD (video underlay + websocket telemetry bridge). Gift-day fallback needs zero code:
