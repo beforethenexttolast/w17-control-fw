@@ -4,8 +4,47 @@
 limit mid-way. It records exactly what was investigated, what was verified, what is
 missing, and where duplication exists — so the review can resume without redoing work.
 
-**Last updated:** 2026-07-03 (after audit workflow `w0m0miapi` completed investigation
-but was cut off during verification).
+**Last updated:** 2026-07-07 — **AUDIT COMPLETE + BATCH F1 IMPLEMENTED (uncommitted).**
+
+### Implementation status
+- **F2 — DONE, awaiting owner review/commit (not committed).** Ground-station only. Changes:
+  `package.json` adds `app:rebuild` + chains it into `build` (R03); `electron-builder.yml`
+  comment aligned; NEW `shared/linkState.mjs` (pure four-state model: sim / live / link-lost /
+  telemetry-lost) + NEW `test/linkState.test.js` (9 tests incl. demo-LQ=0 and sticky-staleness);
+  `renderer/hud.js` three-state display (LQ=0 → LINK LOST; stale-after-live → TELEMETRY LOST
+  holding last real values dimmed, never silent sim fallback; failsafe kept as demo OR-trigger);
+  `renderer/hud.css` `.stale` dim; docs honesty pass (`docs/TELEMETRY.md` armed/failsafe marked
+  demo-only + link-states table; `README.md`; `shared/telemetry.js` typedef). `ci.yml` adds the
+  windows-latest package-smoke job (R17b). **Validation:** 30/30 vitest (21+9);
+  `npm run app:rebuild` succeeds locally; local packaging smoke (`electron-builder --dir`,
+  macOS analogue) produced a working .app with an Electron-ABI (125) serialport binding
+  asar-unpacked + mediamtx resource. Demo GUI not launched (headless env) — the demo LQ=0
+  window is covered by the timeline unit test. **Implementation note (honest):**
+  electron-builder 24 ALSO auto-rebuilds native deps at package time (observed in the local
+  run), so R03's "ships unbuilt" was partially overstated for packaging — the explicit
+  app:rebuild chain remains valuable (dev-run `npm start` ABI + CI proof + belt-and-suspenders).
+  electron-builder suggests an optional `postinstall: electron-builder install-app-deps`
+  (NOT added — beyond approved scope; owner may consider later). CG2 (Windows target machine)
+  + CG5 (real link drop) remain hardware/Windows validation items.
+- **F1 — COMMITTED** as control-fw `b9cdac5` + learning-manual `157ab97` (owner-approved). Changes (control-fw only, plus
+  the learning manual): `platformio.ini` pinned `espressif32 @ ~7.0.1` (R02); `src/main.cpp`
+  setup() reordered so actuator PWM attaches first (R04 micro-mitigation — pure reorder, no
+  hidden dependency found; applyTuning still runs last as before); `.github/workflows/ci.yml`
+  adds the `esp32dev_tuning` build (R17a); `docs/D8_BENCH_BRINGUP.md` stale gimbal line fixed;
+  new `README.md` (envs, per-OS flash, driver note, "gift ships plain esp32dev" warning);
+  learning-manual `11_build_flash_debug_workflow.md` mirrors the flash-env warning + CI/pin
+  accuracy fix. **Validation:** pin resolves to 7.0.1/core 2.0.17; 147/147 native tests;
+  esp32dev + esp32dev_sim + esp32dev_tuning all build. Wokwi sim NOT run (no headless wokwi-cli;
+  it is the VS Code GUI workflow — plan A1.6 remains a manual owner step). Siblings untouched.
+- **F2, F3, F4 — not started** (per `12_recommended_fixes.md`).
+
+
+Owner approved the fix set (recorded in `fix_approval_triage.md` → `12_recommended_fixes.md`):
+R02, R03, R17, R07, R06(CI guard), R04-micro, hygiene subset; decisions R01=Option A (LQ+staleness),
+R05=4 gears, R19=TRAINING/RACE/ERS, R10=no console endpoints pre-bench.
+**Next step (awaiting go-ahead): IMPLEMENT batches F1 → F2 → F3 → F4** per
+`12_recommended_fixes.md`, one commit per batch per repo, full tests+builds before each commit.
+Hardware items remain in `11_hardware_validation_plan.md` untouched.
 
 ---
 
@@ -50,19 +89,19 @@ JSON rather than re-running agents.
 
 | # | file | status | notes |
 |---|---|---|---|
-| 00 | `00_review_summary.md` | **not started** | write last, after verification |
-| 01 | `01_spec_vs_implementation.md` | **partial (data only)** | investigation done; findings unverified |
-| 02 | `02_architecture_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 03 | `03_hardware_electronics_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 04 | `04_control_firmware_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 05 | `05_soundlight_firmware_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 06 | `06_ground_station_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 07 | `07_protocol_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 08 | `08_simulation_test_review.md` | **partial (data only)** | investigation done; findings unverified |
-| 09 | `09_build_deploy_review.md` | **partial (data only)** | investigation done → `_build_findings.json`; 3 findings lead-verified |
+| 00 | `00_review_summary.md` | **✅ COMPLETE** | Written 2026-07-07 — final synthesis: verdict (ready for bring-up after 4 pre-power items), no Criticals, the 4 Highs, strongest parts, unknown-unknowns, before-power / before-motor / can-wait, decision classes, next step = fix-approval triage |
+| 01 | `01_spec_vs_implementation.md` | **✅ COMPLETE** | Written 2026-07-07 from the spec dimension + verified severities; findings reference R## ids |
+| 02 | `02_architecture_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; notes R07 High→Med adjustment |
+| 03 | `03_hardware_electronics_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; notes R20 adjustment + R04 severity merge from safety |
+| 04 | `04_control_firmware_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; notes R21 refutation + LEDC "near-limit" partial refutation |
+| 05 | `05_soundlight_firmware_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; notes resolved I2S/7.0.1 open question |
+| 06 | `06_ground_station_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; notes byte-for-byte JS↔fw verification tempering R07 |
+| 07 | `07_protocol_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; wire layer clean, semantic-layer divergences + R13 relay question |
+| 08 | `08_simulation_test_review.md` | **✅ COMPLETE** | Written 2026-07-07; R## refs; honest confidence statement (math high / silicon low) |
+| 09 | `09_build_deploy_review.md` | **✅ COMPLETE** | Written 2026-07-07 from `_build_findings.json` incl. lead-verification corrections |
 | 10 | `10_risk_register.md` | **✅ COMPLETE** | Written 2026-07-03 from the verified R## backbone. 22 R## entries (4 High, 13 Med, 5 Low) with all required fields + HW-required flags + a carried-lows appendix. |
-| 11 | `11_hardware_validation_plan.md` | **not started** | ~63 hw-validation items already collected across the JSONs + the R## "how to verify" lines to seed it |
-| 12 | `12_recommended_fixes.md` | **not started** | DO NOT write until specific fixes are approved by the owner |
+| 11 | `11_hardware_validation_plan.md` | **✅ COMPLETE** | Written 2026-07-03. Ordered bench runbook (Phase A before-power / B first-power-logic-only / C later+ground), ~63 items deduped, R##-cross-referenced, keyed to D8 phases; includes both Top-10 lists + unknown-unknowns. |
+| 12 | `12_recommended_fixes.md` | **✅ COMPLETE** | Written 2026-07-07 from owner approvals (see `fix_approval_triage.md`). Batches: F1 control-fw reproducibility (R02, R04-micro, R17a, hygiene) · F2 ground packaging+telemetry (R03, R01-A, R17b) · F4/F3 protocol+labels (R07, R06-CI-guard, R05=4 gears, R19=TRAINING/RACE/ERS) · HW list unchanged. **Fixes NOT yet implemented.** |
 | — | `open_questions.md` | **✅ COMPLETE** | Written 2026-07-03. ~42 questions grouped (owner-decisions / protocol / hardware / firmware / sim-CI), HW/OWNER/RESOLVED tagged, linked to R## ids. |
 
 "partial (data only)" = structured findings exist in `_raw_audit_findings.json`; the
@@ -159,17 +198,17 @@ file are noted so a fresh session can resume cold.
 
 | file | status | write it from |
 |---|---|---|
-| `11_hardware_validation_plan.md` | **TODO — highest value next** | the `hw_validation_items` arrays in `_safety_findings.json` (11) + `_build_findings.json` (6) + `_raw_audit_findings.json` (~46 across 8 dims), plus the "how to verify" + `when` (before_power / first_power / later) fields. Organize as an ordered bench runbook keyed to the D8 phases; cross-reference R## ids. Include the "top-10 to verify before power" and "top-10 to test when parts arrive" lists the original brief asked for. |
-| `01_spec_vs_implementation.md` | TODO | dimension "Specification compliance" in `_raw_audit_findings.json` (summary + well_designed + findings). |
-| `02_architecture_review.md` | TODO | dimension "Repository-level architecture" in `_raw_audit_findings.json`. |
-| `03_hardware_electronics_review.md` | TODO | dimension "Hardware / electronics" in `_raw_audit_findings.json`. |
-| `04_control_firmware_review.md` | TODO | dimension "Control firmware" in `_raw_audit_findings.json`. |
-| `05_soundlight_firmware_review.md` | TODO | dimension "Sound/light firmware" in `_raw_audit_findings.json`. |
-| `06_ground_station_review.md` | TODO | dimension "Ground station" in `_raw_audit_findings.json`. |
-| `07_protocol_review.md` | TODO | dimension "All communication protocols" in `_raw_audit_findings.json`. |
-| `08_simulation_test_review.md` | TODO | dimension "Simulation and automated-test coverage" in `_raw_audit_findings.json`. |
-| `09_build_deploy_review.md` | TODO | `_build_findings.json` (whole file, incl. `_lead_verification`). |
-| `00_review_summary.md` | TODO — **write LAST** | synthesize from `10_risk_register.md` + `_verification_results.md`: exec summary, the 4 Highs, bring-up-readiness verdict, "what to check before powering anything," "top-10 before hardware / top-10 first-power," unknown-unknowns. |
+| `11_hardware_validation_plan.md` | **✅ DONE 2026-07-03** | (completed as specified — verified complete 2026-07-07) |
+| `01_spec_vs_implementation.md` | **✅ DONE 2026-07-07** | (written from spec dimension + R## refs) |
+| `02_architecture_review.md` | **✅ DONE 2026-07-07** | (written from arch dimension + R## refs) |
+| `03_hardware_electronics_review.md` | **✅ DONE 2026-07-07** | (written from hw dimension + R## refs) |
+| `04_control_firmware_review.md` | **✅ DONE 2026-07-07** | (written from ctrl-fw dimension + R## refs) |
+| `05_soundlight_firmware_review.md` | **✅ DONE 2026-07-07** | (written from soundlight dimension + R## refs) |
+| `06_ground_station_review.md` | **✅ DONE 2026-07-07** | (written from ground-station dimension + R## refs) |
+| `07_protocol_review.md` | **✅ DONE 2026-07-07** | (written from protocol dimension + R## refs) |
+| `08_simulation_test_review.md` | **✅ DONE 2026-07-07** | (written from sim/test dimension + R## refs) |
+| `09_build_deploy_review.md` | **✅ DONE 2026-07-07** | (written from `_build_findings.json` + lead corrections) |
+| `00_review_summary.md` | **✅ DONE 2026-07-07** | (final synthesis written) |
 | `12_recommended_fixes.md` | **BLOCKED** | do NOT write until the owner approves specific fixes. Candidate now-fixes (software, no hardware): R02 pin platform, R03 wire serialport rebuild, R17 add CI steps, R05/R19 reconcile gear-count/labels, R06 add link2 drift-guard, R01 decide + implement armed/failsafe display. |
 
 **Per-dimension files (01–09):** each should carry that dimension's `summary`, `well_designed`
