@@ -37,3 +37,35 @@ jobs:
 
       - name: Build firmware (bench tuning variant)
         run: pio run -e esp32dev_tuning
+
+  # link2 drift guard (audit R06): lib/link2 + docs/link2_protocol.md are COPIED
+  # verbatim into w17-soundlight-fw (the receiver). No submodule keeps them in
+  # sync, so this job clones the sibling repo and fails if the shared contract
+  # files differ. Both repos are public, so a shallow anonymous clone suffices.
+  link2-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone sibling repo (link2 contract mirror)
+        run: git clone --depth 1 https://github.com/beforethenexttolast/w17-soundlight-fw.git /tmp/sibling
+      - name: Verify link2 contract files are identical across repos
+        run: |
+          set -e
+          fail=0
+          for f in lib/link2/include/link2/Link2Frame.hpp \
+                   lib/link2/include/link2/Link2Codec.hpp \
+                   lib/link2/src/Link2Codec.cpp \
+                   docs/link2_protocol.md; do
+            if ! diff -u "/tmp/sibling/$f" "$f"; then
+              echo "::error file=$f::link2 contract file drifted from w17-soundlight-fw"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "link2 is a COPIED contract shared by w17-control-fw (sender) and"
+            echo "w17-soundlight-fw (receiver). A deliberate protocol change MUST update"
+            echo "BOTH repos in the same push; a brief red here on one side is expected"
+            echo "until the sibling's main carries the matching change."
+            exit 1
+          fi
+          echo "link2 contract identical across both repos."

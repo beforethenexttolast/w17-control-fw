@@ -438,6 +438,11 @@ void test_receiver_link_up_summary() {
     TEST_ASSERT_FALSE(receiver.linkUp(230));
 }
 
+// Cross-repo traceability (audit R07): the exact on-wire bytes asserted by the
+// frame-builder tests below are mirrored in the ground station's shared golden
+// fixture w17-ground-station/test/fixtures/crsf_golden.json (decoded by its
+// test/crsf.test.js). If a byte layout, endianness, or CRC domain changes here,
+// update that fixture in lockstep -- the two are hand-kept parallel, not shared.
 void test_build_battery_frame_bytes() {
     // 7.9V = 79 dV = 0x004F; current 0; capacity 0; 72%. Big-endian payload,
     // matching the ground station's decodeBattery.
