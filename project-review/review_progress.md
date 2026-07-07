@@ -7,7 +7,22 @@ missing, and where duplication exists — so the review can resume without redoi
 **Last updated:** 2026-07-07 — **AUDIT COMPLETE + BATCH F1 IMPLEMENTED (uncommitted).**
 
 ### Implementation status
-- **F2 — DONE, awaiting owner review/commit (not committed).** Ground-station only. Changes:
+- **F3 — DONE, awaiting owner review/commit (not committed).** Spans all three repos.
+  **Ground-station:** NEW `test/fixtures/crsf_golden.json` (battery 7.9V/72%, GPS 36.1 km/h,
+  FLIGHTMODE "G3 M2 E55", LINK_STATISTICS — full on-wire hex + expected decodes), loaded by
+  `test/crsf.test.js` (+5 cases) and `test/crsfTelemetry.test.js` (+4 e2e cases); `shared/crsf.js`
+  header comment corrected (parallel reimpl pinned by shared fixture, not "reused"). (R07)
+  **control-fw:** `test/test_crsf/test_main.cpp` traceability comment → fixture (comment only);
+  `.github/workflows/ci.yml` NEW `link2-drift` job (clones w17-soundlight-fw, diffs the 4 link2
+  contract files). **soundlight-fw:** `.github/workflows/ci.yml` mirror `link2-drift` job (clones
+  w17-control-fw). (R06 — CI-clone approach; both repos verified PUBLIC via `gh`, so no
+  private-permission blocker and no manifest fallback needed.) **Validation:** ground 39/39
+  vitest (was 30; +9 fixture cases), control 147/147 native, soundlight 40/40 native; local
+  drift-guard dry-run confirms the 4 files IDENTICAL across repos → guard passes. No source
+  behavior changed (tests/comments/CI only). No F4 gear/label edits. CG4 (live-frame decode)
+  still a hardware validation item.
+- **F2 — COMMITTED** as ground-station `b880be6` (owner-approved).
+- **F2 (pre-commit note kept for record):** Ground-station only. Changes:
   `package.json` adds `app:rebuild` + chains it into `build` (R03); `electron-builder.yml`
   comment aligned; NEW `shared/linkState.mjs` (pure four-state model: sim / live / link-lost /
   telemetry-lost) + NEW `test/linkState.test.js` (9 tests incl. demo-LQ=0 and sticky-staleness);
