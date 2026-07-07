@@ -7,7 +7,27 @@ missing, and where duplication exists — so the review can resume without redoi
 **Last updated:** 2026-07-07 — **AUDIT COMPLETE + BATCH F1 IMPLEMENTED (uncommitted).**
 
 ### Implementation status
-- **F3 — DONE, awaiting owner review/commit (not committed).** Spans all three repos.
+- **F4 — COMMITTED** as ground-station `b6d00f6`, control-fw `8ce670a`, soundlight-fw `f175bce`,
+  learning-manual (projects-level repo) `c2a2c71` (owner-approved). **All four fix batches
+  (F1–F4) are now committed.** Remaining audit work = HW-validation-plan items only (no code).
+- **F4 (pre-commit note kept for record).** Spans all three repos + manual.
+  **R05 (4 gears):** ground `shared/feelConstants.js` GEARS 8→4, `renderer/hud.js` default
+  gears 8→4, `shared/replaySource.js` demo gears 6/7→4 (max now 4), `test/replay.test.js`
+  gear expectation 6→4; both firmware `docs/link2_protocol.md` gear range 1…6→1…4 (kept
+  byte-identical across repos via cp). **R19 (labels TRAINING/RACE/ERS):** both firmware
+  `docs/link2_protocol.md` + `lib/link2/include/link2/Link2Frame.hpp` driveMode row/comments →
+  "0=TRAINING, 1=RACE (gearbox), 2=ERS (gearbox+ERS)" (identical across repos); control-fw
+  `ChannelDecoder.hpp` + `main.cpp` comments aligned (COMMENT-ONLY — verified no code token
+  changed; wire format unchanged, no enum identifiers renamed); ground `docs/TELEMETRY.md`
+  casing aligned. **Manual:** `09_communication_protocols.md` gear 1…6→1…4 + driveMode row +
+  worked-example label; `glossary.md` Drive-mode entry gains a one-line canonical-label note.
+  **Validation:** ground 39/39 vitest, control 147/147 native, soundlight 40/40 native; link2
+  drift guard: 4 contract files IDENTICAL across repos; demo timeline max gear = 4, FEEL default
+  = 4. No source behavior changed (constants/docs/comments/test expectations only). CG6 (live
+  gear/label sweep) remains a hardware validation item.
+- **F3 — COMMITTED** as ground-station `d6a90fe`, control-fw `1c298d2`, soundlight-fw `74b59f4`;
+  tracking `c3a51e4` (owner-approved).
+- **F3 (pre-commit note kept for record).** Spans all three repos.
   **Ground-station:** NEW `test/fixtures/crsf_golden.json` (battery 7.9V/72%, GPS 36.1 km/h,
   FLIGHTMODE "G3 M2 E55", LINK_STATISTICS — full on-wire hex + expected decodes), loaded by
   `test/crsf.test.js` (+5 cases) and `test/crsfTelemetry.test.js` (+4 e2e cases); `shared/crsf.js`
