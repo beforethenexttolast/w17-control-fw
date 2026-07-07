@@ -60,12 +60,12 @@ constexpr gearbox::GearboxConfig kGearboxConfig{};
 static_assert(kGearboxConfig.valid(), "gearbox: bad gear table (range or non-monotonic)");
 gearbox::Gearbox virtualGearbox(kGearboxConfig);
 
-// Drive modes (3-pos switch): 0 = Training, 1 = Gearbox (mid = default, also
-// what an absent channel decodes to), 2 = Gearbox+ERS. There is deliberately
-// NO raw pass-through mode: gearbox top gear (cap 1000, expo 0) already IS
-// full power, and power stays monotone along the switch so a bumped switch
-// changes authority by one gentle step.
-// Training: one fixed gentle shape, gear shifts have no effect.
+// Drive modes (3-pos switch): 0 = TRAINING, 1 = RACE (gearbox; mid = default,
+// also what an absent channel decodes to), 2 = ERS (gearbox+ERS). There is
+// deliberately NO raw pass-through mode: gearbox top gear (cap 1000, expo 0)
+// already IS full power, and power stays monotone along the switch so a bumped
+// switch changes authority by one gentle step.
+// TRAINING: one fixed gentle shape, gear shifts have no effect.
 constexpr gearbox::GearParams kTrainingGearParams{400, 50};
 
 constexpr ers::ErsConfig kErsConfig{};

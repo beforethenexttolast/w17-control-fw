@@ -21,7 +21,7 @@ struct ChannelMapConfig {
     uint8_t tiltIndex = 9;     // ch10 -- camera gimbal tilt (right stick Y)
     uint8_t boostIndex = 10;   // ch11, held switch: ERS boost deploy
     uint8_t overtakeIndex = 11; // ch12, held switch: ERS overtake deploy
-    // ch13, 3-pos: low = Training, mid = Gearbox, high = Gearbox+ERS.
+    // ch13, 3-pos: low = TRAINING, mid = RACE (gearbox), high = ERS (gearbox+ERS).
     uint8_t driveModeIndex = 12;
 
     // Bench conveniences for reversed TX axes (flips the normalized sign).
@@ -47,7 +47,7 @@ struct ChannelMapConfig {
                switchOnAbove > switchOffBelow;
         // panIndex/tiltIndex/boostIndex/overtakeIndex/driveModeIndex are
         // deliberately unchecked: >= kNumChannels means "control absent" with
-        // safe degraded behavior (analog 0, switch OFF, drive mode Gearbox).
+        // safe degraded behavior (analog 0, switch OFF, drive mode 1 = RACE/gearbox).
     }
 };
 
@@ -61,9 +61,10 @@ struct Controls {
     bool drsSwitch = false;
     bool boostHeld = false;    // held (level) switches, not edges
     bool overtakeHeld = false;
-    // 0 = Training, 1 = Gearbox, 2 = Gearbox+ERS. Stateless tri-state decode
-    // (a 3-pos switch never dwells between detents); default/absent = 1 so
-    // pre-first-frame ticks and a missing channel equal plain gearbox.
+    // 0 = TRAINING, 1 = RACE (gearbox), 2 = ERS (gearbox+ERS). Stateless
+    // tri-state decode (a 3-pos switch never dwells between detents);
+    // default/absent = 1 so pre-first-frame ticks and a missing channel equal
+    // plain RACE/gearbox.
     uint8_t driveMode = 1;
     // Edge flags are consume-on-read: true ONLY in the Controls returned by
     // the decode() call that observed the OFF->ON transition. Act on them the
