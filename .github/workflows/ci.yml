@@ -34,3 +34,6 @@ jobs:
 
       - name: Build firmware (Wokwi sim variant)
         run: pio run -e esp32dev_sim
+
+      - name: Build firmware (bench tuning variant)
+        run: pio run -e esp32dev_tuning

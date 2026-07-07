@@ -160,8 +160,9 @@ Do not power the ESC until every box here passes.
 ---
 
 ### Deferred / optional (won't block the gift)
-Gimbal pan/tilt (decoded, unwired), MSP telemetry for speed/gear/ERS over the radio, code-signing
-the ground-station .exe. See `docs/ROADMAP.md`.
+MSP telemetry for speed/gear/ERS over the radio, code-signing the ground-station .exe. See
+`docs/ROADMAP.md`. (Camera gimbal pan/tilt is wired and bench-tested in Phase 7b above — it is
+no longer deferred.)
 
 ### Cross-repo pointers
 - Control firmware + this runbook: `w17-control-fw`.

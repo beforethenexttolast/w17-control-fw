@@ -165,18 +165,11 @@ void applyTuning() {
 } // namespace
 
 void setup() {
-#ifdef W17_SIM_CRSF_FEEDER
-    Serial.begin(115200); // sim status/narration only; real firmware opens no UART0
-    Serial.println("[sim] W17 control firmware -- Wokwi Stage-2 demo build");
-#endif
-
-    crsfUart.begin();
-    link2Uart.begin();
-    batteryAdc.begin();
-    hallSensor.begin();
-
-    // Attach PWM with an explicit safe initial pulse (center/neutral/closed)
-    // so the outputs never depend on the ordering of the calls below.
+    // Attach actuator PWM FIRST, before any other init, so GPIO13/14 (steering /
+    // ESC signal) spend as little time as possible floating high-Z after reset
+    // (audit R04 -- the hardware pull-down/RC decision stays bench-gated). begin()
+    // attaches the LEDC channel with an explicit safe pulse (center/neutral/closed);
+    // the safe commands below require the channel already attached.
     steeringPwm.begin(steeringConfig.centerMicros);
     escPwm.begin(escConfig.neutralMicros);
     drsPwm.begin(drsConfig.closedMicros);
@@ -188,6 +181,16 @@ void setup() {
     drs.setOpen(false);
     panServo.setPosition(0); // camera centered
     tiltServo.setPosition(0);
+
+#ifdef W17_SIM_CRSF_FEEDER
+    Serial.begin(115200); // sim status/narration only; real firmware opens no UART0
+    Serial.println("[sim] W17 control firmware -- Wokwi Stage-2 demo build");
+#endif
+
+    crsfUart.begin();
+    link2Uart.begin();
+    batteryAdc.begin();
+    hallSensor.begin();
 
 #ifdef W17_TUNING_CONSOLE
     // Load persisted tuning (guard chain -> defaults on any failure) and push
