@@ -29,6 +29,11 @@ Mostly software/config + a multimeter. Clear these first; several are one-line s
 | A1.6 | Run the **control-fw Wokwi sim once end-to-end**; confirm the serial log reaches DRIVING with `failsafe=0` (validates the 420000-baud loopback the Stage-2 story rests on). | R16 |
 
 ### A2. Physical checks before battery (multimeter, power OFF)
+
+> **Step-by-step runbook:** `13_phase_a_a2_no_power_checklist.md` (tools, per-pin continuity,
+> divider/Hall/ESC-isolation/ground/WS2812 measurements, table template, PASS/FAIL, hard-stops).
+> **A2 has NOT been executed; Phase B stays blocked until the filled checklist is reviewed and approved.**
+
 | # | Do | R## |
 |---|---|---|
 | A2.1 | **Diff PinMap.hpp against the actual soldered board** — continuity-check every signal: steering 13, ESC 14, DRS 18, gimbal 19/23, battery 34, Hall 35, CRSF 16/17, link2 25→16. (Atlas is illustrative-only; PinMap+BOM are the authority.) | R08 |
