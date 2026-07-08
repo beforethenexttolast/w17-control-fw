@@ -1,111 +1,109 @@
-# ESP32 #1 "Control Board" — Firmware Build Brief (Claude Code handoff)
+# ESP32 #1 "Control Board" — Firmware Maintenance Guide
 
-## 0. Context — what you're building and why
+Repo-specific rules for `w17-control-fw`. Shared W17 workspace rules (ownership, the seven
+cross-repo safety boundaries, commit/review etiquette) live in the parent
+`../CLAUDE.md`; volatile status (checkpoints, gate state) lives in `../CURRENT_STATUS.md`.
+This file covers what is specific to the control firmware and is stable across sessions.
 
-I'm building a **1/10-scale FPV 3D-printed RC Formula 1 car** (Mercedes W17 livery, a gift, hard deadline **21 Jul 2026**), on a belt-drive OpenRC F1 chassis. It has **two ESP32-WROOM-32 boards**:
+## What this firmware is
 
-- **ESP32 #1 — CONTROL (this firmware).** Takes the radio link in, decides what the car does, drives the steering servo + ESC + DRS/gimbal servos, runs failsafe + a "virtual gearbox," and reports state to board #2.
-- **ESP32 #2 — sound + light** (separate firmware, based on **TheDIYGuy999** RC sound/LED projects + a MAX98357A I2S amp + WS2812 LEDs). **Out of scope here** — #1 only talks *to* it over a one-way UART.
+**ESP32 #1 — CONTROL.** Takes the radio link in, decides what the car does, drives the
+steering servo + ESC + DRS + camera-gimbal servos, runs failsafe + a "virtual gearbox," and
+reports state one-way to ESP32 #2 (sound + light). It is the **only producer of final
+hardware outputs**, and only from already-arbitrated inputs.
 
-I'm strong on **electronics + Linux**, newer to RC. I want **modular, unit-testable code**, hardware access behind thin interfaces so most of it compiles and tests on my laptop with **no ESP32 attached**. Be concise and verdict-first; I review diffs.
+- MCU: ESP32-WROOM-32 DevKit V1.
+- Stack: PlatformIO + Arduino-ESP32. Board env `esp32dev`, plus a `native` test env.
+- The build is mature: the module set below exists, is unit-tested, and is reviewed. Treat
+  this as a maintenance codebase, not a greenfield one — no day-1 scaffolding is pending.
 
-**Stack:** PlatformIO + Arduino-ESP32 framework (ESP-IDF acceptable if you justify it). Board env `esp32dev`, plus a `native` test env.
+## Modules (each a library under `lib/`, pure logic split from hardware)
 
----
+- `crsf` — ELRS CRSF receiver/parser (UART2). Decodes `RC_CHANNELS_PACKED` (16 × 11-bit,
+  raw 172–1811, center 992), validates CRC8 (poly 0xD5). Byte-level parser is a pure
+  function over a buffer.
+- `channels` — raw channels → named controls via a config table (throttle, steering, DRS,
+  gear up/down, arm, pan/tilt on ch9/ch10).
+- `gearbox` — virtual gearbox: per-gear output cap + expo curve. Pure `(rawThrottle, gear) →
+  outputThrottle`.
+- `failsafe` — SAFETY-CRITICAL pure state machine over (linkUp, lastFrameMicros, now) →
+  safe/active. Link loss or RX failsafe → throttle neutral, steering center, DRS closed;
+  latch until link returns and a re-arm condition is met.
+- `outputs` — LEDC 50 Hz PWM for steering, ESC (neutral 1500 µs, boot arm sequence), DRS,
+  pan/tilt. Real `ledcWrite` sits behind an interface so logic tests assert commanded µs.
+- `telemetry` — battery ADC (divider + calibration → volts, monitoring only) and Hall
+  wheel-speed (rising-edge ISR → RPM/speed). Pure conversion functions.
+- `ers` — energy-recovery/ERS behavior feeding telemetry + link2 (harvest state, etc.).
+- `link2` — framed one-way UART message (start byte + payload + checksum) to ESP32 #2:
+  throttle%, braking, reverse, rpm/speed, gear, DRS, armed, failsafe. **This repo owns the
+  link2 protocol** (`docs/link2_protocol.md`); the soundlight repo holds a copy — protocol
+  changes happen here first.
+- `settings`, `console`, `hal`, and the `*_hal_esp32` impls — persisted config, serial
+  console, hardware seams. Pure logic files carry no Arduino/ESP32 headers.
 
-## 1. Hardware target + pin map
+## Pin map — where the truth lives
 
-MCU: **ESP32-WROOM-32 DevKit V1**.
+Pins are **maintained in the config header `lib/config/include/config/PinMap.hpp`**, not
+decided from this file. Reconcile any pin question against that header and the current
+project docs (`docs/`, `docs/w17_wiring_assembly_atlas.html`) — do not treat any table in a
+brief as authoritative. GPIO 34/35 are input-only (battery analog, Hall with external
+pull-up); avoid GPIO 6–11 (flash) and be careful with strapping pins 0/2/12/15.
 
-**Pin map — STARTING PROPOSAL. Reconcile against my wiring atlas (`docs/w17_wiring_assembly_atlas.html`, which I'll copy into the repo) before locking it. Keep pins in one config header so they're trivial to change.**
+## Architecture rules
 
-| Signal | GPIO | Notes |
-|---|---|---|
-| **CRSF in** (from RadioMaster RP1 TX pad) | **16** (UART2 RX) | ELRS CRSF: **420000 baud, 8N1, NOT inverted** |
-| CRSF telemetry out (to RP1 RX pad) | 17 (UART2 TX) | optional uplink (battery/RPM) |
-| **UART → ESP32 #2** (TX) | 25 (UART1, remapped) | 3.3 V logic, **common ground**, e.g. 115200 8N1 |
-| UART ← ESP32 #2 (RX) | 26 (UART1, remapped) | optional ack/handshake |
-| **Steering servo** (DSServo DS3235SG, 180°) | 13 | LEDC 50 Hz servo PWM, center 1500 µs |
-| **ESC throttle** (Hobbywing QuicRun 10BL120) | 14 | LEDC 50 Hz, neutral 1500 µs, **arm sequence on boot** |
-| **DRS servo** (MG90S, 2-position) | 18 | LEDC 50 Hz |
-| **Gimbal pan** (MG90S) | 19 | LEDC 50 Hz. **Wired + bench-tested** (right stick → CRSF ch9). |
-| **Gimbal tilt** (MG90S) | 23 | LEDC 50 Hz. **Wired + bench-tested** (right stick → CRSF ch10). |
-| **Battery sense** (27 kΩ/10 kΩ divider) | 34 | ADC1_CH6, **input-only**, 11 dB atten |
-| **Wheel-speed** (A3144 Hall) | 35 | **input-only**, external 10 kΩ pull-up to 3.3 V, rising-edge ISR |
+- No ESP32/Arduino headers in pure-logic files; wrap UART, LEDC, ADC, GPIO/ISR behind thin
+  interfaces (real esp32 impl + native mock).
+- Config structs validate at the definition site; document magic numbers (CRSF baud/ranges/
+  CRC poly, servo µs) with a one-line source.
+- Readable over clever — every diff is reviewed.
 
-GPIO 34/35 are input-only (no internal pull-ups) — fine here: the battery line is analog, and the Hall already has an external 10 kΩ pull-up on the board. Avoid GPIO 6–11 (flash). GPIO 0/2/12/15 are strapping pins — don't use for outputs that are driven at boot.
+## Test philosophy (most needs no hardware)
 
-**Inputs/peripherals summary:** RP1 ELRS receiver (CRSF) → steering servo, ESC, up to 3× MG90S, battery divider (ADC), Hall sensor (wheel speed), UART to board #2.
+- **Stage 1 — native unit tests** (`pio test -e native`): CRSF parser (canned frames incl.
+  CRC-fail), channel map, gearbox, failsafe transitions, output µs scaling, link2 codec.
+  This catches the real bugs; run it before any change ships.
+- **Stage 2 — Wokwi sim** (`wokwi.toml` + `diagram.json`): virtual ESP32, servos on PWM
+  pins, pot on GPIO34 (battery sim), button on GPIO35 (wheel-pulse sim), CRSF via a harness.
+- **Stage 3 — real hardware** (last, gated — see below).
 
-> **Camera pan/tilt status:** the gimbal firmware path is implemented and bench-tested — it follows CRSF ch9/ch10 like any other channel, source-agnostic. *iPhone-derived* active pan/tilt (head tracking) is **not enabled** and remains future-gated behind a separate safety milestone; see `project-review/iphone_pan_tilt_firmware_readiness.md`. No servo movement from head tracking until those blockers clear.
+## Safety priorities (non-negotiable, order preserved)
 
----
-
-## 2. Functional spec — build as separate, testable modules
-
-Each module = a small library under `lib/` with pure logic separated from hardware. Suggested set:
-
-1. **`crsf` — CRSF receiver/parser.** Consume the ELRS serial stream on UART2. Decode `RC_CHANNELS_PACKED` frames (type `0x16`): 16 × 11-bit channels, raw range **172–1811, center 992**. Validate the **CRC8 (poly 0xD5)**; reject bad frames. Expose: `channels[16]`, `linkUp` (bool), `lastFrameMicros`, and any failsafe flag the RX signals. **The byte-level parser must be a pure function over a buffer** so it unit-tests with canned frames.
-2. **`channels` — logical channel map.** Translate raw channels → named controls via a **config table** (easy to re-map): `throttle`, `steering`, `drs` (2-pos), `gearUp`/`gearDown` (or a gear selector), `arm`, `pan`/`tilt` (camera gimbal, ch9/ch10 — implemented). Normalize to clean ranges (e.g. −1000…+1000, or 0…1000).
-3. **`gearbox` — virtual gearbox.** N gears (start with 3–4). Each gear applies a **max-output cap + expo curve** to throttle, so low gears = gentle/limited, top gear = full. Up/down via switches or momentary edges. **Pure function: `(rawThrottle, gear) → outputThrottle`.** This is the "feel" layer; make it heavily testable.
-4. **`failsafe` — SAFETY-CRITICAL.** If **no valid CRSF frame for T ms** (start at 500 ms) **OR** the RX failsafe flag is set → force outputs safe: **throttle = neutral, steering = center, DRS = closed.** Latch until the link returns *and* a re-arm condition is met. Pure state machine over (linkUp, lastFrameMicros, now) → safe/active. **Test this before any feature.**
-5. **`outputs` — servo/ESC PWM.** LEDC-based 50 Hz generation. Steering (~500–2500 µs, configurable endpoints + trim), ESC throttle (1000–2000 µs, neutral 1500, **boot arm sequence**: hold neutral N ms before accepting throttle), DRS (two positions), pan/tilt (camera gimbal — implemented, driven by CRSF ch9/ch10). **Put the actual `ledcWrite` behind an interface** so logic tests use a mock and assert the commanded µs.
-6. **`telemetry` — battery + wheel speed.** Battery: read ADC1 (27 k/10 k divider, 11 dB atten), apply a calibration factor (I'll trim it with a multimeter) → volts. Wheel speed: count Hall rising edges in an ISR; convert pulses → RPM/ground-speed using `magnetsPerRev` (start = 1) and wheel circumference. Pure conversion functions; the ADC read + ISR are the only hardware bits.
-7. **`link2` — UART to ESP32 #2.** A small **framed message** (start byte + payload + checksum) carrying: `throttlePercent`, `braking` (bool), `reverse` (bool), `rpm`/`speed`, `gear`, `drsOpen`, `armed`, `failsafe`. Define + document the frame; board #2 (TheDIYGuy999) consumes it to drive engine sound + WS2812 brake/indicator lights. Encode/decode must unit-test.
-8. **`main.cpp` — wiring + loop.** Non-blocking. Parse CRSF as bytes arrive; run failsafe + outputs at a fixed cadence (≥50 Hz). **No `delay()` in the control path.**
-
----
-
-## 3. Behavior defaults (I can change these)
-
-- **Channel map (verify against my TX):** throttle = ch3, steering = ch1 (or ch4), DRS = a 2-pos switch, gear up/down = 2 switches (or a 3-pos), **arm = a switch (must be ON to allow throttle)**.
-- **Brake light** = throttle below neutral (with a small deadband).
-- **ESC** is set to sensored mode + forward/brake (or forward/reverse) in *its own* config; the firmware just emits the PWM.
-- **DRS** = wing-flap servo toggled by its switch.
-
----
-
-## 4. Validation plan — do it in this order (most needs no hardware)
-
-**Stage 1 — native unit tests (PlatformIO `native` env; Unity or doctest).** Test the pure logic with **zero hardware**: CRSF parser (feed canned byte arrays → assert decoded channels; assert CRC-bad frames are rejected), channel map, gearbox curves, failsafe transitions (inject "no frame for T ms" and the failsafe flag), output µs scaling, `link2` frame encode/decode. This is ~half the firmware and catches the real bugs.
-
-**Stage 2 — Wokwi simulation (`wokwi.toml` + `diagram.json`).** Virtual ESP32 with servos on the PWM pins, a **potentiometer on GPIO34** (battery sim), and a **pushbutton on GPIO35** (wheel-pulse sim). Drive CRSF via a test harness feeding canned frames into the UART. Confirm end-to-end flow + timing without real parts.
-
-**Stage 3 — real hardware (last).** Real CRSF from `elrs-joystick-control` (DualShock → PC → CRSF over FT232 → ELRS TX module → RP1 → ESP32 #1). Verify PWM on a servo/scope, the ADC divider reading, and the Hall ISR on the bench — then on the car.
-
----
-
-## 5. Architecture rules
-
-- **Hardware-abstracted:** no ESP32/Arduino headers in the pure-logic files. Wrap UART, LEDC, ADC, GPIO/ISR behind thin interfaces; provide a real impl (esp32) and a mock/host impl (native).
-- **PlatformIO layout:** `src/` (entry + glue), `lib/` (each module as a library), `test/` (native tests), `platformio.ini` with **`[env:esp32dev]`** and **`[env:native]`**, plus `wokwi.toml` + `diagram.json`.
-- Document magic numbers (CRSF baud/ranges/CRC poly, servo µs) with a one-line source.
-- Readable over clever — I review every diff.
-
----
-
-## 6. Safety priorities (non-negotiable, build first)
-
-1. **Failsafe first** — implement + test link-loss → throttle neutral *before* any feature.
-2. **Arm gate** — throttle stays neutral until the arm switch is ON **and** throttle has been observed at neutral once (no arm-into-full-throttle).
+1. **Failsafe first** — link-loss → throttle neutral, proven before any feature.
+2. **Arm gate** — throttle stays neutral until the arm switch is ON *and* throttle has been
+   seen at neutral once (no arm-into-full-throttle).
 3. **ESC boot arm sequence** — neutral for N ms before accepting throttle.
-4. **Battery telemetry is monitoring only** — warn, don't auto-cut.
+4. **Battery telemetry is monitoring only** — warn, never auto-cut.
 
----
+## Hardware gates — READ BEFORE ANY BENCH WORK
 
-## 7. Bench-wiring notes (so the firmware matches the build)
+Durable gate wording (live status in `../CURRENT_STATUS.md`):
 
-- **Battery divider:** 27 kΩ (battery side) + 10 kΩ (to GND), tap → GPIO34, ADC1, 11 dB atten → 8.4 V reads ≈ 2.27 V. I'll calibrate the factor with a multimeter.
-- **Hall A3144:** 5 V supply, **10 kΩ pull-up to 3.3 V**, open-collector output → GPIO35, rising-edge ISR. One axle magnet ⇒ `magnetsPerRev = 1`.
-- **ESC:** its built-in BEC **+5 V (red) wire is isolated** — ESP32 drives only the ESC **signal** wire + shares ground. Separate 5 A UBECs power the ESP32 rail.
-- **UART to #2:** 3.3 V logic, common ground, 115200 8N1 (adjust if needed).
+- **A1.1–A1.6 software / pre-power validation: COMPLETE.**
+- **A2 no-power checklist: committed but NOT EXECUTED.** No measurements recorded; A2 is not
+  closed. Canonical checklist: `project-review/13_phase_a_a2_no_power_checklist.md`.
+- **Phase B (powered bring-up) is BLOCKED** until A2 is filled in, reviewed, and approved.
+- **No battery, no USB-powered bring-up, no bench PSU, no powered hardware** unless the
+  active task explicitly says Phase B *and* A2 has passed. Do not flash or power hardware in
+  a normal maintenance session.
+- **ESC motor power stays disconnected** until the relevant bench gates approve it (failsafe
+  + arm chain proven live in Phase A → B).
+- Still bench-validation items (not settled by code review alone): battery ADC calibration,
+  PWM timing, real ESC behavior, Hall ISR under real pulses, and any real-hardware timing.
+  (I2S/WS2812 timing lives in the soundlight repo but is the same class of item.)
 
----
+## iPhone / pan-tilt boundary
 
-## 8. First deliverable — stop and show me after this
+- **Firmware is and stays unaware of the iPhone** — it never parses iPhone JSON or receives
+  iPhone UDP.
+- **No iPhone → CRSF. No iPhone → servo / gimbal / ESC.**
+- Camera pan/tilt is a normal **stick-driven CRSF ch9/ch10** path, source-agnostic — it is
+  **separate from** iPhone-derived head tracking.
+- **iPhone-derived active pan/tilt remains BLOCKED** behind a separate, reviewed safety
+  milestone. No servo movement from head tracking until that milestone approves it. See
+  `project-review/iphone_pan_tilt_firmware_readiness.md`.
 
-1. PlatformIO skeleton: `platformio.ini` (`esp32dev` + `native`), folder layout, the hardware-interface seams.
-2. The **`crsf` parser** module **+ its native unit tests** (canned frames, including a CRC-fail case).
-3. The **`failsafe`** + **`outputs` scaling** modules **+ tests**.
+## Working here
 
-**Then pause and show me** so I can verify the foundation before you build gearbox / channel map / telemetry / `link2` / Wokwi. Use plan mode for anything that touches multiple files.
+- Edit this repo only; never modify sibling repos unless explicitly asked.
+- Keep pure logic testable and hardware behind seams; add/extend native tests with behavior.
+- Use plan mode for anything touching multiple files; show diffs.
