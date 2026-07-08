@@ -28,14 +28,16 @@ MCU: **ESP32-WROOM-32 DevKit V1**.
 | **Steering servo** (DSServo DS3235SG, 180°) | 13 | LEDC 50 Hz servo PWM, center 1500 µs |
 | **ESC throttle** (Hobbywing QuicRun 10BL120) | 14 | LEDC 50 Hz, neutral 1500 µs, **arm sequence on boot** |
 | **DRS servo** (MG90S, 2-position) | 18 | LEDC 50 Hz |
-| Gimbal pan (MG90S) — *optional/deferred* | 19 | LEDC 50 Hz |
-| Gimbal tilt (MG90S) — *optional/deferred* | 23 | LEDC 50 Hz |
+| **Gimbal pan** (MG90S) | 19 | LEDC 50 Hz. **Wired + bench-tested** (right stick → CRSF ch9). |
+| **Gimbal tilt** (MG90S) | 23 | LEDC 50 Hz. **Wired + bench-tested** (right stick → CRSF ch10). |
 | **Battery sense** (27 kΩ/10 kΩ divider) | 34 | ADC1_CH6, **input-only**, 11 dB atten |
 | **Wheel-speed** (A3144 Hall) | 35 | **input-only**, external 10 kΩ pull-up to 3.3 V, rising-edge ISR |
 
 GPIO 34/35 are input-only (no internal pull-ups) — fine here: the battery line is analog, and the Hall already has an external 10 kΩ pull-up on the board. Avoid GPIO 6–11 (flash). GPIO 0/2/12/15 are strapping pins — don't use for outputs that are driven at boot.
 
 **Inputs/peripherals summary:** RP1 ELRS receiver (CRSF) → steering servo, ESC, up to 3× MG90S, battery divider (ADC), Hall sensor (wheel speed), UART to board #2.
+
+> **Camera pan/tilt status:** the gimbal firmware path is implemented and bench-tested — it follows CRSF ch9/ch10 like any other channel, source-agnostic. *iPhone-derived* active pan/tilt (head tracking) is **not enabled** and remains future-gated behind a separate safety milestone; see `project-review/iphone_pan_tilt_firmware_readiness.md`. No servo movement from head tracking until those blockers clear.
 
 ---
 
@@ -44,10 +46,10 @@ GPIO 34/35 are input-only (no internal pull-ups) — fine here: the battery line
 Each module = a small library under `lib/` with pure logic separated from hardware. Suggested set:
 
 1. **`crsf` — CRSF receiver/parser.** Consume the ELRS serial stream on UART2. Decode `RC_CHANNELS_PACKED` frames (type `0x16`): 16 × 11-bit channels, raw range **172–1811, center 992**. Validate the **CRC8 (poly 0xD5)**; reject bad frames. Expose: `channels[16]`, `linkUp` (bool), `lastFrameMicros`, and any failsafe flag the RX signals. **The byte-level parser must be a pure function over a buffer** so it unit-tests with canned frames.
-2. **`channels` — logical channel map.** Translate raw channels → named controls via a **config table** (easy to re-map): `throttle`, `steering`, `drs` (2-pos), `gearUp`/`gearDown` (or a gear selector), `arm`, optional `pan`/`tilt`. Normalize to clean ranges (e.g. −1000…+1000, or 0…1000).
+2. **`channels` — logical channel map.** Translate raw channels → named controls via a **config table** (easy to re-map): `throttle`, `steering`, `drs` (2-pos), `gearUp`/`gearDown` (or a gear selector), `arm`, `pan`/`tilt` (camera gimbal, ch9/ch10 — implemented). Normalize to clean ranges (e.g. −1000…+1000, or 0…1000).
 3. **`gearbox` — virtual gearbox.** N gears (start with 3–4). Each gear applies a **max-output cap + expo curve** to throttle, so low gears = gentle/limited, top gear = full. Up/down via switches or momentary edges. **Pure function: `(rawThrottle, gear) → outputThrottle`.** This is the "feel" layer; make it heavily testable.
 4. **`failsafe` — SAFETY-CRITICAL.** If **no valid CRSF frame for T ms** (start at 500 ms) **OR** the RX failsafe flag is set → force outputs safe: **throttle = neutral, steering = center, DRS = closed.** Latch until the link returns *and* a re-arm condition is met. Pure state machine over (linkUp, lastFrameMicros, now) → safe/active. **Test this before any feature.**
-5. **`outputs` — servo/ESC PWM.** LEDC-based 50 Hz generation. Steering (~500–2500 µs, configurable endpoints + trim), ESC throttle (1000–2000 µs, neutral 1500, **boot arm sequence**: hold neutral N ms before accepting throttle), DRS (two positions), optional pan/tilt. **Put the actual `ledcWrite` behind an interface** so logic tests use a mock and assert the commanded µs.
+5. **`outputs` — servo/ESC PWM.** LEDC-based 50 Hz generation. Steering (~500–2500 µs, configurable endpoints + trim), ESC throttle (1000–2000 µs, neutral 1500, **boot arm sequence**: hold neutral N ms before accepting throttle), DRS (two positions), pan/tilt (camera gimbal — implemented, driven by CRSF ch9/ch10). **Put the actual `ledcWrite` behind an interface** so logic tests use a mock and assert the commanded µs.
 6. **`telemetry` — battery + wheel speed.** Battery: read ADC1 (27 k/10 k divider, 11 dB atten), apply a calibration factor (I'll trim it with a multimeter) → volts. Wheel speed: count Hall rising edges in an ISR; convert pulses → RPM/ground-speed using `magnetsPerRev` (start = 1) and wheel circumference. Pure conversion functions; the ADC read + ISR are the only hardware bits.
 7. **`link2` — UART to ESP32 #2.** A small **framed message** (start byte + payload + checksum) carrying: `throttlePercent`, `braking` (bool), `reverse` (bool), `rpm`/`speed`, `gear`, `drsOpen`, `armed`, `failsafe`. Define + document the frame; board #2 (TheDIYGuy999) consumes it to drive engine sound + WS2812 brake/indicator lights. Encode/decode must unit-test.
 8. **`main.cpp` — wiring + loop.** Non-blocking. Parse CRSF as bytes arrive; run failsafe + outputs at a fixed cadence (≥50 Hz). **No `delay()` in the control path.**
