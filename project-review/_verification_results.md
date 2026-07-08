@@ -56,3 +56,32 @@ This table is the authoritative backbone for `10_risk_register.md`. `R##` IDs ar
 - **Everything else confirmed.** No new findings surfaced during verification.
 - **Post-verification High count = 4** (R01–R04): two are pure-software fixable now (R02, R03),
   one is software/expectations (R01), one is hardware-gated (R04).
+
+---
+
+## A1.6 closure — Wokwi Stage-2 sim executed (2026-07-08, owner-run)
+
+**Verdict: PASS-with-note.** The control-fw Wokwi GUI simulation (env `esp32dev_sim`,
+`wokwi.toml`/`diagram.json`, VS Code extension) was run per plan item A1.6 / SIMULATION.md.
+Owner-reported serial evidence, judged against the pre-agreed criteria:
+
+| Criterion | Result |
+|---|---|
+| CRSF 420000-baud loopback decodes | ✅ `failsafe=0` reached in `DISARMED_STEERING` |
+| Control loop running through the script | ✅ all phase markers + `[state]` lines progressed |
+| Reaches DRIVING active state | ✅ `failsafe=0 armed=1`, nonzero throttle, gear changes |
+| Failsafe only in outage phases | ✅ `TIMEOUT_OUTAGE` and `HOLD_POSITION_FAILSAFE` both dropped to `failsafe=1 armed=0` |
+| ArmGate honored | ✅ `ARM_BLOCKED` held `armed=0 thr=0`; `ARM_NEUTRAL` armed |
+| No reset/panic | ✅ (inferred: boot banner once, second cycle started cleanly) |
+| Build + tree clean | ✅ `pio run -e esp32dev_sim` succeeded; `git status` clean before/after |
+
+**Note (kept open):** the Wokwi battery pot/ADC preset behaved oddly at boot — the battery
+ADC path is **not** considered validated by this run and stays a hardware item (plan B/C:
+ADC calibration + divider check).
+
+**Scope statement:** A1.6 closes the Wokwi *software-simulation* gap (R16's cheap-80% carve-out:
+the 420 k loopback + main-loop orchestration + failsafe/arm sequencing demonstrably run
+end-to-end). It does **not** prove real ADC, PWM timing on silicon, ESC behavior, Hall ISR,
+I2S, WS2812, or any hardware timing — R04, R08–R15, R18, R20 remain bench-gated exactly as
+planned. With A1.6 done, **all Phase-A software items (A1.1–A1.6) are complete**; remaining
+Phase A work is the A2 multimeter checklist when parts arrive.

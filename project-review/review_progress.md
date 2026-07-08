@@ -21,8 +21,12 @@ missing, and where duplication exists — so the review can resume without redoi
   pull-down after scoping the boot float), R08–R15 (pin continuity, ESC arm/mode, steering
   endpoints, HAL/I2S/WS2812 bring-up, brownout, CRSF-relay CG3, COM-port CG2, video codec CG1),
   R18 (Hall EMI), R20 (WS2812 level), and CG5 (real link-drop → HUD LINK LOST). R21/R22 = no fix.
-- **The Wokwi GUI sim remains an owner/manual pre-power step** (plan A1.6) — no headless runner
-  in this environment; run it once to DRIVING/failsafe=0 in the VS Code Wokwi extension.
+- **The Wokwi GUI sim (plan A1.6) — ✅ DONE 2026-07-08, owner-run: PASS-with-note.** Reached
+  DRIVING with `failsafe=0 armed=1`, both failsafe paths (timeout + hold-position LQ=0) dropped
+  correctly, ArmGate held, clean second cycle. Evidence + scope statement recorded in
+  `_verification_results.md` ("A1.6 closure"). Note: the Wokwi battery pot/ADC preset behaved
+  oddly at boot — battery ADC stays a bench item. **All Phase-A software items (A1.1–A1.6) are
+  now complete**; remaining Phase A = the A2 multimeter checklist when parts arrive.
 
 
 
