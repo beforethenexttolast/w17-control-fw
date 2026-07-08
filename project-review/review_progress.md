@@ -4,7 +4,27 @@
 limit mid-way. It records exactly what was investigated, what was verified, what is
 missing, and where duplication exists — so the review can resume without redoing work.
 
-**Last updated:** 2026-07-07 — **AUDIT COMPLETE + BATCH F1 IMPLEMENTED (uncommitted).**
+**Last updated:** 2026-07-08 — **AUDIT COMPLETE; FIXES F1–F4 IMPLEMENTED, PUSHED, CI GREEN.**
+
+### Final checkpoint (2026-07-08)
+- **All four approved fix batches F1–F4 are committed and pushed** on `main` in every repo:
+  - w17-control-fw `f71776c` · w17-soundlight-fw `f175bce` · w17-ground-station `b6d00f6`
+    · learning-manual (w17-software-manual) `c2a2c71`. All trees clean, ahead 0 / behind 0.
+- **CI is green** across all repos after F1–F4, including the new gates: control-fw
+  native/esp32dev/esp32dev_sim/esp32dev_tuning/**link2-drift**; soundlight-fw
+  native/esp32dev/esp32dev_sim/**link2-drift**; ground-station vitest + **windows packaging smoke**.
+- **Docs synced:** learning manual updated for the F2 HUD link-state model (sim / LINK LOST /
+  TELEMETRY LOST), the F4 gear count (4) + drive-mode labels (TRAINING/RACE/ERS), and the F1
+  gift-build flash warning.
+- **Remaining audit work is HARDWARE VALIDATION ONLY** — no code. See
+  `11_hardware_validation_plan.md`. Bench-gated items still open: R04 (ESC/steering signal
+  pull-down after scoping the boot float), R08–R15 (pin continuity, ESC arm/mode, steering
+  endpoints, HAL/I2S/WS2812 bring-up, brownout, CRSF-relay CG3, COM-port CG2, video codec CG1),
+  R18 (Hall EMI), R20 (WS2812 level), and CG5 (real link-drop → HUD LINK LOST). R21/R22 = no fix.
+- **The Wokwi GUI sim remains an owner/manual pre-power step** (plan A1.6) — no headless runner
+  in this environment; run it once to DRIVING/failsafe=0 in the VS Code Wokwi extension.
+
+
 
 ### Implementation status
 - **F4 — COMMITTED** as ground-station `b6d00f6`, control-fw `8ce670a`, soundlight-fw `f175bce`,
