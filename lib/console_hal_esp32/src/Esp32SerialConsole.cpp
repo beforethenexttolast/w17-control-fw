@@ -1,8 +1,8 @@
-#include "settings_hal_esp32/Esp32SerialConsole.hpp"
+#include "console_hal_esp32/Esp32SerialConsole.hpp"
 
 #include <Arduino.h>
 
-namespace settings_hal_esp32 {
+namespace console_hal_esp32 {
 
 void Esp32SerialConsole::begin(unsigned long baud) { Serial.begin(baud); }
 
@@ -12,4 +12,4 @@ int Esp32SerialConsole::read() {
 
 void Esp32SerialConsole::write(const char* text) { Serial.print(text); }
 
-} // namespace settings_hal_esp32
+} // namespace console_hal_esp32

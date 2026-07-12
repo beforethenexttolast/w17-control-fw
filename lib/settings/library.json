@@ -1,12 +1,13 @@
 {
   "name": "settings",
   "version": "0.1.0",
-  "description": "Tunable settings aggregate + versioned CRC blob (de)serialization for NVS persistence. Pure logic.",
+  "description": "Tunable settings aggregate + versioned CRC blob (de)serialization + shared boot loader for NVS persistence. Pure logic.",
   "frameworks": "*",
   "platforms": "*",
   "dependencies": {
     "outputs": "*",
     "gearbox": "*",
-    "telemetry": "*"
+    "telemetry": "*",
+    "hal": "*"
   }
 }

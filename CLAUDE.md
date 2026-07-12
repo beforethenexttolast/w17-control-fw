@@ -39,7 +39,27 @@ hardware outputs**, and only from already-arbitrated inputs.
   link2 protocol** (`docs/link2_protocol.md`); the soundlight repo holds a copy — protocol
   changes happen here first.
 - `settings`, `console`, `hal`, and the `*_hal_esp32` impls — persisted config, serial
-  console, hardware seams. Pure logic files carry no Arduino/ESP32 headers.
+  console, hardware seams. Pure logic files carry no Arduino/ESP32 headers. The UART0 console
+  char-IO is its own `console_hal_esp32` lib, kept separate from the NVS store (`settings_hal_esp32`)
+  so the delivery build links the store without the console.
+
+## Delivery vs tuning builds (stable invariant)
+
+Three concerns are deliberately separated — do not recouple them:
+
+- **Loading** validated NVS tuning happens in **every** build. Delivery `esp32dev` loads the
+  saved blob at boot through the shared `settings::loadOrDefault` (guard chain: length → CRC →
+  version → `Settings::valid()`; any failure ⇒ complete compiled defaults, never a partial mix)
+  and applies it via the modules' `setConfig()`.
+- **The tuning console** (UART0 surface + command parser) is `-DW17_TUNING_CONSOLE`
+  (`[env:esp32dev_tuning]`) **only**. Delivery opens no UART0 console and links no console
+  parser (ELF-verified).
+- **Mutation** (`set`/`save`/`reset`) is reachable only through that console — delivery cannot
+  change, save, or reset tuning.
+
+So: **delivery `esp32dev` reads validated NVS but is console-free and read-only.** Keep NVS
+loading independent of `W17_TUNING_CONSOLE`. Canonical delivery runbook:
+`docs/D8_BENCH_BRINGUP.md` Phase 11a.
 
 ## Pin map — where the truth lives
 

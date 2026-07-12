@@ -1,7 +1,7 @@
 {
   "name": "settings_hal_esp32",
   "version": "0.1.0",
-  "description": "ESP32 NVS (Preferences) settings store + UART0 console char IO. Hardware-only; referenced only from src/main.cpp.",
+  "description": "ESP32 NVS (Preferences) settings store (read + write). Hardware-only; referenced only from src/main.cpp. Read-only load is used by every build incl. delivery esp32dev; save is reached only via the tuning console. The UART0 console char IO lives separately in console_hal_esp32.",
   "frameworks": "arduino",
   "platforms": "espressif32"
 }

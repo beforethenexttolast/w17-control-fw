@@ -1,0 +1,10 @@
+{
+  "name": "console_hal_esp32",
+  "version": "0.1.0",
+  "description": "ESP32 UART0 (USB serial) char IO for the bench tuning console. Hardware-only; referenced only from src/main.cpp under -DW17_TUNING_CONSOLE, so the delivery esp32dev build never compiles it (no UART0 console surface).",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "hal": "*"
+  }
+}

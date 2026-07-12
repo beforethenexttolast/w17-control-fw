@@ -154,8 +154,54 @@ Do not power the ESC until every box here passes.
 - [ ] Mount both boards, camera, battery centrally (mass balance). Re-confirm Phase 5 on the car.
 - [ ] Short low-gear shakedown, then open it up. Re-trim steering + gear feel over the console
       as needed and `save`.
-- [ ] **Before gifting:** reflash the control board with plain **`esp32dev`** (no console
-      surface) if you want the delivered firmware console-free — the NVS-saved tuning persists.
+- [ ] **Before gifting:** run the delivery hand-off below to move from the bench build to the
+      console-free delivery firmware **without losing the calibration.**
+
+### Phase 11a — Delivery hand-off (calibrate on tuning → ship on plain `esp32dev`)
+
+This is the **single canonical delivery procedure** — don't duplicate it elsewhere; other docs
+point here. It works because **both** the tuning and the delivery builds load the *same* NVS
+blob through the *same* validated loader (`settings::loadOrDefault`: length → CRC → version →
+`Settings::valid()`; any failure ⇒ complete compiled defaults). The tuning build additionally
+opens a UART0 console that can **change / save / reset** that blob; the delivery build only
+**reads** it and carries no console/command surface at all.
+
+1. **Flash the bench build:** `pio run -e esp32dev_tuning -t upload`.
+2. **Calibrate** (Phases 6/8): `set steer.center`/`steer.trim`, `set batt.ppt` (two-point ADC
+   cal), `set gear.<N>.max`/`gear.<N>.expo` — all only while **DISARMED**.
+3. **Save to NVS:** `save` (must print `saved`). `set` alone is RAM-only until this.
+4. **Read back the final values:** run `get steer.center`, `get steer.trim`, `get batt.ppt`,
+   and `get gear.<N>.max` / `get gear.<N>.expo` for each gear (or `status` for the summary).
+5. **Record those `get` values in the bring-up evidence** (A2 / Phase-B log) as the calibrated
+   set — this is the authoritative record of what the car shipped with.
+6. **Reboot the tuning build** (power-cycle) and confirm the banner prints
+   `[tune] loaded settings from flash` and `get` shows the same values — proves the blob
+   round-trips from NVS.
+7. **Flash plain delivery firmware:** `pio run -e esp32dev -t upload`. (No `-D` flags; no
+   console; UART0 stays closed.)
+8. **Verify the tuning is still live on the plain build** — the delivery firmware loaded the
+   NVS blob at boot: steering sits at the trimmed center, the battery reading matches the
+   calibrated `batt.ppt`, and the gears feel as tuned (low gear gentle, top gear full). If the
+   blob were missing/corrupt it would silently fall back to compiled defaults, so a match here
+   confirms the load path worked.
+9. **Re-run the safe-state checks (Phase 5) on the delivery firmware:** TX-off boot sits in
+   failsafe (no phantom "active"), arm gate holds throttle neutral until arm-ON + fresh
+   neutral, mid-run TX-off → failsafe, recovery needs a fresh neutral. These are unchanged by
+   tuning and must pass on the shipped build.
+
+**Reset to defaults / rollback (keep this on the delivery card):**
+
+- **Wipe the calibration back to compiled defaults:** flash `esp32dev_tuning`, `reset` (RAM
+  only) then `save` (writes the defaults blob), or clear the NVS namespace (`w17tune`) with an
+  erase. On the next boot the loader then falls back to compiled defaults on **any** build.
+  (Note: the delivery `esp32dev` build itself has **no** way to reset or save — that is
+  deliberate; rolling back tuning requires temporarily returning to `esp32dev_tuning`.)
+- **Return to the tuning environment at any time:** re-flash `esp32dev_tuning` — it reads the
+  same NVS blob, so the car comes back up on its saved calibration with the console re-enabled;
+  re-tune and `save`, then repeat steps 7–9 to ship again.
+- **Corrupt/undervalidated blob is self-healing:** if the stored blob ever fails the guard
+  chain, every build boots on complete compiled defaults rather than a partial/mixed config —
+  the car is never bricked or left half-tuned by a bad NVS state.
 
 ---
 

@@ -12,9 +12,9 @@ Full brief: `CLAUDE.md`. Bench bring-up: `docs/D8_BENCH_BRINGUP.md`. Pin map:
 
 | env | purpose |
 |---|---|
-| **`esp32dev`** | **the real / gift firmware** (default). No serial console, no sim feeder. |
-| `esp32dev_sim` | `esp32dev` + `-DW17_SIM_CRSF_FEEDER` — scripted CRSF self-feed for the Wokwi Stage-2 sim. |
-| `esp32dev_tuning` | `esp32dev` + `-DW17_TUNING_CONSOLE` — opens a UART0 serial console + NVS tuning, used for bench bring-up. |
+| **`esp32dev`** | **the real / gift firmware** (default). Loads validated NVS tuning at boot; no serial console, no sim feeder, cannot change tuning. |
+| `esp32dev_sim` | `esp32dev` + `-DW17_SIM_CRSF_FEEDER` — scripted CRSF self-feed for the Wokwi Stage-2 sim (also loads NVS tuning). |
+| `esp32dev_tuning` | `esp32dev` + `-DW17_TUNING_CONSOLE` — adds a UART0 serial console that can **change/save/reset** the same NVS tuning, used for bench bring-up. |
 | `native` | host Unity unit tests over the pure-logic libs (no hardware). |
 
 ## Build / test / flash
@@ -47,5 +47,9 @@ You may need the USB-UART **driver** for the DevKit's bridge chip: **CP210x** (S
 The delivered car must be flashed with **`esp32dev`**. `esp32dev_sim` compiles in a fake CRSF
 feeder (the car would ignore the real radio), and `esp32dev_tuning` opens a UART0 console
 surface that has no place on a gift. After any bench tuning on `esp32dev_tuning`, **reflash
-plain `esp32dev` before delivery** (D8 Phase 11). NVS-saved tuning persists in flash, but note
-the plain build currently runs compiled-in defaults (see `docs/ROADMAP.md` / the tuning notes).
+plain `esp32dev` before delivery** (D8 Phase 11). Plain `esp32dev` **loads the validated
+NVS-saved tuning at boot** (steering trim, battery calibration, gear feel) through the same
+guard chain the bench build uses — so the calibrated car keeps its tuning — but it exposes **no
+console** to change, save, or reset it. If the stored blob is missing or fails validation, it
+falls back to the complete compiled defaults. Full delivery / reset / rollback procedure:
+**`docs/D8_BENCH_BRINGUP.md` Phase 11** (the single canonical home for that runbook).

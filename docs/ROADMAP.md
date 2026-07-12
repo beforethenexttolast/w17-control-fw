@@ -234,6 +234,15 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
    the delivered gift firmware builds plain `esp32dev` with no UART0/console surface.**
    Verified: 141 native tests (22 new), esp32dev + esp32dev_tuning build clean, libs pure.
    D8 checklist: tune `steer.trim`/`batt.ppt`/gears over the console, then `save`.
+   **CF-1 remediation (2026-07-12):** the delivery `esp32dev` build now also **loads** the
+   validated NVS blob at boot (shared `settings::loadOrDefault`, same guard chain), so a
+   calibrated car keeps its tuning on the console-free gift firmware — previously only the
+   `_tuning` build loaded NVS and plain `esp32dev` ran compiled defaults. The three concepts
+   are now separated: *loading* validated NVS (every build) vs *the console* vs *mutation*
+   (`save`/`reset`/`set`) — the last two remain `-DW17_TUNING_CONSOLE`-only. The UART0 console
+   char-IO moved to its own `console_hal_esp32` lib so the delivery binary never compiles/links
+   it (ELF-verified: 0 console symbols/strings in `esp32dev`). Canonical delivery runbook:
+   `docs/D8_BENCH_BRINGUP.md` Phase 11a.
 
 ## B3. Phase 3 — post-Phase-2 extras
 

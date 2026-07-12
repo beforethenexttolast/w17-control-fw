@@ -27,11 +27,17 @@
 #include "SimCrsfFeeder.hpp" // Wokwi Stage-2 harness, absent from real firmware
 #endif
 
+// Persisted tuning is LOADED on every build (delivery included): read-only NVS
+// via the shared validated loader. The console that MUTATES it is tuning-only,
+// pulled in behind the flag (its UART0 char-IO lives in console_hal_esp32, so
+// the delivery build never compiles that translation unit).
+#include "settings/Settings.hpp"
+#include "settings/SettingsLoader.hpp"
+#include "settings_hal_esp32/Esp32NvsStore.hpp"
+
 #ifdef W17_TUNING_CONSOLE
 #include "console/ConsoleRunner.hpp"
-#include "settings/Settings.hpp"
-#include "settings_hal_esp32/Esp32NvsStore.hpp"
-#include "settings_hal_esp32/Esp32SerialConsole.hpp"
+#include "console_hal_esp32/Esp32SerialConsole.hpp"
 #endif
 
 namespace {
@@ -143,23 +149,30 @@ bool rcFrameSinceTick = false;
 // Boot-safe defaults: the first frame must never report a phantom Active.
 link2::ControlSnapshot controlSnapshot;
 
-#ifdef W17_TUNING_CONSOLE
-// Bench tuning console (opt-in build only; the delivered firmware ships
-// without this flag and opens no UART0). Compile-time net: the tunable
-// defaults must be valid, composed from every sub-config's own valid().
+// Persisted tuning is loaded on EVERY build, delivery included: the delivery
+// esp32dev firmware READS validated NVS at boot but exposes no console to change
+// it. Compile-time net: the tunable defaults must be valid, composed from every
+// sub-config's own valid().
 static_assert(settings::kDefaults.valid(), "default tunable Settings are invalid");
-settings_hal_esp32::Esp32NvsStore nvsStore;
-settings_hal_esp32::Esp32SerialConsole serialConsole;
-console::ConsoleRunner consoleRunner(serialConsole, nvsStore);
+settings_hal_esp32::Esp32NvsStore nvsStore; // read-only load here; save only via the console
 
-// Push the runtime Settings into the live modules (pure config-copies; no
-// state reset -- ESC arm anchor + gearbox current gear are preserved). ESC
-// endpoints, failsafe, channel map are deliberately NOT tunable.
-void applyTuning() {
-    steering.setConfig(consoleRunner.settings().steering);
-    virtualGearbox.setConfig(consoleRunner.settings().gearbox);
-    batteryMonitor.setConfig(consoleRunner.settings().battery);
+// Copy a validated Settings object into the live modules (pure config-copies;
+// no state reset -- ESC arm anchor + gearbox current gear are preserved). ESC
+// endpoints, failsafe, channel map are deliberately NOT tunable. The argument is
+// always a whole, validated object (loader output or the console's RAM copy),
+// never a partial merge.
+void applySettings(const settings::Settings& s) {
+    steering.setConfig(s.steering);
+    virtualGearbox.setConfig(s.gearbox);
+    batteryMonitor.setConfig(s.battery);
 }
+
+#ifdef W17_TUNING_CONSOLE
+// Bench tuning console (opt-in build only; the delivered firmware ships without
+// this flag, opens no UART0, and carries no command surface). It shares the one
+// nvsStore above and loads through the same validated loader as delivery.
+console_hal_esp32::Esp32SerialConsole serialConsole;
+console::ConsoleRunner consoleRunner(serialConsole, nvsStore);
 #endif
 
 } // namespace
@@ -192,12 +205,21 @@ void setup() {
     batteryAdc.begin();
     hallSensor.begin();
 
+    // Load persisted tuning through the shared validated loader (guard chain:
+    // length -> CRC -> version -> Settings::valid(); ANY failure -> complete
+    // defaults) and push it into the live modules. This runs in EVERY build,
+    // including the delivery firmware -- delivery READS validated NVS but has no
+    // console to change it. Ordering: after the actuators + sensors are in their
+    // safe boot state, before the control loop starts.
 #ifdef W17_TUNING_CONSOLE
-    // Load persisted tuning (guard chain -> defaults on any failure) and push
-    // it into the live modules. UART0 is opened ONLY in this build.
+    // Tuning build additionally opens UART0 and the console; it loads through the
+    // same loader into the console's RAM Settings so get/set/save operate on the
+    // applied values.
     serialConsole.begin(115200);
     consoleRunner.loadAtBoot();
-    applyTuning();
+    applySettings(consoleRunner.settings());
+#else
+    applySettings(settings::loadOrDefault(nvsStore).settings);
 #endif
 }
 
@@ -227,7 +249,7 @@ void loop() {
     // line per pass. Mutations are gated on DISARMED inside the console; a
     // change is applied to the live modules immediately (RAM-only until save).
     if (consoleRunner.poll(armGate.isArmed())) {
-        applyTuning();
+        applySettings(consoleRunner.settings());
     }
 #endif
 

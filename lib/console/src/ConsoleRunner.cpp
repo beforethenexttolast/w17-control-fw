@@ -1,18 +1,16 @@
 #include "console/ConsoleRunner.hpp"
 
+#include "settings/SettingsLoader.hpp"
+
 namespace console {
 
 void ConsoleRunner::loadAtBoot() {
-    uint8_t buf[settings::kBlobLen];
-    size_t len = 0;
-    settings::Settings loaded;
-    if (store_.load(buf, sizeof(buf), len) && settings::deserialize(buf, len, loaded)) {
-        settings_ = loaded;
-        io_.write("[tune] loaded settings from flash\r\n");
-    } else {
-        settings_ = settings::kDefaults;
-        io_.write("[tune] using defaults (no valid saved settings)\r\n");
-    }
+    // Route through the SAME shared loader the delivery firmware uses, so both
+    // boots run one identical guard chain (length -> CRC -> version -> valid()).
+    const settings::LoadResult r = settings::loadOrDefault(store_);
+    settings_ = r.settings;
+    io_.write(r.loadedFromStore() ? "[tune] loaded settings from flash\r\n"
+                                  : "[tune] using defaults (no valid saved settings)\r\n");
 }
 
 bool ConsoleRunner::poll(bool armed) {
@@ -51,11 +49,11 @@ void ConsoleRunner::runLine(bool armed, bool& changedOut) {
         return;
     }
     if (r.loadRequested) {
-        uint8_t buf[settings::kBlobLen];
-        size_t len = 0;
-        settings::Settings loaded;
-        if (store_.load(buf, sizeof(buf), len) && settings::deserialize(buf, len, loaded)) {
-            settings_ = loaded;
+        // Same shared guard chain as boot; on any failure keep the current RAM
+        // Settings (do NOT clobber them with defaults on a bad reload).
+        const settings::LoadResult lr = settings::loadOrDefault(store_);
+        if (lr.loadedFromStore()) {
+            settings_ = lr.settings;
             changedOut = true;
             io_.write("loaded\r\n");
         } else {
