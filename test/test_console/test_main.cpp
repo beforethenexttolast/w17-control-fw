@@ -522,6 +522,193 @@ void test_r3_semantic_validation_still_applies() {
     TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
 }
 
+// --- R4: gear-index parsing hardening (overflow-safe, bounded) ---
+//
+// The gear-index parser must be deterministic and overflow-safe for every
+// input. Valid indexes are 1..numGears; anything else is rejected without ever
+// signed-overflowing or wrapping a huge/long index into a valid gear number.
+// All proofs drive the production Console::handleLine / ConsoleRunner paths and
+// never reimplement the parser. numGears defaults to 4, kMaxGears is 6.
+
+// A gear index the parser read as a gear key but that is outside 1..numGears.
+static bool isGearRangeReject(const Result& r) {
+    return !r.settingsChanged && std::strstr(r.text, "gear index out of range") != nullptr;
+}
+// A token the parser did not accept as a gear key at all (bad grammar) falls
+// through to the generic "unknown key" response.
+static bool isUnknownKey(const Result& r) {
+    return !r.settingsChanged && std::strstr(r.text, "unknown") != nullptr;
+}
+
+// (1) Gear index 1 is accepted (valid set and matching get).
+void test_r4_gear_index_one_accepted() {
+    Console c;
+    Settings s = kDefaults;
+    Result set = c.handleLine("set gear.1.max 350", s, false);
+    TEST_ASSERT_TRUE(set.settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(350, s.gearbox.gears[0].maxOutput);
+    TEST_ASSERT_TRUE(std::strstr(c.handleLine("get gear.1.max", s, false).text,
+                                 "gear.1.max=350") != nullptr);
+}
+
+// (2) The highest valid gear index (== numGears, here 4) is accepted.
+void test_r4_gear_highest_valid_index_accepted() {
+    Console c;
+    Settings s = kDefaults; // numGears=4, g4.max default 1000
+    TEST_ASSERT_TRUE(std::strstr(c.handleLine("get gear.4.max", s, false).text,
+                                 "gear.4.max=1000") != nullptr);
+    Result set = c.handleLine("set gear.4.max 950", s, false); // >= g3(800), valid
+    TEST_ASSERT_TRUE(set.settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(950, s.gearbox.gears[3].maxOutput);
+}
+
+// (3) Gear index 0 is rejected (leading-zero / zero index is not a gear key).
+void test_r4_gear_index_zero_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.0.max 500", s, false)));
+    // Leading zero on an otherwise-valid index is likewise not accepted.
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.01.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (4) One above the highest valid gear (5 when numGears=4) is out of range.
+void test_r4_gear_index_one_above_highest_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isGearRangeReject(c.handleLine("set gear.5.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (5) A negative index is rejected (sign is not part of the grammar).
+void test_r4_gear_index_negative_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.-1.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (6) An explicit plus sign is rejected -- the grammar does not permit it.
+void test_r4_gear_index_plus_sign_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.+1.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (7) A missing index is rejected.
+void test_r4_gear_index_missing_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear..max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (8) A non-digit index is rejected.
+void test_r4_gear_index_nondigit_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.x.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (9) A mixed digit/text index is rejected (a non-digit ends the number before
+// the required '.').
+void test_r4_gear_index_mixed_digit_text_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.1x.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (10) A very long digit string is rejected deterministically (out of range,
+// no overflow, no wrap).
+void test_r4_gear_index_very_long_digits_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    Result r = c.handleLine("set gear.99999999999999999999999999.max 500", s, false);
+    TEST_ASSERT_TRUE(isGearRangeReject(r));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (11) A value near INT_MAX is rejected safely.
+void test_r4_gear_index_near_intmax_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isGearRangeReject(c.handleLine("set gear.2147483647.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (12) A value above INT_MAX is rejected safely.
+void test_r4_gear_index_above_intmax_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isGearRangeReject(c.handleLine("set gear.9999999999.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (13) A huge value that would wrap to a valid gear (2^32 + 1 == 1 under 32-bit
+// wrap) is still rejected -- the saturating parser never lets it become 1.
+void test_r4_gear_index_wrap_candidate_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isGearRangeReject(c.handleLine("set gear.4294967297.max 500", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (14) A rejected gear-index command leaves the COMPLETE Settings object
+// unchanged, from a non-default valid starting state.
+void test_r4_rejected_gear_index_leaves_whole_settings_unchanged() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set gear.1.max 350", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set steer.trim 50", s, false).settingsChanged);
+    const Settings before = s;
+    TEST_ASSERT_TRUE(isGearRangeReject(c.handleLine("set gear.99999999999.max 999", s, false)));
+    TEST_ASSERT_TRUE(isUnknownKey(c.handleLine("set gear.0.expo 10", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(before, s));
+}
+
+// (15) A rejected gear-index command cannot affect a later save: the prior
+// valid value is what a subsequent save persists. Production runner + store.
+void test_r4_rejected_gear_index_cannot_be_saved() {
+    test_mocks::MockCharIO io;
+    test_mocks::MockSettingsStore store;
+    ConsoleRunner runner(io, store);
+    runner.loadAtBoot();
+
+    io.feed("set gear.1.max 350\nset gear.99999999999.max 999\nsave\n");
+    runner.poll(/*armed=*/false);
+    TEST_ASSERT_EQUAL_INT16(350, runner.settings().gearbox.gears[0].maxOutput);
+    TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
+
+    Settings back;
+    TEST_ASSERT_TRUE(settings::deserialize(store.stored, store.storedLen, back));
+    TEST_ASSERT_EQUAL_INT16(350, back.gearbox.gears[0].maxOutput);
+    // The rejected huge-index command wrote nothing anywhere.
+    TEST_ASSERT_EQUAL_INT16(kDefaults.gearbox.gears[3].maxOutput, back.gearbox.gears[3].maxOutput);
+}
+
+// (16) Valid gear.<N>.max set/get behavior remains correct.
+void test_r4_valid_gear_max_behavior() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set gear.2.max 700", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(700, s.gearbox.gears[1].maxOutput);
+    TEST_ASSERT_TRUE(std::strstr(c.handleLine("get gear.2.max", s, false).text,
+                                 "gear.2.max=700") != nullptr);
+}
+
+// (17) Valid gear.<N>.expo set/get behavior remains correct.
+void test_r4_valid_gear_expo_behavior() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set gear.3.expo 40", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(40, s.gearbox.gears[2].expoPercent);
+    TEST_ASSERT_TRUE(std::strstr(c.handleLine("get gear.3.expo", s, false).text,
+                                 "gear.3.expo=40") != nullptr);
+}
+
 // --- ConsoleRunner (with mocks) ---
 
 void test_runner_set_then_save_persists() {
@@ -658,6 +845,23 @@ int main(int, char**) {
     RUN_TEST(test_r3_rejected_leaves_whole_settings_unchanged);
     RUN_TEST(test_r3_rejected_value_cannot_be_saved);
     RUN_TEST(test_r3_semantic_validation_still_applies);
+    RUN_TEST(test_r4_gear_index_one_accepted);
+    RUN_TEST(test_r4_gear_highest_valid_index_accepted);
+    RUN_TEST(test_r4_gear_index_zero_rejected);
+    RUN_TEST(test_r4_gear_index_one_above_highest_rejected);
+    RUN_TEST(test_r4_gear_index_negative_rejected);
+    RUN_TEST(test_r4_gear_index_plus_sign_rejected);
+    RUN_TEST(test_r4_gear_index_missing_rejected);
+    RUN_TEST(test_r4_gear_index_nondigit_rejected);
+    RUN_TEST(test_r4_gear_index_mixed_digit_text_rejected);
+    RUN_TEST(test_r4_gear_index_very_long_digits_rejected);
+    RUN_TEST(test_r4_gear_index_near_intmax_rejected);
+    RUN_TEST(test_r4_gear_index_above_intmax_rejected);
+    RUN_TEST(test_r4_gear_index_wrap_candidate_rejected);
+    RUN_TEST(test_r4_rejected_gear_index_leaves_whole_settings_unchanged);
+    RUN_TEST(test_r4_rejected_gear_index_cannot_be_saved);
+    RUN_TEST(test_r4_valid_gear_max_behavior);
+    RUN_TEST(test_r4_valid_gear_expo_behavior);
     RUN_TEST(test_runner_set_then_save_persists);
     RUN_TEST(test_runner_armed_blocks_and_does_not_persist);
     RUN_TEST(test_runner_overlong_line_discarded);

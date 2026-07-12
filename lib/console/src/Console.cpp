@@ -72,14 +72,28 @@ bool parseInt(const char* start, const char* end, long& out) {
 
 // Parses "gear.<N>" prefix of a key token into a 1-based gear number; returns
 // 0 if the key isn't a gear key. `suffix` is set to point past "gear.N.".
+//
+// Only 1..numGears are ever meaningful and numGears never exceeds kMaxGears, so
+// the accumulator saturates one past that ceiling instead of parsing an
+// unbounded integer. This keeps `gear` far below INT_MAX for every input: an
+// arbitrarily long or huge index (e.g. "gear.99999999999.max") can neither
+// signed-overflow (undefined behavior) nor wrap into a valid gear number. It
+// stays a nonzero out-of-range value, so the caller still reports "gear index
+// out of range" rather than silently matching a real gear. Grammar is otherwise
+// unchanged: a leading '0', sign, empty, or non-digit index still returns 0.
 int parseGearIndex(const char* start, const char* end, const char** suffix) {
     const size_t n = static_cast<size_t>(end - start);
     if (n < 8 || std::strncmp(start, "gear.", 5) != 0) return 0; // "gear.N.x"
     const char* p = start + 5;
-    int gear = 0;
     if (p >= end || *p < '1' || *p > '9') return 0;
+    constexpr int kGearCeil = static_cast<int>(gearbox::GearboxConfig::kMaxGears) + 1;
+    int gear = 0;
     while (p < end && *p >= '0' && *p <= '9') {
-        gear = gear * 10 + (*p - '0');
+        // Once `gear` is past the ceiling it is already out of range; stop
+        // accumulating so the multiply/add can never exceed kGearCeil*10+9.
+        if (gear <= kGearCeil) {
+            gear = gear * 10 + (*p - '0');
+        }
         ++p;
     }
     if (p >= end || *p != '.') return 0;
