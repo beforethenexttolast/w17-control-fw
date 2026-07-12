@@ -33,12 +33,29 @@ void say(Result& r, const char* msg) {
     std::snprintf(r.text, kMaxOutput, "%s", msg);
 }
 
+// A representable value that fails Settings::valid() (a semantic/config-range
+// violation, e.g. a trim that pushes center past an endpoint).
 const char* const kRejectedMsg = "rejected: value out of range / would violate config invariants";
 
-// uint16 range check before narrowing: without it, "set steer.min 66036"
-// would wrap into a plausible in-range value and be silently accepted.
+// A value the parser read cleanly but that does not fit the destination field's
+// integer type. Distinct wording from kRejectedMsg so the operator can tell a
+// type-range problem apart from a config-invariant one; both start "rejected:"
+// so no wrapped value is ever answered with "ok".
+const char* const kUnrepresentableMsg =
+    "rejected: value not representable for this setting (out of type range)";
+
+// Destination-type range checks run BEFORE narrowing. Without them a value like
+// "set steer.center 67036" would wrap through a bare cast into a plausible
+// in-range value (1500) and be silently accepted. These only gate the integer
+// type of the field; the config-range/semantic rules stay in Settings::valid().
 bool fitsU16(long v) {
     return v >= 0 && v <= 0xFFFF;
+}
+bool fitsI16(long v) {
+    return v >= -32768 && v <= 32767;
+}
+bool fitsU8(long v) {
+    return v >= 0 && v <= 0xFF;
 }
 
 // Parses a signed integer token; returns false if it isn't a clean number.
@@ -167,7 +184,7 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
         matched = true;
         if (isSet) {
             if (!fitsU16(v)) {
-                say(r, kRejectedMsg);
+                say(r, kUnrepresentableMsg);
                 return r;
             }
             next.steering.minMicros = static_cast<uint16_t>(v);
@@ -176,23 +193,38 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
         matched = true;
         if (isSet) {
             if (!fitsU16(v)) {
-                say(r, kRejectedMsg);
+                say(r, kUnrepresentableMsg);
                 return r;
             }
             next.steering.maxMicros = static_cast<uint16_t>(v);
         } else std::snprintf(r.text, kMaxOutput, "steer.max=%u", s.steering.maxMicros);
     } else if (tokEq(k, ke, "steer.center")) {
         matched = true;
-        if (isSet) next.steering.centerMicros = static_cast<uint16_t>(v);
-        else std::snprintf(r.text, kMaxOutput, "steer.center=%u", s.steering.centerMicros);
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.steering.centerMicros = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "steer.center=%u", s.steering.centerMicros);
     } else if (tokEq(k, ke, "steer.trim")) {
         matched = true;
-        if (isSet) next.steering.trimMicros = static_cast<int16_t>(v);
-        else std::snprintf(r.text, kMaxOutput, "steer.trim=%d", s.steering.trimMicros);
+        if (isSet) {
+            if (!fitsI16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.steering.trimMicros = static_cast<int16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "steer.trim=%d", s.steering.trimMicros);
     } else if (tokEq(k, ke, "batt.ppt")) {
         matched = true;
-        if (isSet) next.battery.calibrationPpt = static_cast<uint16_t>(v);
-        else std::snprintf(r.text, kMaxOutput, "batt.ppt=%u", s.battery.calibrationPpt);
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.battery.calibrationPpt = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "batt.ppt=%u", s.battery.calibrationPpt);
     } else {
         const char* suffix = nullptr;
         const int gear = parseGearIndex(k, ke, &suffix);
@@ -200,14 +232,24 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
             const int idx = gear - 1;
             if (tokEq(suffix, ke, "max")) {
                 matched = true;
-                if (isSet) next.gearbox.gears[idx].maxOutput = static_cast<int16_t>(v);
-                else std::snprintf(r.text, kMaxOutput, "gear.%d.max=%d", gear,
-                                   s.gearbox.gears[idx].maxOutput);
+                if (isSet) {
+                    if (!fitsI16(v)) {
+                        say(r, kUnrepresentableMsg);
+                        return r;
+                    }
+                    next.gearbox.gears[idx].maxOutput = static_cast<int16_t>(v);
+                } else std::snprintf(r.text, kMaxOutput, "gear.%d.max=%d", gear,
+                                     s.gearbox.gears[idx].maxOutput);
             } else if (tokEq(suffix, ke, "expo")) {
                 matched = true;
-                if (isSet) next.gearbox.gears[idx].expoPercent = static_cast<uint8_t>(v);
-                else std::snprintf(r.text, kMaxOutput, "gear.%d.expo=%u", gear,
-                                   s.gearbox.gears[idx].expoPercent);
+                if (isSet) {
+                    if (!fitsU8(v)) {
+                        say(r, kUnrepresentableMsg);
+                        return r;
+                    }
+                    next.gearbox.gears[idx].expoPercent = static_cast<uint8_t>(v);
+                } else std::snprintf(r.text, kMaxOutput, "gear.%d.expo=%u", gear,
+                                     s.gearbox.gears[idx].expoPercent);
             }
         } else if (gear != 0) {
             say(r, "gear index out of range");

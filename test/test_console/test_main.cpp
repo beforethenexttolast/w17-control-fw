@@ -358,6 +358,170 @@ void test_runner_endpoints_survive_save_and_load() {
     TEST_ASSERT_EQUAL_UINT16(1900, runner2.settings().steering.maxMicros);
 }
 
+// --- R3: numeric parsing hardening (representability before narrowing) ---
+//
+// Every setting key parses into a wide `long` and must prove the value fits its
+// destination integer type BEFORE the narrowing cast, so a large or negative
+// value can never wrap into a different, accepted value. All proofs below drive
+// the production Console path; none reimplement parsing or validation.
+//
+// Two distinct rejection categories are asserted:
+//   - unrepresentable (out of the field's integer type) -> msg has "representable"
+//   - representable but violates Settings::valid() -> msg has "invariants"/"range"
+// Malformed tokens stay a "usage" parse error (never "rejected").
+
+static bool isUnrepresentable(const Result& r) {
+    return !r.settingsChanged && std::strstr(r.text, "representable") != nullptr;
+}
+static bool isInvariantReject(const Result& r) {
+    return !r.settingsChanged && std::strstr(r.text, "invariants") != nullptr;
+}
+static bool isUsageError(const Result& r) {
+    return !r.settingsChanged && std::strstr(r.text, "usage") != nullptr;
+}
+
+// (1) Normal valid values remain accepted for every affected key.
+void test_r3_valid_values_accepted() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set steer.center 1450", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT16(1450, s.steering.centerMicros);
+    TEST_ASSERT_TRUE(c.handleLine("set steer.trim 40", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(40, s.steering.trimMicros);
+    TEST_ASSERT_TRUE(c.handleLine("set batt.ppt 1050", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT16(1050, s.battery.calibrationPpt);
+    TEST_ASSERT_TRUE(c.handleLine("set gear.1.max 350", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(350, s.gearbox.gears[0].maxOutput);
+    TEST_ASSERT_TRUE(c.handleLine("set gear.1.expo 25", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(25, s.gearbox.gears[0].expoPercent);
+}
+
+// (2,3,10) Type boundary handling for gear.expo (uint8, valid 0..100):
+// - 255 (type max) is representable -> rejected by valid() as an INVARIANT
+//   violation (proves it reaches valid() rather than wrapping);
+// - 256 (one past type max) -> rejected as UNREPRESENTABLE.
+// This is the cleanest per-key split of the two categories.
+void test_r3_expo_type_boundary_vs_invariant() {
+    Console c;
+    Settings s = kDefaults;
+    Result atMax = c.handleLine("set gear.1.expo 255", s, false);
+    TEST_ASSERT_TRUE(isInvariantReject(atMax)); // representable, but >100
+    Result pastMax = c.handleLine("set gear.1.expo 256", s, false);
+    TEST_ASSERT_TRUE(isUnrepresentable(pastMax)); // out of uint8
+    TEST_ASSERT_EQUAL_UINT8(kDefaults.gearbox.gears[0].expoPercent, s.gearbox.gears[0].expoPercent);
+}
+
+// (2,3) int16 min/max boundaries for steer.trim: 32767/-32768 are representable
+// (rejected by valid() only), one past each is unrepresentable.
+void test_r3_trim_int16_boundaries() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isInvariantReject(c.handleLine("set steer.trim 32767", s, false)));
+    TEST_ASSERT_TRUE(isInvariantReject(c.handleLine("set steer.trim -32768", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.trim 32768", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.trim -32769", s, false)));
+    TEST_ASSERT_EQUAL_INT16(0, s.steering.trimMicros);
+}
+
+// (2,3) uint16 boundaries for batt.ppt / steer.center: 65535 representable,
+// 65536 unrepresentable.
+void test_r3_uint16_boundaries() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isInvariantReject(c.handleLine("set batt.ppt 65535", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set batt.ppt 65536", s, false)));
+    TEST_ASSERT_TRUE(isInvariantReject(c.handleLine("set steer.center 65535", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.center 65536", s, false)));
+    TEST_ASSERT_EQUAL_UINT16(1000, s.battery.calibrationPpt);
+    TEST_ASSERT_EQUAL_UINT16(1500, s.steering.centerMicros);
+}
+
+// (4) Negative values are rejected for unsigned destinations.
+void test_r3_negative_rejected_for_unsigned() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.center -1", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set batt.ppt -1", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gear.1.expo -1", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (5,6) The documented wraparound / underflow examples are all rejected as
+// unrepresentable -- never silently accepted as the value they would wrap to.
+void test_r3_documented_wraparound_examples_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    const Settings before = s;
+    // Positive wraparound (each would wrap to a plausible in-range value).
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.center 67036", s, false))); // ->1500
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.trim 65586", s, false)));    // ->50
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set batt.ppt 66536", s, false)));      // ->1000
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gear.4.max 66536", s, false)));    // ->1000
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gear.1.expo 306", s, false)));     // ->50
+    // Large negative underflow.
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set steer.trim -65586", s, false)));   // ->-50
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gear.4.max -65036", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(before, s)); // (8) whole object unchanged
+}
+
+// (7) Malformed tokens remain a usage/parse error, distinct from "rejected".
+void test_r3_malformed_tokens_are_usage_errors() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(isUsageError(c.handleLine("set steer.center abc", s, false)));
+    TEST_ASSERT_TRUE(isUsageError(c.handleLine("set steer.trim 12x", s, false)));
+    TEST_ASSERT_TRUE(isUsageError(c.handleLine("set batt.ppt 1.5", s, false)));
+    TEST_ASSERT_TRUE(isUsageError(c.handleLine("set gear.1.max 5-", s, false)));
+    TEST_ASSERT_TRUE(isUsageError(c.handleLine("set gear.1.expo", s, false))); // no value
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
+// (8) A rejected command leaves the COMPLETE Settings object unchanged, even
+// from a non-default valid starting state.
+void test_r3_rejected_leaves_whole_settings_unchanged() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set steer.min 1000", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set steer.trim 50", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set batt.ppt 1050", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set gear.1.max 350", s, false).settingsChanged);
+    const Settings before = s;
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set batt.ppt 66536", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gear.2.expo 999", s, false)));
+    TEST_ASSERT_TRUE(settingsEqual(before, s));
+}
+
+// (9) A rejected value cannot later be persisted: the prior valid value is what
+// a subsequent save writes to flash, not the wrapped value. Uses the production
+// ConsoleRunner + store path.
+void test_r3_rejected_value_cannot_be_saved() {
+    test_mocks::MockCharIO io;
+    test_mocks::MockSettingsStore store;
+    ConsoleRunner runner(io, store);
+    runner.loadAtBoot();
+
+    // Set a distinguishable valid value, then attempt a wrap (66536 -> would be
+    // 1000, the default -- distinct from 1050), then save.
+    io.feed("set batt.ppt 1050\nset batt.ppt 66536\nsave\n");
+    runner.poll(/*armed=*/false);
+    TEST_ASSERT_EQUAL_UINT16(1050, runner.settings().battery.calibrationPpt);
+    TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
+
+    Settings back;
+    TEST_ASSERT_TRUE(settings::deserialize(store.stored, store.storedLen, back));
+    TEST_ASSERT_EQUAL_UINT16(1050, back.battery.calibrationPpt); // not the wrapped 1000
+}
+
+// (10) Existing semantic validation still rejects representable-but-invalid
+// values (gear monotonicity), as an INVARIANT reject, not unrepresentable.
+void test_r3_semantic_validation_still_applies() {
+    Console c;
+    Settings s = kDefaults; // gears 400,600,800,1000
+    Result r = c.handleLine("set gear.2.max 300", s, false); // 300 < gear1(400)
+    TEST_ASSERT_TRUE(isInvariantReject(r));
+    TEST_ASSERT_TRUE(settingsEqual(kDefaults, s));
+}
+
 // --- ConsoleRunner (with mocks) ---
 
 void test_runner_set_then_save_persists() {
@@ -484,6 +648,16 @@ int main(int, char**) {
     RUN_TEST(test_get_and_status_report_endpoints);
     RUN_TEST(test_center_trim_commands_still_correct_with_narrowed_endpoints);
     RUN_TEST(test_runner_endpoints_survive_save_and_load);
+    RUN_TEST(test_r3_valid_values_accepted);
+    RUN_TEST(test_r3_expo_type_boundary_vs_invariant);
+    RUN_TEST(test_r3_trim_int16_boundaries);
+    RUN_TEST(test_r3_uint16_boundaries);
+    RUN_TEST(test_r3_negative_rejected_for_unsigned);
+    RUN_TEST(test_r3_documented_wraparound_examples_rejected);
+    RUN_TEST(test_r3_malformed_tokens_are_usage_errors);
+    RUN_TEST(test_r3_rejected_leaves_whole_settings_unchanged);
+    RUN_TEST(test_r3_rejected_value_cannot_be_saved);
+    RUN_TEST(test_r3_semantic_validation_still_applies);
     RUN_TEST(test_runner_set_then_save_persists);
     RUN_TEST(test_runner_armed_blocks_and_does_not_persist);
     RUN_TEST(test_runner_overlong_line_discarded);
