@@ -33,6 +33,14 @@ void say(Result& r, const char* msg) {
     std::snprintf(r.text, kMaxOutput, "%s", msg);
 }
 
+const char* const kRejectedMsg = "rejected: value out of range / would violate config invariants";
+
+// uint16 range check before narrowing: without it, "set steer.min 66036"
+// would wrap into a plausible in-range value and be silently accepted.
+bool fitsU16(long v) {
+    return v >= 0 && v <= 0xFFFF;
+}
+
 // Parses a signed integer token; returns false if it isn't a clean number.
 bool parseInt(const char* start, const char* end, long& out) {
     char buf[24];
@@ -81,7 +89,7 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
     if (tokEq(c0, c0e, "help")) {
         say(r,
             "commands: help | status | get <key> | set <key> <val> | save | load | reset\r\n"
-            "keys: steer.center steer.trim batt.ppt gear.<N>.max gear.<N>.expo\r\n"
+            "keys: steer.min steer.max steer.center steer.trim batt.ppt gear.<N>.max gear.<N>.expo\r\n"
             "note: set/save/load/reset only while DISARMED; channels are read-only");
         return r;
     }
@@ -155,7 +163,25 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
     settings::Settings next = s; // trial copy for set
     bool matched = false;
 
-    if (tokEq(k, ke, "steer.center")) {
+    if (tokEq(k, ke, "steer.min")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kRejectedMsg);
+                return r;
+            }
+            next.steering.minMicros = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "steer.min=%u", s.steering.minMicros);
+    } else if (tokEq(k, ke, "steer.max")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kRejectedMsg);
+                return r;
+            }
+            next.steering.maxMicros = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "steer.max=%u", s.steering.maxMicros);
+    } else if (tokEq(k, ke, "steer.center")) {
         matched = true;
         if (isSet) next.steering.centerMicros = static_cast<uint16_t>(v);
         else std::snprintf(r.text, kMaxOutput, "steer.center=%u", s.steering.centerMicros);
@@ -196,7 +222,7 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
 
     if (isSet) {
         if (!next.valid()) {
-            say(r, "rejected: value out of range / would violate config invariants");
+            say(r, kRejectedMsg);
             return r;
         }
         s = next;

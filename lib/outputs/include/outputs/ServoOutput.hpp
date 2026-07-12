@@ -6,18 +6,26 @@
 
 namespace outputs {
 
+// Absolute permitted servo pulse window: 500-2500 us, the standard hobby-servo
+// full-travel range (and the compiled defaults). Tuning may tighten endpoints
+// inside this window, never widen past it.
+inline constexpr uint16_t kServoPulseFloorMicros = 500;
+inline constexpr uint16_t kServoPulseCeilMicros = 2500;
+
 struct ServoConfig {
     uint16_t minMicros = 500;     // physical endpoint, configurable per servo
     uint16_t maxMicros = 2500;    // physical endpoint, configurable per servo
     uint16_t centerMicros = 1500; // center, before trim. CLAUDE.md section 1: steering center 1500us
     int16_t trimMicros = 0;       // signed trim offset added to center, operator-tunable on the bench
 
-    // Ordered endpoints with center inside, and the trimmed center still
-    // inside the endpoints (review finding A11: a trim that pushes
-    // center+trim past an endpoint would invert direction / peg the servo).
+    // Endpoints inside the absolute pulse window, ordered, with center inside,
+    // and the trimmed center still inside the endpoints (review finding A11: a
+    // trim that pushes center+trim past an endpoint would invert direction /
+    // peg the servo).
     constexpr bool valid() const {
         const int32_t trimmedCenter = static_cast<int32_t>(centerMicros) + trimMicros;
-        return minMicros < maxMicros && centerMicros > minMicros && centerMicros < maxMicros &&
+        return minMicros >= kServoPulseFloorMicros && maxMicros <= kServoPulseCeilMicros &&
+               minMicros < maxMicros && centerMicros > minMicros && centerMicros < maxMicros &&
                trimmedCenter > minMicros && trimmedCenter < maxMicros;
     }
 };

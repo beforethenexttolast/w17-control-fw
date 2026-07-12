@@ -6,7 +6,8 @@ for the next. The golden rule threads through all of it: **wheels off the ground
 power, until the failsafe + arm gate are proven live (Phase 5).**
 
 Firmware to flash for the bench: **`pio run -e esp32dev_tuning -t upload`** on the control board
-(adds the serial tuning console — `steer.trim`, `batt.ppt`, gear table, `save`). The delivered
+(adds the serial tuning console — `steer.min`/`steer.max` endpoints, `steer.center`/`steer.trim`,
+`batt.ppt`, gear table, `save`). The delivered
 gift firmware is plain **`esp32dev`** (no console). Sound/light board: `w17-soundlight-fw`
 `esp32dev`. Ground station: `w17-ground-station` (`npm run demo` until the camera is wired).
 
@@ -88,7 +89,18 @@ Do not power the ESC until every box here passes.
       neutral.
 - [ ] Trim toe/center over the console: `set steer.center <us>`, `set steer.trim <±us>`, then
       `save`. (The firmware rejects a trim that would push center past an endpoint — A11.)
-- [ ] Full left/right doesn't bind the linkage or stall the servo against the stops.
+- [ ] **Calibrate the travel endpoints** over the console: `set steer.min <us>` /
+      `set steer.max <us>`. Work **conservatively from center outward** — start well inside
+      (e.g. center ±200 µs), steer to full lock, and widen an endpoint in small steps only
+      while the linkage moves freely. **Stop at the first sign of mechanical binding or servo
+      stall/buzz against the stops** and back the endpoint off. The console rejects any
+      endpoint outside the absolute 500–2500 µs window, out of order with the other endpoint,
+      or that would exclude center (or center+trim) — a rejected `set` leaves everything
+      unchanged.
+- [ ] `save`, power-cycle, confirm `get steer.min` / `get steer.max` read back the calibrated
+      values, then re-check full left/right doesn't bind the linkage or stall the servo.
+      The final endpoint numbers are **hardware-calibration evidence for this specific car**
+      (record them in the bring-up log) — not values the software can prove safe.
 
 ## Phase 7 — ESC + motor (wheels OFF the ground)
 
@@ -167,10 +179,12 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
 **reads** it and carries no console/command surface at all.
 
 1. **Flash the bench build:** `pio run -e esp32dev_tuning -t upload`.
-2. **Calibrate** (Phases 6/8): `set steer.center`/`steer.trim`, `set batt.ppt` (two-point ADC
-   cal), `set gear.<N>.max`/`gear.<N>.expo` — all only while **DISARMED**.
+2. **Calibrate** (Phases 6/8): `set steer.min`/`steer.max` (travel endpoints),
+   `set steer.center`/`steer.trim`, `set batt.ppt` (two-point ADC cal),
+   `set gear.<N>.max`/`gear.<N>.expo` — all only while **DISARMED**.
 3. **Save to NVS:** `save` (must print `saved`). `set` alone is RAM-only until this.
-4. **Read back the final values:** run `get steer.center`, `get steer.trim`, `get batt.ppt`,
+4. **Read back the final values:** run `get steer.min`, `get steer.max`, `get steer.center`,
+   `get steer.trim`, `get batt.ppt`,
    and `get gear.<N>.max` / `get gear.<N>.expo` for each gear (or `status` for the summary).
 5. **Record those `get` values in the bring-up evidence** (A2 / Phase-B log) as the calibrated
    set — this is the authoritative record of what the car shipped with.
