@@ -2,6 +2,12 @@
 
 #include <cstdio>
 
+// Pinned ESP-IDF 4.4 Task Watchdog Timer (TWDT) C API (R5-a). Used DIRECTLY --
+// deliberately NOT via Arduino's enableLoopWDT()/feedLoopWDT() wrappers (see the
+// setup() and control-tick comments). This header also pulls in ESP_ERROR_CHECK
+// (via esp_err.h), the fail-fatal wrapper used on every TWDT call below.
+#include "esp_task_wdt.h"
+
 #include "channels/ArmGate.hpp"
 #include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
@@ -118,6 +124,35 @@ static_assert(kLink2Config.valid(), "link2: brake hysteresis thresholds inverted
 link2_hal_esp32::Esp32Link2Uart link2Uart(pinmap::kBoard2UartTxPin);
 link2::Link2Sender link2Sender(link2Uart, kLink2Config);
 
+// --- Control-loop Task Watchdog policy (remediation R5-a) --------------------
+// The pinned ESP-IDF 4.4 framework ALREADY initializes exactly one global TWDT
+// at boot: 5 s timeout, panic+reset enabled, core-0 idle subscribed, core-1 idle
+// NOT subscribed, Arduino loopTask NOT subscribed (sdkconfig CONFIG_ESP_TASK_WDT*
+// / CONFIG_ARDUINO_RUNNING_CORE=1). R5-a does NOT create a second watchdog; it
+// reconfigures that single global TWDT and subscribes this task (the loopTask).
+//
+// esp_task_wdt_init() UPDATES the existing global timeout in place (it does not
+// spawn a new instance), so lowering it to 2 s ALSO moves the already-subscribed
+// core-0 idle task from a 5 s to a 2 s deadline. That global side effect is
+// intentional and accepted for R5-a.
+//
+// 2 s is PROVISIONAL for the software implementation, pending Phase-B timing
+// validation. It is NOT a fixed "worst-case unsafe interval": the true bound is
+//   TWDT timeout + measured panic/reboot-to-safe-output interval,
+// and the second term is hardware-only (panic text prints before reboot, LEDC
+// may keep driving the previous duty during panic, and GPIO13/14 reset state +
+// real ESC signal-loss behavior are unmeasured). Deployment trust stays gated on
+// A2 / Phase B regardless of this value.
+constexpr uint32_t kControlTaskWatchdogTimeoutSeconds = 2;
+
+// The pinned API takes a WHOLE-second timeout. Bound it so a future typo can
+// neither disable protection (< 1 s rounds toward nonsense on this API) nor
+// silently relax it past the framework's previous 5 s shipped default.
+static_assert(kControlTaskWatchdogTimeoutSeconds >= 1,
+              "control TWDT timeout must be at least 1 whole second");
+static_assert(kControlTaskWatchdogTimeoutSeconds <= 5,
+              "control TWDT timeout must not exceed the framework's previous 5 s default");
+
 // Loop cadences (CLAUDE.md 2.8: fixed >=50Hz control, no delay()).
 constexpr uint32_t kControlPeriodMs = 20;         // 50 Hz: failsafe + outputs
 constexpr uint32_t kLink2PeriodMs = 50;           // 20 Hz: state frame to board #2
@@ -221,10 +256,61 @@ void setup() {
 #else
     applySettings(settings::loadOrDefault(nvsStore).settings);
 #endif
+
+    // --- Control-loop Task Watchdog subscription (R5-a) ----------------------
+    // MUST be the last statement in setup(): every potentially long boot step
+    // above (PWM attach + safe commands, UART init, sensor init, validated NVS
+    // load/apply, and the tuning console's boot load) has already completed, so
+    // the first watched control tick is never racing initialization.
+    //
+    // Reconfigure the framework's single global TWDT to the provisional 2 s /
+    // panic timeout, then subscribe THIS task -- the Arduino loopTask -- by
+    // passing nullptr (the pinned API reads that as "the currently running
+    // task"). esp_task_wdt_status(nullptr) then confirms the subscription took.
+    //
+    // We call the pinned ESP-IDF API directly and deliberately do NOT use
+    // Arduino's enableLoopWDT()/feedLoopWDT(): enableLoopWDT() sets the
+    // framework's loopTaskWDTEnabled flag, which makes the framework feed at the
+    // TOP of every loop() pass BEFORE application code runs. That would defeat
+    // this policy, whose whole point is that a feed proves a COMPLETE actuator-
+    // control iteration finished. loopTaskWDTEnabled therefore stays disabled.
+    //
+    // Every call is fail-fatal via ESP_ERROR_CHECK. An init/subscribe/confirm
+    // error means framework or configuration drift; continuing would ship a
+    // firmware that is falsely "protected" (unwatched but appearing watched),
+    // which is exactly the state this remediation exists to prevent. No retry
+    // loop -- a failure here is a build/config fault, not a transient condition.
+    ESP_ERROR_CHECK(esp_task_wdt_init(kControlTaskWatchdogTimeoutSeconds, true));
+    ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
+    ESP_ERROR_CHECK(esp_task_wdt_status(nullptr));
 }
 
 void loop() {
     const uint32_t nowMs = millis();
+
+#ifdef W17_SIM_WDT_STALL
+    // SIM-ONLY deliberate-stall fault injection to VALIDATE that the control-loop
+    // Task Watchdog actually fires (R5-a Wokwi test). This macro is intentionally
+    // NOT set in any checked-in PlatformIO environment (delivery, tuning, or sim);
+    // it is supplied only as an ad-hoc build flag for the watchdog validation run,
+    // so this whole block is absent from every normal binary. It adds NO runtime
+    // user-accessible command.
+    //
+    // After ~3 s of simulated runtime -- long enough for a normal boot plus many
+    // fed 50 Hz control ticks -- stop the loopTask forever, never reaching the
+    // feed above, so the 2 s TWDT must elapse and panic. The unique marker string
+    // below lets an ELF/strings scan prove this code is absent from normal builds.
+    static const volatile char kW17SimWdtStallMarker[] =
+        "W17_SIM_WDT_STALL_DELIBERATE_LOOPTASK_HANG";
+    if (nowMs >= 3000) {
+        Serial.println(const_cast<const char*>(kW17SimWdtStallMarker));
+        Serial.flush();
+        for (;;) {
+            // Busy-spin: never yield, never feed. Proves the subscribed loopTask
+            // (not an idle task) trips the Task Watchdog.
+        }
+    }
+#endif
 
 #ifdef W17_SIM_CRSF_FEEDER
     // Feed the scripted CRSF demo stream into Serial2 TX; the diagram loops
@@ -396,6 +482,26 @@ void loop() {
         // last position rather than snapping to center.
         panServo.setPosition(controls.pan);
         tiltServo.setPosition(controls.tilt);
+
+        // --- Control-loop Task Watchdog feed (R5-a) -------------------------
+        // The ONE and ONLY application feed, placed as the final statement of
+        // the 50 Hz control tick. Reaching this line proves a COMPLETE safety-
+        // critical iteration ran: CRSF drain (top of loop) -> failsafe update
+        // -> arm gate -> throttle/gear/ERS shaping -> steering -> ESC -> DRS ->
+        // pan -> tilt. Both the Safe and Active branches above command every
+        // actuator before control flow merges here, so either path feeds only
+        // after its outputs are written. Feeding here (not at the top of loop(),
+        // not in a between-tick pass, and not inside CRSF/telemetry/link2/console
+        // code) is what makes the watchdog a proof of loop liveness rather than
+        // of mere scheduler ticks.
+        //
+        // Fail-fatal: a failed reset means this task is unexpectedly no longer
+        // subscribed (drift) -- a falsely-protected loop must not keep running.
+        //
+        // This proves TASK-LEVEL completion ONLY. It does NOT detect silent LEDC
+        // failure, out-of-range pulse values, disconnected wires, or peripheral
+        // output corruption downstream of the commanded microseconds.
+        ESP_ERROR_CHECK(esp_task_wdt_reset());
     }
 
     // --- 20 Hz: vehicle-state frame to the sound/light board.
