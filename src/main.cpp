@@ -8,6 +8,13 @@
 // (via esp_err.h), the fail-fatal wrapper used on every TWDT call below.
 #include "esp_task_wdt.h"
 
+// Pinned ESP-IDF 4.4 reset-diagnostics primitives (R5-b): esp_reset_reason()
+// lives in esp_system.h, and RTC_NOINIT_ATTR (the .rtc_noinit placement used for
+// the retained session struct) lives in esp_attr.h. Both are read-only queries /
+// a section attribute -- neither writes NVS or flash.
+#include "esp_attr.h"
+#include "esp_system.h"
+
 #include "channels/ArmGate.hpp"
 #include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
@@ -24,6 +31,7 @@
 #include "outputs/EscOutput.hpp"
 #include "outputs/ServoOutput.hpp"
 #include "outputs_hal_esp32/Esp32LedcPwm.hpp"
+#include "reset_diag/ResetDiagnostics.hpp"
 #include "telemetry/BatteryMonitor.hpp"
 #include "telemetry/WheelSpeed.hpp"
 #include "telemetry_hal_esp32/Esp32BatteryAdc.hpp"
@@ -123,6 +131,70 @@ constexpr link2::Link2SenderConfig kLink2Config{};
 static_assert(kLink2Config.valid(), "link2: brake hysteresis thresholds inverted");
 link2_hal_esp32::Esp32Link2Uart link2Uart(pinmap::kBoard2UartTxPin);
 link2::Link2Sender link2Sender(link2Uart, kLink2Config);
+
+// --- Reset diagnostics (remediation R5-b) ------------------------------------
+// RTC-retained boot-session state. RTC_NOINIT_ATTR places this in the ESP32
+// .rtc_noinit segment: its bytes SURVIVE software / watchdog / deep-sleep resets
+// but are INDETERMINATE after a full power loss, so a power-cycle starts a brand
+// new session. C++ startup deliberately does NOT touch it (SessionState is a
+// plain aggregate declared with no initializer here on purpose), so a warm reset
+// sees the previous boot's values and reset_diag::isValid() decides whether to
+// trust them. This is NOT persistent storage: NO NVS and NO flash write occur,
+// so there is no flash-wear risk. Magic + inverted-magic + version validation is
+// required because uninitialized/corrupted RTC bytes must never be trusted, and
+// a brownout (which may corrupt RTC memory) is treated as a fresh session.
+RTC_NOINIT_ATTR reset_diag::SessionState g_rtcSessionState;
+
+// Pin the real esp_reset_reason_t values onto our portable RawResetReason so a
+// framework enum renumber breaks the BUILD instead of silently mis-classifying.
+// Values verified against Arduino-ESP32 2.0.17 / ESP-IDF 4.4.7 esp32-target
+// esp_system.h (UNKNOWN=0 POWERON=1 EXT=2 SW=3 PANIC=4 INT_WDT=5 TASK_WDT=6
+// WDT=7 DEEPSLEEP=8 BROWNOUT=9 SDIO=10).
+static_assert(static_cast<int>(ESP_RST_UNKNOWN) == static_cast<int>(reset_diag::RawResetReason::Unknown), "ESP_RST_UNKNOWN value drift");
+static_assert(static_cast<int>(ESP_RST_POWERON) == static_cast<int>(reset_diag::RawResetReason::PowerOn), "ESP_RST_POWERON value drift");
+static_assert(static_cast<int>(ESP_RST_EXT) == static_cast<int>(reset_diag::RawResetReason::Ext), "ESP_RST_EXT value drift");
+static_assert(static_cast<int>(ESP_RST_SW) == static_cast<int>(reset_diag::RawResetReason::Sw), "ESP_RST_SW value drift");
+static_assert(static_cast<int>(ESP_RST_PANIC) == static_cast<int>(reset_diag::RawResetReason::Panic), "ESP_RST_PANIC value drift");
+static_assert(static_cast<int>(ESP_RST_INT_WDT) == static_cast<int>(reset_diag::RawResetReason::IntWdt), "ESP_RST_INT_WDT value drift");
+static_assert(static_cast<int>(ESP_RST_TASK_WDT) == static_cast<int>(reset_diag::RawResetReason::TaskWdt), "ESP_RST_TASK_WDT value drift");
+static_assert(static_cast<int>(ESP_RST_WDT) == static_cast<int>(reset_diag::RawResetReason::Wdt), "ESP_RST_WDT value drift");
+static_assert(static_cast<int>(ESP_RST_DEEPSLEEP) == static_cast<int>(reset_diag::RawResetReason::DeepSleep), "ESP_RST_DEEPSLEEP value drift");
+static_assert(static_cast<int>(ESP_RST_BROWNOUT) == static_cast<int>(reset_diag::RawResetReason::Brownout), "ESP_RST_BROWNOUT value drift");
+static_assert(static_cast<int>(ESP_RST_SDIO) == static_cast<int>(reset_diag::RawResetReason::Sdio), "ESP_RST_SDIO value drift");
+
+// Thin ESP32 adapter: real esp_reset_reason_t -> portable RawResetReason. Every
+// pinned enum value is handled explicitly; a future/unmapped value falls to
+// Unknown (the classifier then labels it UNKNOWN rather than guessing).
+reset_diag::RawResetReason mapResetReason(esp_reset_reason_t r) {
+    switch (r) {
+        case ESP_RST_UNKNOWN:   return reset_diag::RawResetReason::Unknown;
+        case ESP_RST_POWERON:   return reset_diag::RawResetReason::PowerOn;
+        case ESP_RST_EXT:       return reset_diag::RawResetReason::Ext;
+        case ESP_RST_SW:        return reset_diag::RawResetReason::Sw;
+        case ESP_RST_PANIC:     return reset_diag::RawResetReason::Panic;
+        case ESP_RST_INT_WDT:   return reset_diag::RawResetReason::IntWdt;
+        case ESP_RST_TASK_WDT:  return reset_diag::RawResetReason::TaskWdt;
+        case ESP_RST_WDT:       return reset_diag::RawResetReason::Wdt;
+        case ESP_RST_DEEPSLEEP: return reset_diag::RawResetReason::DeepSleep;
+        case ESP_RST_BROWNOUT:  return reset_diag::RawResetReason::Brownout;
+        case ESP_RST_SDIO:      return reset_diag::RawResetReason::Sdio;
+    }
+    return reset_diag::RawResetReason::Unknown;
+}
+
+#if defined(W17_TUNING_CONSOLE) || defined(W17_SIM_CRSF_FEEDER)
+// Format the single concise boot line, e.g. "[boot] reset=TASK_WDT boots=3
+// retained=yes". retained=yes means the counter carried forward from a valid
+// prior session; retained=no means this boot started a fresh session (power-on,
+// brownout, or invalid retained state). Compiled ONLY in the tuning/sim builds;
+// delivery emits no diagnostic string.
+void formatBootLine(const reset_diag::BootReport& r, char* buf, size_t n) {
+    std::snprintf(buf, n, "[boot] reset=%s boots=%lu retained=%s",
+                  reset_diag::label(r.reason),
+                  static_cast<unsigned long>(r.bootCount),
+                  r.freshSession ? "no" : "yes");
+}
+#endif
 
 // --- Control-loop Task Watchdog policy (remediation R5-a) --------------------
 // The pinned ESP-IDF 4.4 framework ALREADY initializes exactly one global TWDT
@@ -230,9 +302,29 @@ void setup() {
     panServo.setPosition(0); // camera centered
     tiltServo.setPosition(0);
 
+    // --- R5-b reset diagnostics: capture + retained-session update -----------
+    // Capture the reset reason EXACTLY ONCE and update the RTC-retained session
+    // here -- after the safe-output block above (safe PWM attach + neutral
+    // commands stay the first substantive setup behavior; diagnostics must never
+    // delay them) and before any UART / sensor / NVS / watchdog init. This runs
+    // in EVERY build so the firmware always records correct state; only the
+    // flag-gated prints below emit a string (delivery stays silent). No output,
+    // no NVS/flash write, and the R5-a watchdog policy below is untouched.
+    const reset_diag::RawResetReason rawResetReason = mapResetReason(esp_reset_reason());
+    [[maybe_unused]] const reset_diag::BootReport bootReport =
+        reset_diag::updateSession(g_rtcSessionState, reset_diag::classify(rawResetReason));
+
 #ifdef W17_SIM_CRSF_FEEDER
     Serial.begin(115200); // sim status/narration only; real firmware opens no UART0
     Serial.println("[sim] W17 control firmware -- Wokwi Stage-2 demo build");
+    {
+        // Same concise boot diagnostic as the tuning build, on the sim serial
+        // path. Lets the W17_SIM_WDT_STALL run show the reboot's reset class and
+        // the incremented retained boot count.
+        char bootLine[64];
+        formatBootLine(bootReport, bootLine, sizeof(bootLine));
+        Serial.println(bootLine);
+    }
 #endif
 
     crsfUart.begin();
@@ -251,6 +343,14 @@ void setup() {
     // same loader into the console's RAM Settings so get/set/save operate on the
     // applied values.
     serialConsole.begin(115200);
+    {
+        // One concise boot diagnostic line through the existing tuning UART0
+        // path, in the console's [tag] banner style, before the [tune] load line.
+        char bootLine[64];
+        formatBootLine(bootReport, bootLine, sizeof(bootLine));
+        serialConsole.write(bootLine);
+        serialConsole.write("\r\n");
+    }
     consoleRunner.loadAtBoot();
     applySettings(consoleRunner.settings());
 #else

@@ -1,0 +1,7 @@
+{
+  "name": "reset_diag",
+  "version": "0.1.0",
+  "description": "Pure reset-reason classification + RTC-retained boot-session bookkeeping (R5-b). No hardware dependency; the real esp_reset_reason() and RTC_NOINIT storage are wired in main.cpp.",
+  "frameworks": "*",
+  "platforms": "*"
+}
