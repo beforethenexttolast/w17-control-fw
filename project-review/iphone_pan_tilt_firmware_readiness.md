@@ -149,7 +149,10 @@ is the design goal, and it already holds.
    firmware *may later* add a modest slew limiter on the gimbal outputs as
    defense-in-depth (§4 item 2 below), but it must be a backstop, not the primary shaper. [I]
 9. **Stale packet behavior: split by layer.** Windows owns iPhone-staleness: intent older
-   than the bridge's stale threshold (400 ms per the ground-station readiness doc) decays
+   than the bridge's stale threshold (400 ms per the ground-station readiness doc —
+   *superseded 2026-07-14: the ratified stale authority is **300 ms receive-time**, per the
+   canonical contract §3 and the implemented `W17_HEADTRACK_STALE_MS` default; boundary:
+   ≤ 300 ms fresh, > 300 ms stale — see `head_tracking_unlock_plan.md §1.1`*) decays
    the *commanded channels back to center* — the radio link stays alive, so the firmware
    just follows the decay. The firmware owns radio-staleness exactly as today: link loss
    ≥ 500 ms → drive outputs Safe, camera holds last position. These compose cleanly:
@@ -275,8 +278,11 @@ continues to serve the right stick exactly as bench-tested.
    optional firmware slew limiter may be added as defense-in-depth only. Neither exists
    yet; a raw unshaped mapping must not be trialed on real servos. (§5.2)
 3. **Stale-decay-to-center policy.** On stale iPhone intent (≥400 ms per the ground-station
-   readiness doc) Windows decays commanded ch9/ch10 back to center 992; the firmware keeps
-   its existing radio-loss failsafe. This split must be implemented and verified on the PC
+   readiness doc — *superseded 2026-07-14: ratified stale authority is **300 ms
+   receive-time**; see `head_tracking_unlock_plan.md §1.1`*) Windows decays commanded
+   ch9/ch10 back to center 992 (an authoritative *commanded* center — its physical safety
+   still requires the blocker-1 bench validation); the firmware keeps its existing
+   radio-loss failsafe. This split must be implemented and verified on the PC
    side before active use. (§3.9)
 4. **Manual override.** Right-stick input must beat head-tracking via Windows-side
    arbitration (ch9/ch10 are the final arbitrated values; the firmware has no override
