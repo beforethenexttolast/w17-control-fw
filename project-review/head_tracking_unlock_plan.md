@@ -341,6 +341,8 @@ control-path file changed.
   sits directly in the CRSF **send path**, so changing that dependency is an owner decision, not
   a silent slice-2 edit. Recommendation: approve the `v1.7.1` bump (or build on the Windows host)
   as a separate, reviewed step — it is required for **any** go1.26 build of the fork.
+  **Owner decision 2026-07-15: the v1.7.1 bump is APPROVED as a future isolated slice —
+  constraints in §2.3.12.9 item 2.**
 
 **Boundary held (unchanged from slice 1):** no head-intent value reaches the node graph,
 `[16]CRSFValue`, ch9/10, serial, firmware, servo, or gimbal; no mapping, arming, arbitration,
@@ -725,6 +727,342 @@ serial, firmware, servo, gimbal, or ESC; no shaping, arming, arbitration, or act
 exists in code. This remains **log-only ingest + read-only diagnostics** (slices 1–3C); U4 is
 **design only**, gated behind §2.3.11.6.
 
+#### 2.3.12 FIRST_ACTIVE owner decisions + U4 design addendum (2026-07-15, documentation only)
+
+**Status: DECISION/DESIGN RECORD. No code was written or authorized.** This section records
+the owner decisions taken 2026-07-15 that close the *decision-class* FIRST_ACTIVE blockers
+(R3, R4 bench scope, R5, R11, R14, and the open §2.3.11.2 behaviors) and completes the U4
+design addendum the §2.3.11.6 review consumes. The overall FIRST_ACTIVE verdict remains
+**NO-GO / BLOCKED** (§2.3.12.11) — the remaining blockers are hardware-evidence class and
+cannot be closed by documentation. Nothing here authorizes implementation, hardware power,
+or active head control.
+
+##### 2.3.12.1 Owner decision #2 — video-loss policy (RESOLVED; active behavior NOT implemented)
+
+For the future active head-control path the owner selects **§4 option 3 (sender-side
+suppression), composed with the existing mapper stale machinery**:
+
+- On **iPhone-local decoder/video loss**, the iPhone **suppresses W3 head-intent
+  transmission** (a future Codex-side behavior change, delivered via the two-stage handoff —
+  never implemented from this side).
+- The mapper consequently reaches its **stale timeout** and runs the **controlled stale
+  decay** to commanded 992 (§1.3, §2.3.11.2 items 4/6). No new mapper mechanism is invented
+  for video loss — suppression deliberately reuses the one already-specified stale path.
+- **Video loss must never directly command a servo or CRSF value.** No layer may translate a
+  video-health signal into an output; the only permitted consequence is packet silence →
+  staleness → the standard decay.
+- The **current W3 log-only operation stays independent of video state** — nothing changes in
+  the log-only phase.
+- An **operator-facing degraded/lost-video state is REQUIRED** before the active milestone:
+  the operator must be able to see "video degraded/lost" distinctly from "head tracking
+  stale". Surface and wording are implementation-slice work, gated with U4.
+
+The active behavior itself remains unimplemented and gated; this decision resolves review
+item **R3**.
+
+##### 2.3.12.2 Owner decision #3 / U8 — radio-loss policy (RESOLVED FOR BENCH ONLY)
+
+For the **bench-only FIRST_ACTIVE milestone only**: on radio/handset loss the firmware
+**holds the last valid gimbal command** (today's shipped hold-last behavior stands,
+unchanged). Scope limits, recorded verbatim as owner constraints:
+
+- Applies **only** to the bench-only FIRST_ACTIVE milestone (wheels off, §2.3.12.3).
+- **Must be re-reviewed before any vehicle driving** — the U8 concern (the hybrid mapping
+  makes sustained off-center positions routine, raising the stakes of hold-last) is deferred,
+  not dismissed. The driving-scope hold-vs-center decision **remains open**.
+- Reconciled with the mapper layer exactly as §2.3.11.2 item 6 records: mapper intent-loss
+  decays to commanded 992 while the radio is up; the firmware radio-loss layer is separate.
+
+This resolves review item **R4** for the bench scope only.
+
+##### 2.3.12.3 Owner decision #5 — driving policy (RESOLVED: FIRST_ACTIVE is bench-only)
+
+FIRST_ACTIVE remains **bench-only**: wheels off the ground; **no vehicle driving**; operator
+present at the controls; **emergency power removal available** within reach; conservative
+physical limits; **first powered movement limited to ±5 mechanical degrees around the
+measured center** (per-axis, from the §2.3.12.8 measurements).
+
+The **first-driving milestone is separate** and additionally requires: another reviewed
+safety gate; a **spotter**; completed bench evidence; and explicit owner approval of
+**driving-mode authority and failure behavior** (including the §2.3.12.2 re-review). This
+resolves review item **R5**; Codex Batch-9-style no-spotter driving is rejected.
+
+##### 2.3.12.4 Invalid-packet policy (active path; owner decision)
+
+Stricter than the log-only monitor's diagnostic classification (which preserves last-valid
+for display, `monitor.go`):
+
+- **One invalid packet immediately removes iPhone head-input eligibility.** Stale handling
+  and the controlled decay to 992 begin at once — the arbiter does not wait for the 250 ms
+  freshness gate to expire.
+- **Repeated invalid packets latch a fault** (threshold/window is an R12-reviewed constant).
+  A latched fault is never cleared by traffic alone.
+- **Fault recovery requires all of:** operator **disarm**; a **valid-data recovery interval**
+  (continuous valid traffic for a reviewed duration); and an **explicit recenter** before
+  rearming.
+- **Invalid input can never acquire or preserve head-control authority** — an invalid packet
+  is never "last valid held", never freshness-extending, never center-defining.
+
+##### 2.3.12.5 Manual-override policy (owner decision: GLOBAL takeover)
+
+Refines §2.3.11.2 item 7:
+
+- **Global takeover:** intentional deflection beyond the reviewed threshold on **either**
+  manual pan or tilt axis gives manual control of **both** axes simultaneously. There is no
+  per-axis split authority — one authority owns the pair at all times.
+- Manual input wins **during active head control AND during stale decay** — a decay in
+  progress yields to the stick immediately.
+- **No auto-restore:** the stick returning to center does not restore head control. Override
+  latches; restoration requires **explicit recenter and rearm** (§2.3.12.6 affordances).
+- **Every authority transition remains rate- and acceleration-limited** (§2.3.11.2 item 8) —
+  including override-engage: the output moves to the manual value through the limiter, never
+  as a step.
+
+##### 2.3.12.6 FIRST_ACTIVE controller affordances — **CONFLICT FOUND; Alternative C adopted (bench-only); live mapper-binding validation still required**
+
+The proposed bench-only default was: hold **L1+R1** together 1 s and keep holding = deadman
+arm; releasing either = immediate disarm; short-press **R3** = recenter — *subject to an
+explicit controller-map conflict audit*. The audit was performed 2026-07-15 and **fails the
+proposal**:
+
+- **Exact conflict:** in every documented DualShock/Xbox/Generic layout of the ground
+  station's SEAT-FIT presets (`w17-ground-station/shared/inputPresets.mjs:15-53`,
+  `STANDARD_MAP`), **R1 (button 5) = gear up and L1 (button 4) = gear down** — vehicle
+  transmission controls. A held L1+R1 deadman would continuously assert gear-down + gear-up
+  during every second of head-tracked operation. The GS preset is the display mirror; the
+  **binding authority is the mapper's node-graph config**, which must be audited on the bench
+  before any affordance ships — but the documented layout conflict is already disqualifying.
+- **Secondary caution (R3):** R3 is the **right-stick click** — the physical stick whose axes
+  (2/3) are the manual pan/tilt input. Pressing R3 mechanically perturbs the very axes the
+  manual-takeover threshold watches, so a recenter press could trip (or mask) an override
+  transition. R3 (and L3, which perturbs the steering axis 0) should not be used for any
+  head-control affordance.
+
+Per the owner's standing rule, the bindings were **not silently remapped**. Three candidates
+were considered; all use only controls unbound in every documented preset (SHARE = button 8,
+OPTIONS = button 9, D-pad DOWN = button 13) and none touch the gear (L1/R1) or stick-click
+(L3/R3) controls above.
+
+- **Alternative A (REJECTED):** hold SHARE + OPTIONS together 1 s and keep holding = deadman;
+  short-press D-pad DOWN = recenter.
+- **Alternative B (REJECTED):** hold OPTIONS + D-pad UP together 1 s and keep holding =
+  deadman; short-press ✕ / A = recenter.
+- **Reason A and B were rejected:** both require a *continuously held two-thumb chord* for the
+  whole active window. On a standard pad SHARE/OPTIONS/D-pad are all left-hand controls, but a
+  held two-button chord ties up the hand and, more importantly, competes with the operator's
+  need to keep the **right thumb free on the right stick** — the manual pan/tilt takeover the
+  entire safety model leans on (§2.3.12.5, I6). A deadman that makes the safety escape hatch
+  awkward is the wrong deadman.
+
+**Alternative C — ADOPTED for FIRST_ACTIVE bench testing (owner, 2026-07-15):**
+
+- **short-press SHARE (button 8) = recenter** (defines the current head pose as neutral,
+  §2.3.12.7);
+- **hold D-pad DOWN (button 13) + OPTIONS (button 9) together for one continuous second = the
+  deliberate arm gesture** (a two-control intent confirmation, so a stray press cannot arm);
+- **after arming, OPTIONS may be released**;
+- **D-pad DOWN must remain held as the continuous deadman** — it is the single held control for
+  the rest of the active window;
+- **releasing D-pad DOWN immediately disarms** (→ `DECAYING` then `MANUAL`, §2.3.12.10);
+- the **right thumb stays free on the right stick** for manual pan/tilt takeover throughout;
+- **any manual deflection above the reviewed threshold still triggers global manual takeover**
+  (§2.3.12.5) regardless of deadman state — Alternative C changes the arm gesture, never the
+  override authority;
+- **before any use, the live mapper node graph must prove SHARE, OPTIONS, and D-pad DOWN are
+  unbound** (and not intercepted) — the GS SEAT-FIT preset is only the display mirror; the
+  binding authority is the mapper node-graph config;
+- **if any chosen control is bound or intercepted, active testing remains blocked** — no
+  silent remap, no proceeding.
+
+Scope limits, recorded as owner constraints:
+
+- **Bench-only.** This mapping applies **only** to FIRST_ACTIVE bench testing.
+- **Not approved for driving.** Because D-pad DOWN occupies the **left thumb**, it is unsuitable
+  as a driving-time deadman; the later driving-readiness milestone (§2.3.12.3 / O) **must choose
+  another deadman/authority UX** and is not bound by this bench choice.
+
+This closes **only the owner-choice portion** of decision #6. The bench session must still
+perform the **live mapper node-graph binding validation** above before the first active use;
+until that validation passes, active testing stays blocked (and R12's "arm affordance signed
+off" stays open — the affordance is *chosen*, not yet *validated on the live binding*).
+
+##### 2.3.12.7 Hybrid controller mapping (owner decision: preserved/ratified)
+
+- Head **yaw → gimbal pan**; head **pitch → gimbal tilt**; head **roll is ignored**.
+- **Near neutral: position mapping** (head angle → commanded offset). **Near the comfortable
+  head-turn boundary: transition smoothly into rate mapping** (sustained head deflection →
+  commanded velocity), so the operator can look further than the neck turns.
+- **No command discontinuity at the transition** — the position→rate blend is continuous in
+  value and bounded in derivative (test D6).
+- Output remains **clamped** (measured per-axis safe min/max), **rate-limited**, and
+  **acceleration-limited** at all times — the blend never bypasses the §2.3.11.2 limiters.
+- **Recenter defines the current head pose as neutral** (re-seeds `virtualCameraCenter` per
+  §1.3 — from the authoritative final commanded value, never a claimed measured angle).
+
+##### 2.3.12.8 Numeric shaping constants — derivation policy (NO production values signed)
+
+**No production constant is invented or signed before hardware measurement.** Required
+derivation record (per axis, pan and tilt measured independently), to be captured at the
+U3/CB9 bench session and stored in `project-review/`:
+
+center command · safe minimum and maximum commands · mechanical direction/sign · counts per
+mechanical degree · stationary real-iPhone jitter (deg) · real controller centered noise
+(counts) · hardware identity, date, operator, and evidence source for every row.
+
+Initial FIRST_ACTIVE derivation policy (formulas, not values):
+
+- **Head deadband** derives from measured stationary jitter; **floor 1°**, **cap 3°** —
+  exceeding 3° requires another review, not a bigger number.
+- **Initial max rate = 10°/s**, converted through the measured counts/degree.
+- **Initial max acceleration = 20°/s²**, converted through the measured counts/degree.
+- **Manual-takeover threshold = max(measured controller-noise margin, ≈10 % of the usable
+  CRSF half-range)** on the relevant axis.
+- **First powered travel limited to ±5 mechanical degrees around the measured center.**
+- **Missing calibration ⇒ active control unavailable** (fail closed — the arbiter refuses to
+  leave passthrough without a complete signed calibration record). **No silent production
+  fallback values, ever.**
+
+U4 remains blocked until the exact per-axis values are measured, recorded, signed, and
+reviewed (**R7 + R12**).
+
+##### 2.3.12.9 Related owner decisions recorded at the same sitting
+
+1. **Fork license + provenance (R11 RESOLVED).** The owned mapper fork is licensed
+   **GPL-3.0-or-later** (of upstream's GPL-3.0 OR Fair Source 0.9 dual offer), **provided the
+   W17 mapper remains open source**. Record: upstream `github.com/kaack/elrs-joystick-control`;
+   fork base = upstream commit `2b8031a`; fork created **2026-07-15** as local repo
+   `w17-mapper`, branch `w17-headtrack`; upstream copyright and license files preserved
+   unmodified in the fork; provenance = local clone of the read-only `_vendor/` reference;
+   modification policy = production changes only in `w17-mapper` (never `_vendor/`), reviewed
+   slices, one repo per session; **no remote publication or push without explicit owner
+   approval** (push remains disabled). **If proprietary or source-closed distribution is ever
+   intended, STOP and obtain legal review** — GPL-3.0 must not be treated as sufficient for
+   that case.
+2. **Mapper serial dependency (owner decision: APPROVED as a future isolated slice).**
+   `go.bug.st/serial` v1.5.0 → **v1.7.1** (the §2.3.9 go1.26 cgo incompatibility). Constraints:
+   `w17-mapper` only; exact `go.mod`+`go.sum` diff; no unrelated dependency churn; `gofmt`
+   where applicable; `go test ./...` + `go build ./...` green; CRSF byte-invariance tests
+   re-run; **no arbiter or control-path changes ride along**; no commit until owner review.
+   **Not to be mixed** with any ground-station or U4 work.
+3. **Diagnostics boundary (ratified as a hard invariant).** Mapper→Electron diagnostics stay
+   **read-only gRPC** (§2.3.10). The diagnostics interface must **never**: arm; disarm;
+   recenter; select authority; change controller configuration; alter the node graph; alter
+   mixer values; alter CRSF output. Bounded subscriber count (4-stream cap) and bounded
+   per-subscriber buffers stand; slow subscribers must never block mixer evaluation or serial
+   output; subscriber failure must never affect command output. Hardening the external
+   `[::]:10000` bind remains a **separate reviewed decision** (§2.3.10 bind-policy fact).
+4. **iPhone R10 status (recorded WITHOUT modifying or mirroring iPhone files).** The
+   canonical iPhone repo currently carries **automated evidence for the 250 ms send-time
+   sample-age gate**: `MotionState.swift` pins `maximumMotionSampleAge = 0.250` and its tests
+   prove **249 ms eligible / 250 ms eligible / 251 ms stale**, and that **cached active state
+   cannot bypass the send-time check** (verified read-only 2026-07-15; the work is uncommitted
+   in the `iPhone_rc` working tree). Treated as **PASS (automated) only**. Still pending: real
+   iPhone lifecycle testing; real device motion-axis evidence; mount-orientation evidence;
+   the canonical iPhone commit approval; and the bridge-contract mirror **only after** that
+   canonical commit hash is received. Uncommitted iPhone contract text is **not** mirrored.
+
+##### 2.3.12.10 U4 detailed design addendum — states, behaviors, and the required test per behavior
+
+Completes §2.3.11.2 into the reviewable behavior spec. All of it describes the **future
+gated** arbiter; none of it exists in code.
+
+**Arbiter states** (distinct from the log-only diagnostic states, which are unchanged and
+gain no active value until the gated slice):
+
+| State | Meaning | Output on ch9/ch10 |
+|---|---|---|
+| `IDENTITY` | Compile flag absent OR runtime flag off — the only reachable state in default builds (I3) | bit-for-bit passthrough of the eval array (I1) |
+| `MANUAL` | Flags on, not armed (incl. never-armed, after-disarm, no-data-ever) | passthrough (manual stick) |
+| `ARMING` | Deadman affordance held, 1 s accumulation running | passthrough until arm completes |
+| `ACTIVE` | armed ∧ enabled ∧ centered ∧ fresh(≤250 ms) ∧ eligibility intact ∧ recentered | shaped head-derived command (hybrid §2.3.12.7, shaped §2.3.11.2) |
+| `DECAYING` | any ACTIVE precondition dropped (stale, invalid, disable, un-center, disarm, video-suppression silence) | rate/accel-limited ramp to 992; `virtualCameraCenter` discarded |
+| `OVERRIDDEN` | manual deflection past threshold (from ACTIVE **or** DECAYING); latched | manual stick (reached through the limiter) |
+| `FAULT` | repeated-invalid latch or receiver fault | ramp to 992, then passthrough; head ineligible |
+
+**Transition guards:**
+
+- `MANUAL→ARMING`: approved deadman affordance held (§2.3.12.6) — never automatic (I6).
+- `ARMING→ACTIVE`: 1 s continuous hold ∧ explicit recenter performed ∧ all §2.3.11.2 item-5
+  preconditions true. Any interruption returns to `MANUAL`.
+- `ACTIVE→DECAYING`: any precondition lost, or **one** invalid packet (§2.3.12.4).
+- `ACTIVE/DECAYING→OVERRIDDEN`: manual deflection > threshold on either axis (global takeover,
+  §2.3.12.5).
+- `DECAYING→ACTIVE`: **never automatic.** Once decay begins, resumption requires an explicit
+  recenter (conservative FIRST_ACTIVE default; the deadman may remain held — a full disarm is
+  required only from FAULT). Data merely returning fresh does not re-acquire authority.
+- `OVERRIDDEN→ACTIVE`: explicit recenter + rearm only.
+- `ANY→FAULT`: repeated invalid packets (reviewed threshold/window) or receiver `fault`.
+- `FAULT→MANUAL`: disarm ∧ valid-data recovery interval ∧ explicit recenter (§2.3.12.4);
+  rearm then proceeds through `ARMING` normally.
+- Release of either deadman control in any state ⇒ immediate disarm ⇒ `DECAYING` (if head
+  authority was engaged) then `MANUAL`.
+
+**Behavior spec + the required test for each** (Groups A/B/C = §2.3.11.5; new Group D rows
+below are additional gated-implementation tests):
+
+| Behavior | Spec | Required test |
+|---|---|---|
+| Authority ownership | mapper-only, single post-graph choke point (§2.3.11.1); one authority owns both axes at all times | A5, C6 |
+| Arm/disarm | deadman per §2.3.12.6 (post-approval); release-either = disarm; no auto-arm | C3, D15 (deadman release from every state) |
+| Recenter | defines current pose as neutral; re-seeds from final commanded value | C4, D7 |
+| Manual takeover | global, both axes, wins in ACTIVE and DECAYING, latched | C1, C2, D4, D5 |
+| Head-input eligibility | all item-5 preconditions, every tick | B1 |
+| Invalid packet | one ⇒ eligibility removed + decay; repeated ⇒ latched FAULT | D1, D2 |
+| Fault recovery | disarm + recovery interval + recenter, in that order | D3 |
+| Stale timeout | active gate 250 ms receive-time (249/250 fresh, 251 stale), distinct from 300 ms log-only | B5 |
+| Stale decay | rate-limited ramp to exactly 992; `virtualCameraCenter` discarded; no re-acquisition without recenter | B6, D14 |
+| Disconnect/reconnect | silence ⇒ decay; reconnect alone never restores ACTIVE | D14 |
+| Video loss | sender suppression ⇒ ordinary stale path; no direct video→output coupling | D16 (suppressed stream indistinguishable from stale at the arbiter) |
+| Radio loss | firmware layer, hold-last, bench scope only — out of arbiter scope | firmware bench evidence (Phase B), not a U4 unit test |
+| Deadband | degrees, via measured deg↔count; inside band ⇒ exactly 992 offset | B2 |
+| Smoothing | single-pole low-pass on head angles before deadband; reviewed time constant | D17 (step response matches constant; no overshoot) |
+| Rate limiting | ≤ maxRate counts/s on every transition path | B3, C5 |
+| Acceleration limiting | ≤ maxAccel counts/s² | B4 |
+| Fractional accumulation | sub-count remainders accumulate; no truncation bias at low rates | D8 |
+| Endpoint clamping | never outside measured per-axis safe min/max, even transiently | D9 |
+| Monotonic time | all freshness/ramp math on the monotonic clock; wall-clock jumps have no effect | D10 |
+| No-data identity | never-received ⇒ ch9/ch10 passthrough, byte-identical | A1, D11 |
+| Copy-on-write evaluation | arbiter copies the eval array; never mutates shared state in place | D12, C6 |
+| Diagnostic-state semantics | arbiter state exported read-only via the existing diagnostics stream; no active enum value exists before the gated slice adds it under review | D13 |
+| Hybrid blend continuity | position→rate transition continuous, no command discontinuity | D6 |
+| Missing calibration | no signed calibration record ⇒ arbiter refuses non-passthrough | D18 (fail-closed) |
+
+##### 2.3.12.11 FIRST_ACTIVE go/no-go table (honest, 2026-07-15) — **NO-GO / BLOCKED**
+
+| Item | Status | Evidence / blocker |
+|---|---|---|
+| R1 Codex milestone checklist | **NO-GO** | not run; milestone doc has uncommitted edits in `iPhone_rc` |
+| R2 readiness §8 blockers green | **NO-GO** | majority are hardware-evidence class |
+| R3 video-loss decision | **PASS (decision)** | §2.3.12.1, 2026-07-15 |
+| R4 hold-vs-center recorded | **PASS (bench scope only)** | §2.3.12.2; driving scope re-review still required |
+| R5 driving protocol/spotter | **PASS (decision)** | §2.3.12.3; bench-only, separate driving milestone |
+| R6 A2 + Phase B | **NO-GO** | A2 unexecuted; Phase B blocked (`CURRENT_STATUS.md`) |
+| R7 endpoints + deg↔count table | **NO-GO** | hardware (U3/CB9; gated by R6) |
+| R8 iPhone axis/mount validation | **NO-GO** | hardware (U5, Codex Batch 5) |
+| R9 real-device log-only bridge | **NO-GO** | hardware/network (U1/CB6) |
+| R10 sender 250 ms suppression | **PARTIAL — PASS (automated)** | §2.3.12.9 item 4; real-device lifecycle/axes/mount + canonical commit + mirror pending |
+| R11 fork path/name/license | **PASS** | §2.3.12.9 item 1 |
+| R12 shaping constants signed | **NO-GO** | derivation policy recorded (§2.3.12.8); values need R7 measurement |
+| R13 test matrix green | **NO-GO** | no U4 code exists (by design; gated) |
+| R14 written rollback | **PASS** | §2.3.12.12 |
+| **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13 open |
+
+Missing hardware evidence is **not** converted into PASS anywhere in this table.
+
+##### 2.3.12.12 Rollback to log-only (R14)
+
+- **Flag off ⇒ identity passthrough is the default and the rollback.** The runtime flag off
+  (or any build without the compile tag) makes the arbiter a pure identity stage (I1/I3);
+  reverting to log-only requires no code removal — it is the resting state.
+- The receiver rollback below U4 is the existing `-headtrack-ingest` default-off flag
+  (§2.3.9): ingest off ⇒ no socket, byte-identical output.
+- **5602 mutual exclusivity is preserved in both directions** (topology (a), §2.3.7): mapper
+  ingest on ⇒ Electron does not bind 5602 (`W17_MAPPER_HEADINTENT=1` topology, proven live in
+  the slice-3C evidence); mapper ingest off ⇒ Electron's W3 log-only receiver may bind again.
+  Rollback never leaves two binders or zero owners by construction — the modes are driven by
+  one switch on each side and were validated mutually exclusive in
+  `w17-ground-station/docs/2026-07-15_cb8_slice3c_integration_evidence.md`.
+
 ## 3. Ordered unlock sequence
 
 Blocker numbers refer to `iphone_pan_tilt_firmware_readiness.md §8`.
@@ -747,7 +1085,30 @@ Deferred cosmetic item: the stale comment at `lib/channels/include/channels/Chan
 ("decoded but unwired until the gimbal deliverable") — a code-file edit, out of scope for
 this documentation pass.
 
-## 4. Video-loss behavior — unresolved active-safety decision (do not resolve silently)
+### 3.1 Canonical execution order (owner, 2026-07-15)
+
+The concrete cross-repo order from here to a driving milestone. Status annotations are as of
+2026-07-15; live status stays in `CURRENT_STATUS.md`.
+
+| # | Step | Owner | Status 2026-07-15 |
+|---|---|---|---|
+| A | Review and commit the existing iPhone VR Batch 1 work **separately** | Codex/owner | open (uncommitted in `iPhone_rc`) |
+| B | Review and commit iPhone R10 sender-safety/canonical-doc work **separately** | Codex/owner | open (uncommitted; automated tests pass, §2.3.12.9 item 4) |
+| C | Mirror the canonical bridge contract **only after** receiving the R10 commit hash | Claude (GS) | blocked on B |
+| D | Complete the owner-decision / U4 design addendum | Claude (fw docs) | **DONE this pass** (§2.3.12) |
+| E | Mapper serial dependency upgrade (`go.bug.st/serial` → v1.7.1) as a **separate slice** | Claude (mapper) | approved, not started (§2.3.12.9 item 2) |
+| F | Mapper diagnostics + Electron subscriber, separate repo sessions | Claude | **already DONE** (CB8 slices 3A–3C, committed) |
+| G | A2 no-power mechanical inspection | owner + bench | open (A2 unexecuted) |
+| H | Phase B approval | owner | blocked on G |
+| I | Measure center, endpoints, signs, usable counts, counts/degree (per axis) | Claude (fw) + bench | blocked on H (U3/CB9) |
+| J | Validate real iPhone axes, mount orientation, lifecycle, CB6 bridge behavior | Codex + Claude | needs device + bench network (U1/U5) |
+| K | Derive and **sign** the exact shaping constants (§2.3.12.8 policy) | owner | blocked on I, J |
+| L | Fresh adversarial review (full §2.3.11.6 R1–R14 re-check) | owner + review | blocked on A–K |
+| M | Only after approval: implement U4 in small reviewed slices | Claude (mapper) | **GATED** |
+| N | Bench-only physical validation (U6/U7) | Claude + observer | gated (Phase B + milestone) |
+| O | Separate driving-readiness milestone (incl. §2.3.12.2 re-review, spotter) | owner | gated |
+
+## 4. Video-loss behavior — RESOLVED 2026-07-15 (owner decision #2; see §2.3.12.1)
 
 The W3 intent packet has **no iPhone-local decoder-health / video-health field** — its
 fields are exactly `seq`, `timestamp_ms`, `yaw_deg`, `pitch_deg`, `roll_deg`,
@@ -765,19 +1126,38 @@ or return-to-center on iPhone-local video loss would require one of:
 3. deliberate packet suppression by the iPhone on video loss (an iPhone behavior change);
 4. operator action only (accept the risk; document it in the milestone runbook).
 
-**This is an open owner decision.** Flagged to Codex as handoff item H9. Nothing in this
-plan selects an option.
+**RESOLVED 2026-07-15 — the owner selected option 3** (deliberate packet suppression by the
+iPhone on local decoder/video loss), composed with the mapper's existing stale
+timeout → controlled stale decay; video loss must never directly command a servo or CRSF
+value; current W3 log-only operation stays independent of video state; an operator-facing
+degraded/lost-video state is required before the active milestone. Full record + constraints:
+**§2.3.12.1**. The iPhone-side suppression is future Codex work via the two-stage handoff;
+the active behavior is NOT implemented. (Historical options context above retained.)
 
 ## 5. Open owner decisions (consolidated)
 
 1. ~~Mapper port/ingest architecture — §2.3 (a)/(b)/(c) + fork ownership.~~
    **RESOLVED 2026-07-15: topology (a), owned fork owns 5602, Electron viewer-only,
-   receiver modes mutually exclusive, no relay (§2.3.7).** Remaining sub-item: exact
-   owned-fork repo path/name/remote/branch + fork license — owner to approve before any
-   source change (fork-hygiene rule #3).
-2. Firmware failsafe on radio loss: hold-last vs return-to-center (U8).
-3. Video-loss reaction path (§4, options 1–4).
+   receiver modes mutually exclusive, no relay (§2.3.7).** ~~Remaining sub-item: exact
+   owned-fork repo path/name/remote/branch + fork license.~~ **RESOLVED 2026-07-15:
+   `w17-mapper` @ `w17-headtrack`, GPL-3.0-or-later (conditional on staying open source),
+   push disabled — full provenance record §2.3.12.9 item 1.**
+2. ~~Firmware failsafe on radio loss: hold-last vs return-to-center (U8).~~ **RESOLVED FOR
+   BENCH ONLY 2026-07-15: hold-last stands for the bench-only FIRST_ACTIVE milestone;
+   MUST be re-reviewed before any vehicle driving (§2.3.12.2). Driving scope remains open.**
+3. ~~Video-loss reaction path (§4, options 1–4).~~ **RESOLVED 2026-07-15: option 3,
+   sender-side suppression → ordinary stale decay; operator-facing degraded-video state
+   required (§2.3.12.1 / §4).**
 4. Camera placement: driver-seat vs halo-height
-   (`w17-3d-codex/CAMERA_GIMBAL_PLACEMENT.md`).
-5. First head-tracked driving protocol (Codex Batch 9 proposes no spotter; every safety
-   doc so far authorizes bench only — recommend a separate reviewed gate).
+   (`w17-3d-codex/CAMERA_GIMBAL_PLACEMENT.md`). **Still open.**
+5. ~~First head-tracked driving protocol.~~ **RESOLVED 2026-07-15: FIRST_ACTIVE is
+   bench-only; a separate driving-readiness milestone requires a reviewed gate, spotter,
+   bench evidence, and explicit driving-mode authority approval (§2.3.12.3).**
+6. ~~FIRST_ACTIVE controller affordances — L1+R1/R3 failed the conflict audit; pick A or B.~~
+   **OWNER-CHOICE RESOLVED 2026-07-15: Alternative C (bench-only), §2.3.12.6** — short-press
+   SHARE = recenter; hold D-pad DOWN + OPTIONS 1 s = arm; OPTIONS may then release; D-pad DOWN
+   is the continuous held deadman (release = disarm); the right thumb stays free for right-stick
+   manual takeover. A and B rejected (held two-thumb chords impede that takeover). **Still
+   required before active use:** live mapper node-graph validation that SHARE/OPTIONS/D-pad DOWN
+   are unbound. **Bench-only — not approved for driving** (D-pad DOWN occupies the left thumb;
+   the driving milestone must choose another deadman/authority UX).
