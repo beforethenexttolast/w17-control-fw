@@ -176,8 +176,8 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
 - **NEW — cassette / power-distribution / charging** *(full spec + connector map: `../../w17-electrical-inputs-for-codex.md`)*:
   - **Power-distribution board (PDB)** = the wiring keystone: battery (XT60) → **loop key/switch** → 2× UBEC (Rail A/B) → 1000 µF cap → 27k/10k divider tap → **common-ground star** → keyed outputs.
   - **Connectorize every module boundary** (no captive cross-module solder): **XT60/XT30** power, **3-pin servo leads** for PWM, keyed **JST-XH** for signals, **U.FL** for RF, short shielded link for camera↔WiFi USB. Source side shrouded (no live pins); color + label.
-  - **Onboard charging:** 5 V **USB-C → 2S balancing charge board** (per-cell balance + OV/OC, conservative rate) + **charge/run interlock**; hidden reversible USB-C port. *No PD trigger needed.*
-  - **To source:** 2× D1-Mini-ESP32; 2S USB-C balance charge board; USB-C receptacle; loop key; connector kit (XT60/XT30, JST-XH sets, spare servo leads, U.FL pigtails).
+  - **Onboard charging:** Type-C **2S balancing charge/boost module** — **IP2326** (Type-C, 8.4 V, ≤1.5 A, automatic cell balancing + OV protection; commodity on AliExpress → UA) or the premium **BQ25887 / MikroE Balancer 5 Click**. No PD trigger; conservative rate (~0.5–1C); + **charge/run interlock**; hidden reversible USB-C port. Pack needs a JST-XH balance lead. *Verify the board actually balances (uses the 2S midpoint) — plain boost+CV boards do not.*
+  - **To source:** 2× D1-Mini-ESP32; **IP2326** (or BQ25887) 2S USB-C balancing charge module; USB-C receptacle; loop key; connector kit (XT60/XT30, JST-XH sets, spare servo leads, U.FL pigtails).
 - **Camera ↔ WiFi-module solder:** D+→DP, D−→DM, GND→GND, **5 V→VDD5.0 from clean BEC Rail A** (never the camera USB rail).
 - **WiFi module:** antennas on J0/J1 **before** power; heatsink on first. Tune `bitrate_max=12, bitrate_min=2, dbm_threshold=-52`.
 - **Power rails — Rail A (clean):** camera + WiFi module + both ESP32 + RX + LEDs. **Rail B:** steering servo + 3 micro servos + blower. **All grounds common.**
