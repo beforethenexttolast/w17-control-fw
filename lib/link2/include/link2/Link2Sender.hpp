@@ -18,7 +18,7 @@ struct ControlSnapshot {
     uint16_t rpm = 0;
     uint16_t batteryMv = 0;
     uint8_t ersPercent = 100;
-    uint8_t driveMode = 1; // 0 Training / 1 Gearbox / 2 Gearbox+ERS
+    uint8_t driveMode = 1; // 0 TRAINING / 1 RACE (gearbox) / 2 ERS (gearbox+ERS)
 };
 
 struct Link2SenderConfig {

@@ -538,7 +538,7 @@ void loop() {
         const bool active = state == failsafe::State::Active;
         const int16_t baseCommanded = (active && armed) ? modeShaped : 0;
 
-        // ERS ticks EVERY control tick: outside GearboxErs (or in failsafe)
+        // ERS ticks EVERY control tick: outside ERS mode (driveMode 2, or in failsafe)
         // it freezes and re-seeds its clock, so mode switches and outages
         // never produce a dt gap, and a stale boost switch during failsafe
         // can neither drain energy nor report "deploying".

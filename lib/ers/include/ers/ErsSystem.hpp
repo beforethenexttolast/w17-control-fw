@@ -38,7 +38,7 @@ struct ErsConfig {
 // ERS energy store + deploy bonus. Pure logic; time is caller-supplied.
 //
 // Call update() EVERY control tick, in every drive mode and failsafe state.
-// While `ersActive` is false (any mode other than GearboxErs, or failsafe)
+// While `ersActive` is false (any drive mode other than 2 = ERS, or failsafe)
 // the store FREEZES and the internal clock keeps re-seeding, so reactivation
 // never sees a dt gap -- and a stale boost switch held through a failsafe
 // episode can neither drain energy nor report "deploying" to the sound board.
@@ -50,7 +50,7 @@ class ErsSystem {
 public:
     explicit ErsSystem(ErsConfig config = ErsConfig{});
 
-    //   ersActive         - mode == GearboxErs AND failsafe is Active.
+    //   ersActive         - driveMode == 2 (ERS) AND failsafe is Active.
     //   commandedThrottle - post-arm-gate, pre-boost value (0 while disarmed).
     //                       Deploy additionally requires it to be > 0: boost
     //                       is multiplicative, so draining at zero/negative

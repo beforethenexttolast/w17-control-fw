@@ -66,7 +66,7 @@ bool ChannelDecoder::decodeSwitch(const crsf::RcChannelsFrame& frame, uint8_t in
 
 uint8_t ChannelDecoder::decodeTriState(const crsf::RcChannelsFrame& frame, uint8_t index) const {
     if (index >= crsf::kNumChannels) {
-        return 1; // control absent: Gearbox, the safe middle
+        return 1; // control absent: RACE (gearbox), the safe middle
     }
     const int16_t value = normalizeRaw(frame.channels[index]);
     if (value < -333) {

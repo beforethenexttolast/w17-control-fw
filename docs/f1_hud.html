@@ -283,7 +283,13 @@
   "use strict";
 
   // ---- Config (tweak to taste / to real numbers) ----
-  const GEARS = 8;
+  // THEMED, NON-AUTHORITATIVE DESIGN MOCK. This file is a standalone visual
+  // reference for the HUD look; the shipping HUD lives in w17-ground-station
+  // (renderer/hud.js, fed from shared/feelConstants.js). Nothing here is a
+  // source of truth. Numbers that also exist in the firmware are mirrored so
+  // the mock cannot contradict the car -- GEARS tracks the firmware gearbox
+  // numGears (4, audit R05), and the ERS rates below track ers::ErsConfig.
+  const GEARS = 4;
   const TOP_SPEED = 320;        // themed top speed; set to your real measured top speed for honest readouts
   const REV_LIGHTS = 12;
   const BOOST_CAP_BONUS = 1.18; // boost/overtake raise the per-gear ceiling

@@ -13,6 +13,10 @@ struct GearParams {
 };
 
 struct GearboxConfig {
+    // ARRAY CAPACITY, NOT THE GEAR COUNT. This only bounds how many rows the
+    // table below can hold; the car's gear count is `numGears` (4). Reading
+    // this as "the W17 has 6 gears" is what put a phantom "6" into the audit's
+    // open questions (R05) -- the one canonical gear count is numGears.
     static constexpr size_t kMaxGears = 6;
 
     // Default 4-gear table: gentle first gear with strong expo, linear full
