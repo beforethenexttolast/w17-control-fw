@@ -4,8 +4,9 @@
 
 // All GPIO assignments for ESP32 #1 "control", transcribed from CLAUDE.md
 // section 1 (pin map). Keep every pin here so the map is trivial to change
-// in one place. Pins marked "deferred" are declared now but not yet wired
-// into src/main.cpp.
+// in one place. Every pin below is wired in src/main.cpp except
+// kBoard2UartRxPin, which is reserved-but-unused: link2 is one-way, so
+// Esp32Link2Uart opens Serial1 with rxPin = -1.
 
 namespace pinmap {
 

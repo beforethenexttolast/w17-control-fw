@@ -55,8 +55,13 @@ struct ChannelMapConfig {
 struct Controls {
     int16_t steering = 0; // -1000..+1000, exact at the CRSF anchors 172/992/1811
     int16_t throttle = 0; // -1000..+1000
-    int16_t pan = 0;      // decoded but unwired until the gimbal deliverable
-    int16_t tilt = 0;
+    // Camera gimbal -- WIRED: src/main.cpp drives panServo/tiltServo from these
+    // on every 50 Hz control tick. Deliberately not failsafe-gated; `controls`
+    // is frozen during a failsafe, so the camera holds its last look direction
+    // instead of snapping to center. Stick-driven CRSF ch9/ch10 only, so the
+    // source is irrelevant here -- this is NOT the head-tracking path.
+    int16_t pan = 0;  // -1000..+1000
+    int16_t tilt = 0; // -1000..+1000
     bool armSwitch = false;
     bool drsSwitch = false;
     bool boostHeld = false;    // held (level) switches, not edges
