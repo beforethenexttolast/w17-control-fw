@@ -27,7 +27,7 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
   https://www.aliexpress.com/item/1005003237910399.html
 - **FT232RL USB-UART** `Type-C` ×1 — ~84 ₴ — camera console/flash + PC↔ELRS-module CRSF link (set 3.3 V jumper)
   https://www.aliexpress.com/item/1005006445462581.html
-- *Camera — OpenIPC SSC338Q (MC800S-V3), already flashed to APFPV greg10.2 + tuned (`majestic_fpv.yaml`). Free / owned.*
+- *Camera — OpenIPC SSC338Q (MC800S-V3, **IMX335 sensor** — physical unit confirmed 2026-07-23, supersedes an earlier IMX415 note), already flashed to APFPV greg10.2 + tuned (`majestic_fpv.yaml`). Free / owned.*
 
 ## 2. Control / Radio
 - **RadioMaster RP1 ELRS receiver** `RP1` ×1 — ~855 ₴
@@ -42,7 +42,8 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
   https://www.aliexpress.com/item/1005007759728528.html
 
 ## 4. Brains / Audio / Light
-- **ESP32-WROOM-32 DevKit V1** `3PCS` ×1 — ~646 ₴ — #1 control + #2 sound/light + 1 spare
+- **ESP32 on-car boards → 2× "D1 Mini ESP32" / MH-ET Live MiniKit** (ESP32-**WROOM-32**, ~39×31 mm, micro-USB) — #1 control + #2 sound/light. Same WROOM-32 chip → **firmware + pin map unchanged**. Chosen over the DevKit V1 so the electronics cassette clears the shell keep-out (2× DevKit V1 overran it). Must be the dual-core WROOM-32 D1-Mini form — **not** an ESP32-C3/S2/S3 "SuperMini".
+- **ESP32-WROOM-32 DevKit V1** `3PCS` (already on hand) — ~646 ₴ — now **bench / dev / spare** (flashing rig, Wokwi, backup), no longer the on-car boards.
   https://www.aliexpress.com/item/1005008503831020.html
 - **MAX98357A I2S amplifier** `1PCS` ×1 — ~93 ₴
   https://www.aliexpress.com/item/1005007629020891.html
@@ -172,6 +173,11 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
 - **LED data:** **330 Ω** series on the data line + **1000 µF** across 5 V/GND at the strip input. *(optional 1N5819 diode-drop on the LED 5 V for a cleaner 3.3 V logic-high.)*
 - **ESC throttle:** **isolate the ESC's BEC +5 V (red) wire** — the two UBECs power the rails; ESP32 #1 feeds the ESC signal, ground common.
 - **Servo rail:** **1000 µF** decoupling cap.
+- **NEW — cassette / power-distribution / charging** *(full spec + connector map: `../../w17-electrical-inputs-for-codex.md`)*:
+  - **Power-distribution board (PDB)** = the wiring keystone: battery (XT60) → **loop key/switch** → 2× UBEC (Rail A/B) → 1000 µF cap → 27k/10k divider tap → **common-ground star** → keyed outputs.
+  - **Connectorize every module boundary** (no captive cross-module solder): **XT60/XT30** power, **3-pin servo leads** for PWM, keyed **JST-XH** for signals, **U.FL** for RF, short shielded link for camera↔WiFi USB. Source side shrouded (no live pins); color + label.
+  - **Onboard charging:** 5 V **USB-C → 2S balancing charge board** (per-cell balance + OV/OC, conservative rate) + **charge/run interlock**; hidden reversible USB-C port. *No PD trigger needed.*
+  - **To source:** 2× D1-Mini-ESP32; 2S USB-C balance charge board; USB-C receptacle; loop key; connector kit (XT60/XT30, JST-XH sets, spare servo leads, U.FL pigtails).
 - **Camera ↔ WiFi-module solder:** D+→DP, D−→DM, GND→GND, **5 V→VDD5.0 from clean BEC Rail A** (never the camera USB rail).
 - **WiFi module:** antennas on J0/J1 **before** power; heatsink on first. Tune `bitrate_max=12, bitrate_min=2, dbm_threshold=-52`.
 - **Power rails — Rail A (clean):** camera + WiFi module + both ESP32 + RX + LEDs. **Rail B:** steering servo + 3 micro servos + blower. **All grounds common.**
