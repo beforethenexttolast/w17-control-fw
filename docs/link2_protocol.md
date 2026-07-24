@@ -10,6 +10,39 @@ Reference implementation: `lib/link2/` in this repo — **liftable wholesale** i
 board-#2 project (no dependencies beyond a byte-sink interface; the decoder and
 `Link2FrameAssembler` are what board #2 needs).
 
+## Ownership and the copy in soundlight-fw
+
+**This repo owns the protocol.** Every change lands here first — this document and
+`lib/link2/` together are the definition. `w17-soundlight-fw/lib/link2/` is a **verbatim
+copy** of the shared subset (`include/link2/Link2Frame.hpp`, `include/link2/Link2Codec.hpp`,
+`src/Link2Codec.cpp`, `library.json`); it deliberately omits `src/Link2Sender.cpp`, which is
+control-side only. The copy is **permanent by decision (2026-07-25)**, not a bootstrap toward
+a submodule — a submodule would drag the sender into board #2 as dead code that PlatformIO's
+LDF would compile, for a four-file library that has never drifted.
+
+**This document is also copied** into `w17-soundlight-fw/docs/link2_protocol.md`.
+
+Because it is all copies, it is guarded rather than shared:
+
+- `tools/link2_copy_check.sh` (this repo) compares against a checked-out
+  `../w17-soundlight-fw`. Run it after **any** change to `lib/link2/` or to this document.
+  Two tiers, deliberately:
+  - **Fatal (exit 1)** — the four shared **code** files. They are compiled on both boards, so
+    byte-identity is the right invariant and any difference is a bug.
+  - **Reported (exit unchanged)** — *this document*. Its normative content (field table,
+    lengths, CRC, the 500 ms staleness rule) must not drift, but byte-identity is the wrong
+    bar: this copy legitimately carries repo-local prose, such as the section you are reading,
+    which names tooling that does not exist in soundlight. A diff cannot separate normative
+    drift from local commentary, so the script surfaces the difference and a human judges it.
+    **If you change anything normative above, re-sync soundlight's copy.**
+- `pio test -e native` pins the wire format hermetically from this side
+  (`test_golden_frame_bytes` fixes the exact 14 bytes; `test_crc_matches_crsf_implementation`
+  pins the CRC against `lib/crsf`).
+
+The copy-check is advisory until soundlight-fw runs it in strict mode in its own CI — that
+enforcement step is **not built yet**. This repo owns the protocol and the script; soundlight
+owns the enforcement.
+
 ## Frame layout (14 bytes)
 
 ```
@@ -41,6 +74,23 @@ a corrupted 0xFF length would otherwise swallow ~1 s of following frames).
 | 7–8 | 2 | batteryMv | uint16, 2S pack millivolts. Display garnish — the `lowBattery` flag is the authoritative judgment (calibrated, 3 s-qualified, hysteresis-latched on board #1). |
 | 9 | 1 | ersPercent | 0…100, ERS energy store. Frozen (not zero) outside ERS mode. |
 | 10 | 1 | driveMode | 0 = TRAINING, 1 = RACE (gearbox), 2 = ERS (gearbox + ERS deploy). Receivers may vary engine character per mode; treat unknown values as 1 (RACE). |
+
+### driveMode: wire values vs display labels (audit R19, decided 2026-07-25)
+
+`driveMode` is a **number on the wire**; the names above are the shipping *display* labels.
+**TRAINING / RACE / ERS** is what a person reads — the ground-station HUD shows exactly
+these. Two nearby spellings are deliberate, not drift:
+
+- The iPhone canonical contract maps the same three values to the enum strings
+  `TRAINING` / `GEARBOX` / `GEARBOX_ERS` (`w17-ground-station/shared/telemetrySnapshot.js`).
+  Those are **wire identifiers for a machine consumer**, not labels; the HUD maps them back
+  to RACE / ERS before anything is displayed.
+- The CRSF FLIGHTMODE string this firmware emits is `"G%u M%u E%u"` — `driveMode` goes out as
+  a bare integer (`M2`), so a handset displaying the raw string shows **no mode label at all**
+  and cannot diverge.
+
+So there is no user-visible contradiction to fix, and none of these three surfaces needs to
+change. Verified 2026-07-25.
 
 ## State matrix
 

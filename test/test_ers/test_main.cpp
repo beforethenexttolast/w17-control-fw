@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "ers/ErsSystem.hpp"
+#include "gearbox/Gearbox.hpp" // shared-feel-constant pin below (gear count)
 
 using ers::ErsConfig;
 using ers::ErsSystem;
@@ -178,8 +179,41 @@ void test_config_valid_rejects_bad_values() {
     TEST_ASSERT_FALSE(positiveBrake.valid());
 }
 
+// Shared "feel" constants: the four numbers that exist in more than one repo
+// (audit R06/R07, decided 2026-07-25). Copies today:
+//   this file / lib/ers + lib/gearbox   <- canonical
+//   docs/f1_hud.html                    (this repo's themed design mock)
+//   w17-ground-station/shared/feelConstants.js
+// They never touch a wire; they only have to agree numerically so the HUD's ERS
+// bar drains and fills at the rate the car actually does.
+//
+// BE PRECISE ABOUT WHAT THIS PROVES: it pins ErsConfig/GearboxConfig against
+// this repo's own written-down expectations, so the firmware side cannot drift
+// silently. It does NOT read the ground station or the mock, and therefore does
+// NOT prove the copies agree -- nothing hermetic in this repo can. The value is
+// that both ends are now independently pinned to the same written number, so a
+// deliberate change has to touch a test here and a test there.
+//
+// (Known gap, ground-station-side, NOT closed by this test: feelConstants.js
+// claims "a test guards these against drift", but that test only compares the
+// JS constants to hardcoded literals -- it never reads ErsSystem.hpp either.)
+void test_shared_feel_constants_pinned() {
+    const ErsConfig ers;
+    TEST_ASSERT_EQUAL_UINT16(260, ers.deployRatePermille);       // HUD 26 %/s
+    TEST_ASSERT_EQUAL_UINT16(110, ers.harvestBrakeRatePermille); // HUD 11 %/s
+    TEST_ASSERT_EQUAL_UINT16(180, ers.boostBonusPermille);       // HUD x1.18
+
+    // The one canonical gear count (audit R05). kMaxGears is array capacity and
+    // is deliberately NOT this number -- misreading it as the gear count is what
+    // produced the phantom "6" in the audit's open questions.
+    const gearbox::GearboxConfig gb;
+    TEST_ASSERT_EQUAL_UINT8(4, gb.numGears);
+    TEST_ASSERT_TRUE(gearbox::GearboxConfig::kMaxGears >= gb.numGears);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_shared_feel_constants_pinned);
     RUN_TEST(test_starts_full);
     RUN_TEST(test_deploy_drains_at_exact_rate);
     RUN_TEST(test_overtake_drains_faster_and_wins_over_boost);
