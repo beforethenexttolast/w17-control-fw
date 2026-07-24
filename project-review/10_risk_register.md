@@ -18,6 +18,21 @@ is a software/expectations gap (R01), one is hardware-gated (R04).
 (legit, only provable on hardware). **HW?** = requires physical hardware to fully verify/close.
 **Fix when:** `now` (pre-hardware) or `wait` (needs bench/parts).
 
+> **Entries in this register can go stale in the RESOLVED direction — re-read the code before
+> acting on one.** Recorded 2026-07-25, after a session that put four audit-era "owner decisions"
+> to the owner and found **three of them were already answered in the code**, not open:
+> R05's "three-way" gear disagreement was a documentation artefact (`kMaxGears` capacity misread
+> as a gear count, plus a stale design mock); R19's label mismatch has no user-visible surface at
+> all (the FLIGHTMODE string emits `driveMode` as a bare integer); and the open question about
+> whether the Arduino `loopTask` is watchdog-subscribed was settled by the R5-a remediation months
+> earlier. Only R01 was a genuine open decision.
+>
+> The failure mode is specific and worth naming: this register was written against a snapshot, and
+> remediation since then has closed findings **without** updating the entry that raised them. So a
+> stale entry here reads as a live defect and can send a session chasing a problem that no longer
+> exists — or, worse, "fixing" something that is already correct. Verify the cited lines first;
+> then correct the entry, don't just tick it.
+
 ## Summary table
 
 | ID | Sev | Conf | Verdict | HW? | Fix | Title |
@@ -26,8 +41,8 @@ is a software/expectations gap (R01), one is hardware-gated (R04).
 | R02 | High | High | CONFIRMED | no | now | control-fw platform UNPINNED + LEDC channel API removed in core 3.x (latent build break) |
 | R03 | High | High | CONFIRMED | no | now | Packaged `.exe` never rebuilds serialport for Electron ABI → ships telemetry-disabled |
 | R04 | High | Med | CONFIRMED/PLAUSIBLE | yes | wait | ESC signal pin (GPIO14) floats from reset until `escPwm.begin()`; no pull-down |
-| R05 | Med | High | CONFIRMED | no | now | Gear count inconsistent: link2 doc 6 / firmware 4 / HUD 8 |
-| R06 | Med | High | CONFIRMED | no | now | `lib/link2` duplicated across repos, no CI drift guard |
+| R05 | Med | High | ADJUSTED | no | **done** | ~~Gear count inconsistent: link2 doc 6 / firmware 4 / HUD 8~~ → doc artefact; 4 canonical (capacity misread + stale mock) |
+| R06 | Med | High | CONFIRMED | no | **done here** | `lib/link2` duplicated across repos → copy permanent + guarded (`tools/link2_copy_check.sh`); soundlight CI step still owed |
 | R07 | Med | Med | ADJUSTED | no | now | CRSF C++↔JS decoders share no fixture; comment overstates coupling |
 | R08 | Med | Med | ADJUSTED | yes | wait | Pin GPIO numbers unverified against physical build (atlas is illustrative-only) |
 | R09 | Med | Med | CONFIRMED/PLAUSIBLE | yes | wait | ESC 2000 ms arm-hold + forward/brake mode unverified vs QuicRun 10BL120 |
@@ -40,7 +55,7 @@ is a software/expectations gap (R01), one is hardware-gated (R04).
 | R16 | Med | High | CONFIRMED | partial | now | `main.cpp` orchestration + Wokwi sim not asserted in CI; named coverage gaps |
 | R17 | Med | High | CONFIRMED | no | now | CI gaps: `esp32dev_tuning` never built; ground CI never packages the app |
 | R18 | Low | Med | PLAUSIBLE | yes | wait | Hall GPIO35 EMI double-count risk (telemetry-only) |
-| R19 | Low | High | CONFIRMED | no | now | `driveMode` label mismatch (Gearbox vs RACE) — cosmetic, numbers agree |
+| R19 | Low | High | ADJUSTED | no | **done** | ~~`driveMode` label mismatch (Gearbox vs RACE)~~ → no user-visible surface (FLIGHTMODE sends a bare integer); comments aligned to TRAINING/RACE/ERS |
 | R20 | Low | High | ADJUSTED | yes | wait | WS2812 3.3 V→5 V data marginal (build sheet documents diode/74AHCT125) |
 | R21 | Low | High | REFUTED(mech) | no | — | WheelSpeed "integer collapse" — benign resolution floor, telemetry-only |
 | R22 | Low | High | CONFIRMED | no | opt | Board #2 stays calm "breathe" forever if board #1 never connects |
@@ -60,6 +75,20 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
 - **How to verify:** (done) grep firmware for any frame carrying armed/failsafe (none); trace crsfTelemetry.js (no such branch). No hardware needed.
 - **Note:** This is a **viewer-only HUD**, so it is an *expectations/display* gap, **not** a vehicle-safety defect — the car's own failsafe is independent and verified sound (see R-safety positives).
 - **Fix direction:** Either encode armed/failsafe into the FLIGHTMODE status string (extend `"G3 M2 E55"`) and parse them ground-side, or drop them from the TELEMETRY.md contract + hud.js and drive "LINK LOST" from `linkQualityPct==0` + staleness. At minimum document that real link loss reverts the HUD to sim.
+- **OWNER DECISION 2026-07-25 — the "at minimum" option, deliberately: keep the simulated values,
+  but label them.** No firmware change. The HUD must **visibly mark armed/failsafe as SIMULATED**
+  whenever they are not live, so a real link loss can never read as armed-and-fine. R01 was the one
+  genuinely open decision of the four put to the owner this session (R05/R19 were stale readings).
+  - **Why not extend FLIGHTMODE:** it fits, but only just — `kFlightModeMaxLen = 16` leaves 15
+    usable chars and the worst case `"G4 M2 E100"` already uses 10, so the addition would have to be
+    exactly 5 chars (e.g. `" A1F0"`; `" A1 F0"` truncates). More decisively, the whole path still
+    rests on the **unproven** [HW] question of whether ELRS relays a locally-originated `0x21`
+    FLIGHTMODE frame at all (→ R13). Spending the last 5 bytes of the frame on an unverified
+    carrier, for a viewer-only display gap, is the wrong trade before Phase B.
+  - **Follow-up is ground-station-side and NOT done:** the SIMULATED marking in `renderer/hud.js`.
+    Nothing to implement in this repo; recorded here so the decision isn't mistaken for a fix.
+  - Kept as **High** severity: the display gap is unchanged until the ground station lands the
+    labelling. The decision changes the *fix direction*, not the exposure.
 
 ### R02 — control-fw `platform = espressif32` UNPINNED while its LEDC HAL uses the core-2.x channel API (removed in core 3.x)
 - **Severity/Confidence:** High / High. **Verdict:** CONFIRMED (lead-verified). **HW?** No. **Fix:** now.
@@ -93,7 +122,21 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
 # MEDIUM
 
 ### R05 — Gear count inconsistent across the system (link2 doc 6 / firmware 4 / HUD 8)
-- **Sev/Conf:** Medium / High. **Verdict:** CONFIRMED. **HW?** No. **Fix:** now.
+- **RESOLVED 2026-07-25 — and the original finding was mostly wrong.** Owner decision: **4 is the
+  one canonical gear count.** Re-reading the cited lines showed there was never a three-way
+  disagreement; it was a **documentation artefact** in two parts:
+  - **"link2 doc 6" was never true of the count.** `docs/link2_protocol.md` reads `1…4`. The 6 is
+    `GearboxConfig::kMaxGears` — the *array capacity* bounding the per-gear table, misread as a
+    gear count. Now commented as capacity-not-count at the definition site.
+  - **"HUD 8" was the wrong HUD.** The shipping ground-station HUD already uses `feel.GEARS = 4`
+    (`shared/feelConstants.js` → `main/main.js:219` → `renderer/hud.js`). The only 8 anywhere was
+    `w17-control-fw/docs/f1_hud.html:286` — a standalone themed *design mock*, not a shipping
+    surface. Corrected to 4 and now labelled non-authoritative in the file itself.
+  - So the gearbox, the protocol doc, and the real HUD had agreed on 4 all along. Fixes applied
+    were one mock value, two clarifying comments, and a hermetic test
+    (`test_shared_feel_constants_pinned`) that pins `numGears == 4`. No behaviour changed.
+- **Sev/Conf:** Medium / High. **Verdict:** ADJUSTED → doc-artefact, not a real inconsistency.
+  **HW?** No. **Fix:** done.
 - **Affected:** `w17-control-fw` lib/gearbox/Gearbox.hpp:26 (`numGears=4`), docs/link2_protocol.md:39 (`1..6`); `w17-ground-station` renderer/hud.js / shared/feelConstants.js (`FEEL.gears=8`); FLIGHTMODE `G%u` field is unbounded.
 - **Why it matters:** The car sends its real gear (1..4) via FLIGHTMODE; the HUD renders it against an 8-gear ring + `computeCaps` table + redline logic, so the car's top gear shows mid-ring and the per-gear speed caps are meaningless. Board #2 also reads gear expecting 1..6 per the copied doc.
 - **Expected vs actual:** Expected one shared gear count. Actual: three (4/6/8).
@@ -101,7 +144,35 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
 - **Fix direction:** Make `FEEL.gears` and the link2 doc match the gearbox `numGears` (4), ideally via the shared feel-constants the ground station already imports; or make the HUD ring adapt to the received range.
 
 ### R06 — `lib/link2` duplicated across firmware repos with no CI drift guard
-- **Sev/Conf:** Medium / High. **Verdict:** CONFIRMED. **HW?** No. **Fix:** now.
+- **RESOLVED 2026-07-25 (guard landed; enforcement handed off).** Owner decision: the copy is
+  **permanent, not a bootstrap toward a submodule** — a submodule would drag control-only
+  `src/Link2Sender.cpp` into board #2 as dead code that PlatformIO's LDF compiles, plus a new
+  shared repo/subtree and sibling commits, all for a four-file library that has never drifted.
+  So: **guarded, not shared.**
+  - **The finding conflated two different things.** (a) the link2 **wire format** — this repo
+    ↔ `w17-soundlight-fw`; (b) the **feel constants** — `lib/ers` ↔ `w17-ground-station`
+    `shared/feelConstants.js` ↔ this repo's own `docs/f1_hud.html`. (b) never touches a wire and
+    needs only numeric agreement. One guard for both was the wrong shape; they are now separate.
+  - **Landed here:** `tools/link2_copy_check.sh` compares against a checked-out
+    `../w17-soundlight-fw`; distinct exit codes (0 ok/skipped, 1 drifted, 2 could-not-check),
+    `--strict` makes a missing sibling a hard failure so CI can't pass by absence. Verified to bite
+    on injected drift and on a deleted shared file; never writes to either repo. Plus
+    `test_shared_feel_constants_pinned` (native) pins the four cross-repo numbers from this side.
+  - **The original entry undercounted the copies: `docs/link2_protocol.md` is copied too** (it was
+    byte-identical to soundlight's until this session edited the canonical one). It is guarded in a
+    **second, non-fatal tier** — byte-identity is the wrong bar for a document that legitimately
+    carries repo-local prose (the new ownership section names tooling that does not exist in
+    soundlight), but its normative parts must not drift, so the script reports the difference for a
+    human to judge. **Named follow-up:** re-sync soundlight's copy of the doc, which this session
+    deliberately did not touch (sibling repo).
+  - **Still open, by design — NOT this repo's to close:** (1) a **soundlight-fw CI step** invoking
+    the script in `--strict` mode; until that exists the cross-repo guard is advisory, since it only
+    bites when someone runs it. (2) the **ground-station guard gap**: `feelConstants.js:5` claims "a
+    test guards these against drift", but `test/replay.test.js:77` only compares the JS constants to
+    hardcoded literals and never reads `ErsSystem.hpp` — the same overstatement pattern as R07.
+    This repo owns the protocol and the script; the siblings own their enforcement.
+- **Sev/Conf:** Medium / High. **Verdict:** CONFIRMED (guard now exists). **HW?** No.
+  **Fix:** done here; two sibling-repo follow-ups named above.
 - **Affected:** `w17-control-fw` + `w17-soundlight-fw` lib/link2/{Link2Frame.hpp,Link2Codec.hpp,Link2Codec.cpp}, docs/link2_protocol.md.
 - **Why it matters:** The two copies are byte-identical today (lead diff), but they are copied not shared, and nothing (no submodule, no CI diff check) keeps them in sync. A one-sided edit silently breaks the control↔sound wire contract — the hardest class of bug to diagnose because both build and test green independently.
 - **Expected vs actual:** Expected a single source of truth. Actual: two independent copies + a third (JS) reimplementation of the CRSF sibling (see R07).
@@ -187,6 +258,21 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
 - **Why it matters:** The green suites cover the pure modules (which is where most bugs are), but the integration glue (cadences, ordering, the actual sequencing in loop()) is only "covered" by an un-asserted sim.
 - **How to verify:** inspect CI (no sim assertion); enumerate untested scenarios.
 - **Fix direction:** Add a headless/automated sim assertion where feasible; add targeted tests for the named gaps (NVS-corruption path already has a guard chain — assert it; ADC extremes; staleness-at-boot for board #2).
+- **2026-07-25 — the sim gap is worse than "not asserted in CI": the sim has never been run at all.**
+  `esp32dev_sim` builds (re-verified today), but nobody has ever loaded `diagram.json`, so **not one**
+  box on the `docs/SIMULATION.md` first-run checklist is closed and the demo table in that file is
+  design intent, not an observed transcript. In particular whether CRSF decodes at 420000 baud over
+  the `TX2→RX2` loopback to reach `failsafe=0` is **still unanswered**.
+  - **The blocker is a credential, not hardware** (so this is [OWNER]/tooling, not [HW]): every Wokwi
+    route uploads the firmware image to Wokwi's servers and needs auth. `wokwi-cli` is not installed
+    and `WOKWI_CLI_TOKEN` is unset on the dev host; the VS Code extension is installed and licensed
+    (3.6.0) but only starts from an interactive `Wokwi: Start Simulator`, which an automated session
+    cannot drive. Running it is a short owner action; automating it needs a CI token.
+  - **A headless CI assertion is therefore blocked on the same token**, which is worth knowing before
+    anyone plans the `wokwi-cli` scenario-YAML work sketched in `SIMULATION.md`'s "Future hook".
+  - Related and unchanged: the R5-b stall → TWDT panic → reboot observation is still PENDING for the
+    same reason. The injector itself is ready (`W17_SIM_WDT_STALL`, verified present-when-flagged and
+    absent from all three checked-in ELFs), so the run is one command once the sim can start.
 
 ### R17 — CI gaps: `esp32dev_tuning` never built; ground CI never packages the app
 - **Sev/Conf:** Medium / High. **Verdict:** CONFIRMED. **HW?** No. **Fix:** now.
@@ -208,7 +294,20 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
 - **Fix direction:** hardware RC filter if bench scoping shows double-counts.
 
 ### R19 — `driveMode` label mismatch (firmware/link2 "Gearbox/Gearbox+ERS" vs HUD/TELEMETRY.md "RACE/ERS")
-- **Sev/Conf:** Low / High. **Verdict:** CONFIRMED (downgraded from Med). **HW?** No. **Fix:** now.
+- **RESOLVED 2026-07-25 — and, like R05, largely a stale reading.** Owner decision: **TRAINING /
+  RACE / ERS** is the shipping user-facing label set.
+  - **There is no user-visible divergence to fix.** The FLIGHTMODE string emits `driveMode` as a
+    bare integer (`"G%u M%u E%u"` → `M2`), so a handset showing the raw string displays **no mode
+    label at all** and cannot contradict the HUD. Verified at `src/main.cpp` telemetry send.
+  - `docs/link2_protocol.md:43` and `ChannelDecoder.hpp` had **already** adopted
+    "0 = TRAINING, 1 = RACE (gearbox), 2 = ERS" before this session. The leftovers were four
+    *prose comments* (`Link2Sender.hpp:21`, `ChannelDecoder.cpp:69`, `ErsSystem.hpp:41/53`,
+    `main.cpp:541`) — note `GearboxErs` was never a symbol, only comment text, so nothing renamed.
+  - The remaining spelling difference is deliberate and now documented in `link2_protocol.md`: the
+    iPhone canonical contract's `TRAINING`/`GEARBOX`/`GEARBOX_ERS` are **wire identifiers for a
+    machine consumer**, which the HUD maps back to RACE/ERS before display.
+- **Sev/Conf:** Low / High. **Verdict:** ADJUSTED → comment-only; no functional or display surface.
+  **HW?** No. **Fix:** done.
 - **Affected:** `w17-control-fw` link2_protocol.md:43 / Link2Frame.hpp; `w17-ground-station` renderer/hud.js (`DRIVE_MODES`), docs/TELEMETRY.md.
 - **Why it matters:** Numbers agree (0/1/2) so there is **no functional impact** — purely a naming/doc-clarity inconsistency the owner reads differently in different places.
 - **Fix direction:** Pick one label set (the HUD's is user-facing) and align the protocol doc + Link2Frame comment to it.

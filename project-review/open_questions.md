@@ -6,18 +6,52 @@ Questions raised across the audit that the code/docs alone can't answer. Tagged:
 
 Each links to the risk-register entry (`R##`) it feeds where applicable.
 
-## Owner decisions (no hardware needed — you choose)
+## Owner decisions — ALL FOUR ANSWERED 2026-07-25
 
-- **[OWNER] Should the HUD's `armed`/`failsafe` indicators be driven from something real, or are
-  you content that a real link loss silently reverts the HUD to simulated values?** (→ R01) The
-  car never transmits these today; the "LINK LOST" alarm only fires in demo mode.
-- **[OWNER] Which gear count is authoritative — gearbox 4, link2 doc 6, or HUD 8?** (→ R05) This
-  sets what the FLIGHTMODE `G%u` string, the protocol doc, and the HUD dial should all use.
-- **[OWNER] Which drive-mode labels ship — "Gearbox / Gearbox+ERS" (firmware/doc) or "RACE / ERS"
-  (HUD)?** (→ R19) The HUD is the user-facing surface, so its labels are what the recipient reads.
-- **[OWNER] Is the `lib/link2` copy into soundlight-fw meant to be permanent (two evolving copies)
-  or a bootstrap toward a shared submodule?** (→ R06) Determines whether a CI drift-guard or a
-  submodule is the right fix.
+> **Three of these four were not open questions.** They were stale readings of the code, which is
+> itself the useful finding: an audit-era question can go stale in the *resolved* direction, and a
+> later session will then chase a defect that no longer exists. Corrected below rather than ticked.
+> See the staleness note at the top of `10_risk_register.md`.
+
+- **[ANSWERED — genuine decision] Should the HUD's `armed`/`failsafe` indicators be driven from
+  something real, or are you content that a real link loss silently reverts the HUD to simulated
+  values?** (→ R01) **Owner: keep the simulated values, but label them.** No firmware change; the
+  ground station must visibly mark armed/failsafe as **SIMULATED** whenever they are not live, so a
+  real link loss can never read as armed-and-fine. Extending FLIGHTMODE was rejected for now: it
+  fits only just (15 usable chars, `"G4 M2 E100"` already uses 10, so exactly 5 chars spare) and
+  the whole path still depends on the unproven [HW] question of whether ELRS relays a
+  locally-originated `0x21` frame at all (→ R13). **This was the only one of the four that was
+  actually open.** Follow-up is ground-station-side and not done.
+
+- **[CORRECTED — was never a three-way disagreement] Which gear count is authoritative — gearbox 4,
+  link2 doc 6, or HUD 8?** (→ R05) **Owner: 4, and it already was.** The premise was a
+  **documentation artefact** in two parts: the "6" is `GearboxConfig::kMaxGears`, the per-gear table's
+  *array capacity*, misread as a count — `docs/link2_protocol.md` has always read `1…4`; and the "8"
+  was in `docs/f1_hud.html`, a standalone themed **design mock**, not the shipping HUD (which already
+  uses `feel.GEARS = 4`). Fixed: mock corrected to 4 and labelled non-authoritative, `kMaxGears`
+  commented as capacity-not-count, and `numGears == 4` pinned by a native test.
+
+- **[CORRECTED — no user-visible surface exists] Which drive-mode labels ship — "Gearbox /
+  Gearbox+ERS" (firmware/doc) or "RACE / ERS" (HUD)?** (→ R19) **Owner: TRAINING / RACE / ERS.**
+  The FLIGHTMODE string emits `driveMode` as a **bare integer** (`M2`), so a handset showing the raw
+  string displays no mode label and cannot diverge from the HUD — the divergence had nowhere to
+  appear. The protocol doc and `ChannelDecoder.hpp` had already adopted RACE/ERS; only four prose
+  comments lagged (`GearboxErs` was never a symbol). The iPhone contract's `GEARBOX`/`GEARBOX_ERS`
+  stay as **wire identifiers**, now documented as such in `link2_protocol.md`.
+
+- **[ANSWERED] Is the `lib/link2` copy into soundlight-fw meant to be permanent (two evolving copies)
+  or a bootstrap toward a shared submodule?** (→ R06) **Owner: permanent, and guarded — not a
+  submodule.** A submodule would drag control-only `Link2Sender.cpp` into board #2 as LDF-compiled
+  dead code, plus a shared repo/subtree and sibling commits, for a four-file library that has never
+  drifted (all four shared files byte-identical as of today). Landed here:
+  `tools/link2_copy_check.sh` (distinct exit codes; `--strict` so CI can't pass by the sibling being
+  absent; verified to bite on injected drift) and `test_shared_feel_constants_pinned`. **The finding
+  conflated the wire format with the feel constants** — separate guards now. Enforcement (a
+  soundlight CI step in strict mode) is deliberately **not built** and is soundlight's to own.
+
+**A third stale entry, same pattern** (found while checking the above, listed here so the count is
+honest): "[Q] Is the Arduino `loopTask` subscribed to the task WDT…?" under *Firmware / toolchain*
+was answered by the R5-a remediation — see the correction there.
 
 ## Protocol / relay (mostly hardware-gated)
 
@@ -67,11 +101,28 @@ Each links to the risk-register entry (`R##`) it feeds where applicable.
   within the ~20.6-bit ceiling at 50 Hz, but confirm on a scope. (relates to R02 HAL)
 - **[HW] On core 2.0.17, do `analogSetPinAttenuation` + `analogReadMilliVolts` (the eFuse-cal ADC
   path) behave as the battery code assumes?** Revalidate if ever moved to a 3.x pin.
-- **[Q] Is the Arduino `loopTask` subscribed to the task WDT in this platform/framework version,
-  and is that the intended policy?** No blocking calls were found in loop(), but there is no
-  explicit WDT-driven safe-output on a hang for the control board.
-- **[Q] Is the copy of the ERS/feel constants in `shared/feelConstants.js` guaranteed to match the
-  firmware, and how is drift caught?** (relates to R06/R07)
+- **[RESOLVED — stale, answered by R5-a] Is the Arduino `loopTask` subscribed to the task WDT in
+  this platform/framework version, and is that the intended policy?** Both parts now have explicit
+  answers in `src/main.cpp`. The pinned framework does **not** subscribe `loopTask` by default (it
+  subscribes only core-0 idle, at 5 s); R5-a deliberately reconfigures that single global TWDT to
+  **2 s (provisional)** and subscribes `loopTask` via the ESP-IDF C API, with every call fail-fatal.
+  The policy is precise: the one and only feed is the **last** statement of the 50 Hz control tick,
+  so a feed proves a complete actuator iteration ran — Arduino's `enableLoopWDT()`/`feedLoopWDT()`
+  are avoided **because** they feed at the top of `loop()` before application code, which would
+  defeat exactly that. Note the original worry is still half-true and worth keeping in view: there
+  is no WDT-driven *safe-output write*; the response is panic-and-reboot, and reboot-to-safe-output
+  timing is unmeasured Phase-B evidence (→ R04/R12, `docs/SIMULATION.md`).
+- **[ANSWERED 2026-07-25 — no, and the comment claiming otherwise is an R07-class overstatement]
+  Is the copy of the ERS/feel constants in `shared/feelConstants.js` guaranteed to match the
+  firmware, and how is drift caught?** (relates to R06/R07) **Not guaranteed.** The values do agree
+  today (verified: 26 %/s, 11 %/s, ×1.18, 4 gears across `lib/ers`, `docs/f1_hud.html`, and
+  `feelConstants.js`), but nothing enforces it across the boundary. `feelConstants.js:5` says "A test
+  guards these against drift" — that test (`test/replay.test.js:77`) only asserts the JS constants
+  against **hardcoded literals** and never reads `ErsSystem.hpp`, so it guards the JS file against
+  itself. Exactly the pattern already recorded for `crsf.js` under R07.
+  This repo has done its half (`test_shared_feel_constants_pinned` pins the firmware side to the same
+  written numbers, so both ends are now independently pinned). **Fixing the claim, or making the JS
+  test actually derive from the firmware, is a ground-station job and is not done.**
 - **[Q] When will the PlatformIO `espressif32` platform's newest release ship Arduino core 3.x?**
   (→ R02) That timing turns the unpinned control-fw from latent to a live build failure. Today it
   resolves to 7.0.1 / core 2.0.17.
@@ -80,16 +131,43 @@ Each links to the risk-register entry (`R##`) it feeds where applicable.
 
 ## Simulation / test / CI
 
-- **[HW] Has the control-fw Wokwi sim ever actually been run to a live link (failsafe=0), or only
-  built? The SIMULATION.md checklist boxes are all unchecked.** (→ R16)
+- **[OWNER/tooling — ANSWERED "only built", STILL UNRESOLVED] Has the control-fw Wokwi sim ever
+  actually been run to a live link (failsafe=0), or only built? The SIMULATION.md checklist boxes
+  are all unchecked.** (→ R16) **Only built — never once loaded** (confirmed 2026-07-25; the build
+  itself re-verified green). So `failsafe=0` over the 420000-baud `TX2→RX2` loopback is still an open
+  question, and the checklist boxes stay unchecked on purpose.
+  **Retagged [HW] → [OWNER/tooling]:** the blocker is a credential, not the bench. Every Wokwi route
+  uploads the firmware image to Wokwi's servers and needs auth — `wokwi-cli` is not installed and
+  `WOKWI_CLI_TOKEN` is unset here; the VS Code extension is installed and licensed (3.6.0) but only
+  starts from an interactive `Wokwi: Start Simulator`, which an automated session cannot drive.
+  One short owner action unblocks the observation; a CI token unblocks the automated version.
+  Same blocker holds the R5-b stall → TWDT panic → reboot observation, whose injector is already
+  built and ELF-verified (`W17_SIM_WDT_STALL`). Details + the exact recipe: `docs/SIMULATION.md`.
 - **[Q] Does the Hall ISR `read()` snapshot need to be coherent? The period-based rpm math assumes
   count and period come from the same edge pair; the two-independent-atomic-loads design permits
   tearing — does the pure logic tolerate a mismatched pair?** (telemetry-only; relates to R18/R21)
 - **[Q] Does soundlight's `esp32dev_sim` building in CI give a false sense of a runnable "sim" when
   no wokwi files exist? Was a `diagram.json` intended and dropped?** (→ R11)
-- **[Q] Is there any orchestration that would catch link2 protocol drift between the control
-  sender, soundlight receiver, and the ground station's third copy of the constants/labels?**
-  (→ R06) Today: none.
+- **[PARTLY RESOLVED 2026-07-25] Is there any orchestration that would catch link2 protocol drift
+  between the control sender, soundlight receiver, and the ground station's third copy of the
+  constants/labels?** (→ R06) **The question conflated two separate things**, which is why "one
+  guard" never fit: the **wire format** (this repo ↔ soundlight) and the **feel constants**
+  (`lib/ers` ↔ GS `feelConstants.js` ↔ this repo's `docs/f1_hud.html`, which never touch a wire).
+  Now, per repo:
+  - **Wire format, hermetic (runs in every `pio test -e native`):** `test_golden_frame_bytes` pins
+    the exact 14 bytes and `test_crc_matches_crsf_implementation` pins the CRC against `lib/crsf`.
+    Catches *this* repo changing the format; cannot see the sibling.
+  - **Wire format, cross-repo:** `tools/link2_copy_check.sh` compares against a checked-out
+    `../w17-soundlight-fw`. Exit 0 ok/skipped, 1 drifted, 2 could-not-check; `--strict`
+    turns an absent sibling into a hard failure so CI cannot pass by absence. Two tiers: the four
+    shared **code** files are fatal on any difference; **`docs/link2_protocol.md` — which is also a
+    copy, a fact the original R06 entry missed** — is reported non-fatally, because it legitimately
+    carries repo-local prose and only its normative parts must match.
+  - **Feel constants:** `test_shared_feel_constants_pinned` pins the four cross-repo numbers from
+    this side (26 %/s, 11 %/s, ×1.18, 4 gears).
+  - **Still none:** any *automatic* orchestration. The copy-check only bites when someone runs it —
+    the enforcing CI step belongs in soundlight-fw and is **not built**. Until then, run the script
+    by hand after any `lib/link2/` change.
 - **[Q] Does `npm ci` on CI build serialport's native binary against Node 20 at all, and is it ever
   exercised by `npm test` — or is serialport entirely absent from the tested path?** (→ R03/R17)
 
