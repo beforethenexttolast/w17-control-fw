@@ -24,9 +24,17 @@ LDF would compile, for a four-file library that has never drifted.
 
 Because it is all copies, it is guarded rather than shared:
 
-- `tools/link2_copy_check.sh` (this repo) compares against a checked-out
-  `../w17-soundlight-fw`. Run it after **any** change to `lib/link2/` or to this document.
-  Two tiers, deliberately:
+> **Reading this in `w17-soundlight-fw`?** Everything from here to the end of this section
+> is **control-fw-local** and describes tooling that lives only in the owner repo. The
+> checker script, the `pio test -e native` test names below, and `lib/crsf` are all
+> control-fw paths — board #2 has none of them. The normative content (frame layout,
+> payload table, state matrix, timing rule, worked example) starts at *Frame layout* below
+> and **is** byte-identical across both repos. Do not copy this section's claims forward as
+> though they were local facts.
+
+- `tools/link2_copy_check.sh` (**control-fw only** — it does not exist in soundlight)
+  compares against a checked-out `../w17-soundlight-fw`. Run it after **any** change to
+  `lib/link2/` or to this document. Two tiers, deliberately:
   - **Fatal (exit 1)** — the four shared **code** files. They are compiled on both boards, so
     byte-identity is the right invariant and any difference is a bug.
   - **Reported (exit unchanged)** — *this document*. Its normative content (field table,
@@ -35,13 +43,19 @@ Because it is all copies, it is guarded rather than shared:
     which names tooling that does not exist in soundlight. A diff cannot separate normative
     drift from local commentary, so the script surfaces the difference and a human judges it.
     **If you change anything normative above, re-sync soundlight's copy.**
-- `pio test -e native` pins the wire format hermetically from this side
-  (`test_golden_frame_bytes` fixes the exact 14 bytes; `test_crc_matches_crsf_implementation`
-  pins the CRC against `lib/crsf`).
+- `pio test -e native` pins the wire format hermetically from this side. **Control-fw only:**
+  `test_golden_frame_bytes` fixes the exact 14 bytes, and `test_crc_matches_crsf_implementation`
+  pins the CRC against `lib/crsf` — a library board #2 does not have. Soundlight pins the
+  same wire format from the receiver side with its own tests.
 
-The copy-check is advisory until soundlight-fw runs it in strict mode in its own CI — that
-enforcement step is **not built yet**. This repo owns the protocol and the script; soundlight
-owns the enforcement.
+The copy-check is **enforced, not advisory**: `w17-soundlight-fw` runs it in strict mode in
+its own CI as of **2026-07-25** (`2d22f85`, the `link2-drift` job in
+`.github/workflows/ci.yml`). That job anonymously shallow-clones this repo into
+`$RUNNER_TEMP` — outside `GITHUB_WORKSPACE`, so the sibling never enters soundlight's source
+tree — and runs *this* repo's `tools/link2_copy_check.sh --strict` against its own checkout.
+`--strict` means an absent sibling or a missing checker fails **loudly** (exit 2,
+COULD-NOT-CHECK) rather than passing quietly. This repo owns the protocol and the script;
+soundlight owns the enforcement, and it now exists.
 
 ## Frame layout (14 bytes)
 
