@@ -339,10 +339,19 @@ control-path file changed.
   temporarily bumping `go.bug.st/serial` → `v1.7.1` makes `go build ./...` **fully green**
   (my `main.go` compiles and the app links); the bump was **reverted** because `pkg/serial`
   sits directly in the CRSF **send path**, so changing that dependency is an owner decision, not
-  a silent slice-2 edit. Recommendation: approve the `v1.7.1` bump (or build on the Windows host)
-  as a separate, reviewed step — it is required for **any** go1.26 build of the fork.
-  **Owner decision 2026-07-15: the v1.7.1 bump is APPROVED as a future isolated slice —
+  a silent slice-2 edit. Recommendation at the time: approve the `v1.7.1` bump (or build on the
+  Windows host) as a separate, reviewed step — it is required for **any** go1.26 build of the
+  fork. **Owner decision 2026-07-15: the v1.7.1 bump was APPROVED as a future isolated slice —
   constraints in §2.3.12.9 item 2.**
+- **RESOLVED 2026-07-25 — shipped as `v1.5.0 → v1.6.0`, not v1.7.1** (`w17-mapper` `f0a18f3`,
+  2 files / +3 −1). `go build ./...` is now **fully green**; the go1.26 × cgo blocker is
+  cleared (was 11 cgo errors across 6 packages). The isolated slice found that **v1.7.1 pulls
+  collateral the approval did not cover** — it drags `golang.org/x/sys` v0.8.0 → v0.43.0 and a
+  `go` directive bump **1.20 → 1.25.0 in both `go.mod` and `go.work`**, raising the module's
+  language version — **including go1.22 per-iteration loop-variable semantics** — for the whole
+  module, CRSF send path included. That is a behavioural change to every range loop as a side
+  effect of a serial-driver bump. v1.6.0 avoids it entirely. Full reasoning, evidence, and the
+  preserved v1.7.1 reachability analysis: **§2.3.12.9 item 2**.
 
 **Boundary held (unchanged from slice 1):** no head-intent value reaches the node graph,
 `[16]CRSFValue`, ch9/10, serial, firmware, servo, or gimbal; no mapping, arming, arbitration,
@@ -935,15 +944,81 @@ reviewed (**R7 + R12**).
    unmodified in the fork; provenance = local clone of the read-only `_vendor/` reference;
    modification policy = production changes only in `w17-mapper` (never `_vendor/`), reviewed
    slices, one repo per session; **no remote publication or push without explicit owner
-   approval** (push remains disabled). **If proprietary or source-closed distribution is ever
-   intended, STOP and obtain legal review** — GPL-3.0 must not be treated as sufficient for
-   that case.
-2. **Mapper serial dependency (owner decision: APPROVED as a future isolated slice).**
-   `go.bug.st/serial` v1.5.0 → **v1.7.1** (the §2.3.9 go1.26 cgo incompatibility). Constraints:
-   `w17-mapper` only; exact `go.mod`+`go.sum` diff; no unrelated dependency churn; `gofmt`
-   where applicable; `go test ./...` + `go build ./...` green; CRSF byte-invariance tests
-   re-run; **no arbiter or control-path changes ride along**; no commit until owner review.
-   **Not to be mixed** with any ground-station or U4 work.
+   approval**. **If proprietary or source-closed distribution is ever intended, STOP and obtain
+   legal review** — GPL-3.0 must not be treated as sufficient for that case.
+
+   **UPDATED 2026-07-25 — "push remains disabled" is no longer true; do not rely on it.**
+   The fork now has a remote: `origin` = `github.com/beforethenexttolast/w17-mapper`, created
+   2026-07-25T04:11Z, **PUBLIC**, with `origin/w17-headtrack` carrying the current work.
+   (`upstream`'s push URL remains disabled.) The accidental "no remote, so push is impossible"
+   protection is **gone**, and it was never a control in the first place — it was an accident of
+   setup. What replaced it, deliberately:
+   - a tracked **`.githooks/pre-push`** (enable per clone with
+     `git config core.hooksPath .githooks`) that refuses a `w17_first_active` build tag, a
+     `FIRST_ACTIVE` identifier in Go or proto source, or an active head-intent enum — verified
+     to pass a clean HEAD and to bite on all three injections; **plus**
+   - the **push-review rule in `FORK-NOTICE.md`**.
+
+   The hook is the *accident* guard; the rule is the *control*. What is published distributes
+   **no control path**: proto still ends at `ACTIVE_LOG_ONLY = 8`, there is no `FIRST_ACTIVE`
+   in tracked Go or proto source, and upstream licence files are unmodified (all re-verified
+   read-only 2026-07-27).
+2. **Mapper serial dependency — SHIPPED 2026-07-25 as `v1.5.0 → v1.6.0`.**
+
+   **Superseded approval (2026-07-15, preserved):** the owner approved
+   `go.bug.st/serial` v1.5.0 → **v1.7.1** as a future isolated slice (the §2.3.9 go1.26 cgo
+   incompatibility). Constraints: `w17-mapper` only; exact `go.mod`+`go.sum` diff; no unrelated
+   dependency churn; `gofmt` where applicable; `go test ./...` + `go build ./...` green; CRSF
+   byte-invariance tests re-run; **no arbiter or control-path changes ride along**; no commit
+   until owner review. **Not to be mixed** with any ground-station or U4 work.
+
+   **What shipped instead: v1.6.0** (`w17-mapper` `f0a18f3`, 2 files / +3 −1). **Accepted.**
+   The reason is not "smaller delta" — it is that the approved version would have changed the
+   language the module compiles under:
+
+   - **v1.7.1 would raise the module's language version.** It drags `golang.org/x/sys`
+     v0.8.0 → v0.43.0 and a `go` directive bump **1.20 → 1.25.0** in **both** `go.mod` and
+     `go.work` — **including go1.22 per-iteration loop-variable semantics**. That is a
+     behavioural change to every range loop in the mapper, arriving as a side effect of a
+     serial-driver bump, on a module whose `pkg/serial` sits in the CRSF send path. The
+     approval did not cover that collateral. By contrast v1.6.0's own `go.mod` is
+     **byte-identical to v1.5.0's**; `go list -m all` differs by **exactly one line out of
+     ~400 modules**; `go.work` / `go.work.sum` are byte-identical to `59d1739`.
+     *(Verified in-tree 2026-07-27: `go.mod` and `go.work` both still read `go 1.20`,
+     `golang.org/x/sys` still v0.8.0.)*
+   - **v1.6.0's delta cannot touch CRSF timing.** `Write`/`Read` are **byte-identical**
+     v1.5.0 → v1.6.0 in both `serial_unix.go` and `serial_windows.go`. The delta is confined
+     to enumeration, `Open` error wrapping/cleanup, an added `Drain()` **that is never
+     called**, and cgo type wrappers.
+   - **v1.7.1 reachability analysis — preserved deliberately, because it makes a future bump
+     cheap.** v1.7.1 carries two real read-path deltas: the CH340 `0xFFFFFFFE` → `0x7FFFFFFE`
+     timeout constant, and a `Read` that loops forever when `hasTimeout == false`. Both are
+     **provably unreachable** in this fork because `supervisor.go:52` always passes a positive
+     `refreshRate*4`. v1.6.0 predates both. So if v1.7.1 is ever needed, the read-path risk is
+     already cleared and only the language-version question remains.
+
+   **Evidence:** `go build ./...` green (was 11 cgo errors / 6 packages failed);
+   `go test -count=1 ./...` green; `-race` on `./pkg/headintent/` + `./pkg/server/` green
+   (39 tests / 29 subtests, 0 races); `go mod verify` all modules OK; proto untouched (still
+   ends at `ACTIVE_LOG_ONLY = 8`, no active enum — re-verified 2026-07-27); and
+   `crsf.PackChannels` **byte-identical** — 12 frames / 312 bytes, all four dumps
+   (off / on-valid / on-stale / on-invalid) sharing one SHA with subscribers connected, slow,
+   and disconnected, and identical to the dumps generated at v1.5.0.
+
+   **Residual unknown:** real Windows enumeration of the ELRS TX. Unverifiable without
+   hardware on a macOS host — tracked with the other Windows-hardware items in
+   `../CURRENT_STATUS.md` (Pending validations).
+
+   **`go vet ./...` is NOT green in the fork — this is not a regression.** The bump did not
+   break vet, it **revealed** it: before v1.6.0, `cmd` never compiled, so vet never reached it.
+   What surfaces is one pre-existing **upstream** diagnostic
+   (`cmd/elrs-joystick-control/main.go:130`, unbuffered `os.Signal` channel, upstream
+   `db01a677`, 2023) plus two gofmt-dirty upstream files (`pkg/client/grpc_client.go` and one
+   other). All left as-is per "no unrelated dependency churn", and noted in the commit message
+   — fixing upstream files would add rebase friction to a fork we intend to keep tracking.
+   **Consequence to carry forward: if mapper CI is ever added, scope vet to the owned packages**
+   (`go vet ./pkg/headintent/ ./pkg/server/`) rather than `./...`, or it will fail on upstream
+   code we deliberately did not touch.
 3. **Diagnostics boundary (ratified as a hard invariant).** Mapper→Electron diagnostics stay
    **read-only gRPC** (§2.3.10). The diagnostics interface must **never**: arm; disarm;
    recenter; select authority; change controller configuration; alter the node graph; alter
@@ -1096,7 +1171,7 @@ The concrete cross-repo order from here to a driving milestone. Status annotatio
 | B | Review and commit iPhone R10 sender-safety/canonical-doc work **separately** | Codex/owner | open (uncommitted; automated tests pass, §2.3.12.9 item 4) |
 | C | Mirror the canonical bridge contract **only after** receiving the R10 commit hash | Claude (GS) | blocked on B |
 | D | Complete the owner-decision / U4 design addendum | Claude (fw docs) | **DONE this pass** (§2.3.12) |
-| E | Mapper serial dependency upgrade (`go.bug.st/serial` → v1.7.1) as a **separate slice** | Claude (mapper) | approved, not started (§2.3.12.9 item 2) |
+| E | Mapper serial dependency upgrade (`go.bug.st/serial`) as a **separate slice** | Claude (mapper) | **DONE 2026-07-25** — shipped as **v1.6.0**, not the approved v1.7.1 (`f0a18f3`); accepted, reasoning in §2.3.12.9 item 2 |
 | F | Mapper diagnostics + Electron subscriber, separate repo sessions | Claude | **already DONE** (CB8 slices 3A–3C, committed) |
 | G | A2 no-power mechanical inspection | owner + bench | open (A2 unexecuted) |
 | H | Phase B approval | owner | blocked on G |
