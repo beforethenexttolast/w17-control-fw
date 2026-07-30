@@ -514,6 +514,53 @@ arbiter memory, monotonic now) → `[16]CRSFValue`. It touches **only** indices 
 = pan/tilt; `ChannelDecoder.hpp:20-21`). It never writes back into the receiver, the monitor,
 the broadcaster, the node graph, or firmware.
 
+###### Input-provenance rule (added 2026-07-30) — arm/deadman/override must NOT come from the channel array
+
+**The arbiter must not read arm, deadman, or manual-override state from the eval
+`[16]CRSFValue` array.** That array carries **hold-last semantics** from upstream, so a value
+read out of it cannot distinguish "the operator is holding this control" from "this value is
+stale because the input device is gone." Sourcing a safety precondition from it silently
+defeats I2.
+
+The mechanism, traced in the fork 2026-07-30:
+
+1. `pkg/config/input_button.go:77` — when the gamepad is absent from the device registry,
+   `GetInputGamepad` returns `!ok` and the node returns **`nan=true`**. Same shape at
+   `input_axis.go:87` and `input_hat.go:52`.
+2. `pkg/config/output_tx.go:43` — the channel assembler:
+   ```go
+   _, out, ch, nan = ic.Eval(c)
+   if nan || ch < 1 || ch > 16 { continue }
+   (*i.Values)[ch-1] = util.CRSFValue(out)
+   ```
+   `i.Values` is a **persistent `*[16]util.CRSFValue` struct field**, allocated once and
+   mutated in place across eval ticks, never reset to a neutral value at the top of a tick.
+   So `continue` does not mean "neutral" or "invalid" — the channel **retains its value from
+   the previous tick, indefinitely, for as long as NaN persists.**
+
+The failure this produces, absent the rule: operator in `ACTIVE` with the D-pad DOWN deadman
+held; the USB gamepad drops (cable, hub, driver hiccup); the deadman channel **latches at its
+held value**; head intent is still fresh/centered/enabled with flags on, so the arbiter reads
+`armed == true` and **stays ACTIVE**, head motion still commanding the gimbal. The C1
+right-stick override is dead too, because it reads the same frozen array. The only remaining
+remedy is killing the mapper process or the radio.
+
+**Required instead:** the arbiter derives arm/deadman/override from a source carrying
+**explicit validity** — query the device layer directly and treat *device absent* as disarm,
+with a positive liveness signal (a monotonic per-device sequence, or the SDL removal event via
+`Controller.AlertDeviceChan`, `pkg/devices/controller.go:106`) rather than inferring liveness
+from a value that cannot distinguish held from stale.
+
+Stated as a rule because it is exactly the constraint that gets quietly violated during
+implementation, when the channel array is right there and convenient.
+
+> **Scope note.** The same hold-last behaviour affects **every** gamepad-driven channel today,
+> including throttle and steering, with no head tracking involved — a dropout freezes the last
+> command while the mapper keeps transmitting well-formed CRSF at full rate, so the firmware's
+> radio-loss failsafe does **not** fire. That is a pre-existing defect on the stick path,
+> outside CB8 and outside this gate, and it is tracked separately. It is **not** closed by
+> I10/R15, which only bind the future arbiter.
+
 ##### 2.3.11.2 The shaping/arbitration model
 
 All of the following describe the **future gated** arbiter. Commanded center is CRSF **992**
@@ -621,6 +668,12 @@ gated code must prove (test matrix, §2.3.11.5):
 - **I9 — Firmware/Electron boundaries intact.** Firmware still parses no iPhone data;
   Electron's `noControlPath` property is untouched (the arbiter lives in the mapper, not the
   Electron process).
+- **I10 — Loss of the arm/deadman input *device* is a disarm, identical to release.** (Added
+  2026-07-30.) Gamepad disappearance and gamepad button-release must reach the same arbiter
+  state. Arm/deadman/override state is sourced per the input-provenance rule (§2.3.11.1), never
+  from the hold-last `[16]CRSFValue` array; "device absent" is an affirmative disarm, not an
+  absence of evidence. Device *disappearance* and value *release* are distinct events and both
+  are tested (D15 covers release; D19–D22 cover disappearance).
 
 ##### 2.3.11.4 The FIRST_ACTIVE flag (compile-time AND runtime, both default off)
 
@@ -715,6 +768,11 @@ Codex milestone gates movement (§ top-of-doc). Both must pass.
       the flag is flipped in any shared build.
 - [ ] **R14** A written rollback: how to return to log-only (flag off ⇒ identity passthrough,
       already the default) and how Electron/mapper 5602 mutual exclusivity is preserved.
+- [ ] **R15** **Input-device-loss disarm demonstrated by physically unplugging the gamepad**
+      (added 2026-07-30), not simulated — from `ARMING`, from `ACTIVE`, and from `OVERRIDDEN`,
+      with reconnect proven not to restore authority. Proves I10 and the §2.3.11.1
+      input-provenance rule against the real SDL/OS device-removal path, which is where the
+      hold-last defect lives. Group D rows D19–D22.
 
 ##### 2.3.11.7 This slice's proof — mapper unchanged, CRSF byte-identical
 
@@ -1086,7 +1144,8 @@ below are additional gated-implementation tests):
 | Fault recovery | disarm + recovery interval + recenter, in that order | D3 |
 | Stale timeout | active gate 250 ms receive-time (249/250 fresh, 251 stale), distinct from 300 ms log-only | B5 |
 | Stale decay | rate-limited ramp to exactly 992; `virtualCameraCenter` discarded; no re-acquisition without recenter | B6, D14 |
-| Disconnect/reconnect | silence ⇒ decay; reconnect alone never restores ACTIVE | D14 |
+| Disconnect/reconnect (**iPhone / UDP 5602 stream**) | silence ⇒ decay; reconnect alone never restores ACTIVE | D14 |
+| Disconnect (**gamepad / arm-input device**) | device loss ⇒ **disarm**, identical to deadman release (I10); arm/deadman/override never sourced from the hold-last channel array (§2.3.11.1 input-provenance rule); reconnect alone never restores authority | D19–D22, R15 |
 | Video loss | sender suppression ⇒ ordinary stale path; no direct video→output coupling | D16 (suppressed stream indistinguishable from stale at the arbiter) |
 | Radio loss | firmware layer, hold-last, bench scope only — out of arbiter scope | firmware bench evidence (Phase B), not a U4 unit test |
 | Deadband | degrees, via measured deg↔count; inside band ⇒ exactly 992 offset | B2 |
@@ -1101,6 +1160,7 @@ below are additional gated-implementation tests):
 | Diagnostic-state semantics | arbiter state exported read-only via the existing diagnostics stream; no active enum value exists before the gated slice adds it under review | D13 |
 | Hybrid blend continuity | position→rate transition continuous, no command discontinuity | D6 |
 | Missing calibration | no signed calibration record ⇒ arbiter refuses non-passthrough | D18 (fail-closed) |
+| **Arm-input device loss** (I10, added 2026-07-30) | gamepad disappearance ⇒ disarm, identical to release; never inferred from the hold-last channel array | **D19** unplug in `ARMING` ⇒ `MANUAL`; **D20** unplug in `ACTIVE` ⇒ `DECAYING`→`MANUAL`, ramped to 992; **D21** unplug in `OVERRIDDEN` ⇒ stays non-active, no head re-acquisition; **D22** reconnect alone (no recenter, no rearm) ⇒ authority **not** restored. All four physically unplugged per R15, plus a unit-level seam test proving `nan`/device-absent maps to disarm and *not* to a retained previous value |
 
 ##### 2.3.12.11 FIRST_ACTIVE go/no-go table (honest, 2026-07-15) — **NO-GO / BLOCKED**
 
@@ -1120,7 +1180,8 @@ below are additional gated-implementation tests):
 | R12 shaping constants signed | **NO-GO** | derivation policy recorded (§2.3.12.8); values need R7 measurement |
 | R13 test matrix green | **NO-GO** | no U4 code exists (by design; gated) |
 | R14 written rollback | **PASS** | §2.3.12.12 |
-| **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13 open |
+| R15 device-loss disarm (I10) | **NO-GO** | added 2026-07-30; no U4 code exists to test, and the §2.3.11.1 hold-last defect it guards against is confirmed present in the fork's channel assembler (`output_tx.go:43`). Needs a physical unplug demonstration, so it is hardware-*procedure* class, not bench-power class — it does **not** require Phase B |
+| **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13, R15 open |
 
 Missing hardware evidence is **not** converted into PASS anywhere in this table.
 
