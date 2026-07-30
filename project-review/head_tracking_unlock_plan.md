@@ -679,11 +679,35 @@ gated code must prove (test matrix, §2.3.11.5):
 
 Two independent gates, **both** required for any active output; neither alone is sufficient:
 
-- **Compile-time** — a build tag / const (working name `W17_FIRST_ACTIVE`), **absent by
-  default**. When absent, the active arbiter branch is **not built** (or compiles to a
-  `const firstActive = false` dead branch the linker drops), so the shipped default binary
-  physically cannot produce head-derived motion (invariant I3). Any shared/CI build stays
-  default (flag off) until the review explicitly authorizes flipping it.
+- **Compile-time** — a **Go build tag, and only a build tag**: `//go:build w17_first_active`,
+  **absent by default**. When absent the active arbiter file is **not compiled at all** and the
+  default build links a passthrough stub, so the shipped default binary physically cannot
+  produce head-derived motion (invariant I3). Any shared/CI build stays default (flag off)
+  until the review explicitly authorizes flipping it.
+
+  > **The `const` alternative is DELETED (2026-07-30), not demoted to a fallback.** Earlier
+  > revisions allowed *"or compiles to a `const firstActive = false` dead branch the linker
+  > drops."* That branch of the fork **silently disarms the shipped accident guard.**
+  > `w17-mapper/.githooks/pre-push` (enabled in this clone, `core.hooksPath = .githooks`)
+  > scans code with exactly two patterns: lowercase **`w17_first_active`** across
+  > `*.go *.sh *.yml *.yaml *.mk Makefile Dockerfile*`, and the uppercase word
+  > **`FIRST_ACTIVE`** across `*.go *.proto`. The doc's own suggested identifier
+  > `const firstActive = false` matches **neither** — not the lowercase tag, not the uppercase
+  > word — so arbiter code gated that way would pass both checks and reach a **public** remote.
+  > The two mechanisms also differ in what they can prove: a build tag makes the branch
+  > *absent* (assertable by symbol absence); a const makes it *eliminated*, compiled and
+  > type-checked, flippable by a one-character edit. I3's "physically cannot" is true of the
+  > first and rhetorical about the second.
+  >
+  > **Naming contract with the guard:** the tag **must** be lowercase `w17_first_active`
+  > exactly, because that is the literal the hook greps. Renaming the tag without updating the
+  > hook silently voids check 1.
+  >
+  > **Owed in `w17-mapper` (separate pass, not done here):** extend the hook's own verification
+  > to confirm it *misses* the `const firstActive` form, and record that miss as a documented
+  > limit rather than assuming coverage. The existing "verified to bite on all three
+  > injections" evidence does not cover it. Not actioned in this pass because `w17-mapper` is
+  > a different repo with a live session in it.
 - **Runtime** — even in a FIRST_ACTIVE build, an explicit runtime enable (flag/env, working
   name `W17_FIRST_ACTIVE_ARM` or equivalent, **default off**) plus the per-tick **armed**
   precondition (§2.3.11.2 item 5) are required. Runtime-on alone in a non-FIRST_ACTIVE build
@@ -704,7 +728,7 @@ invariant. (This slice writes none of these — it specifies them.)
 |---|---|---|
 | A1 | Full 16-channel gamepad→CRSF sweep (reuse the `pack_deadend_test.go` vectors: stick sweep + all-min/center/max, 12 frames/312 bytes) packed with the arbiter compiled-in but flag OFF, under no/valid/stale/invalid head-intent traffic | `bytes.Equal` to the no-arbiter baseline **and** empty `diff` of hex dumps, all cases |
 | A2 | Same as A1 with diagnostics subscribers connected / slow / disconnected | byte-identical in every case |
-| A3 | Default build (no FIRST_ACTIVE tag): an exported `CanEverBeActive()`-style predicate | returns **false**; a build-tag test proves the active branch is absent from the default binary |
+| A3 | Default build (no `w17_first_active` tag): an exported `CanEverBeActive()`-style predicate, **plus symbol-absence in the linked binary** (`go tool nm` or equivalent — meaningful only on the build-tag mechanism, §2.3.11.4) | predicate returns **false**, and no arbiter symbol is present in the default binary — *absent*, not merely branch-eliminated |
 | A4 | Arbiter fuzz: random ch9/ch10 eval inputs, flag OFF | output ch9/ch10 == input ch9/ch10 exactly (identity) |
 | A5 | `go list -deps` / import audit | firmware and Electron never import the arbiter; the arbiter never imports the receiver's writers, only its read-only snapshot |
 
@@ -741,8 +765,25 @@ Codex milestone gates movement (§ top-of-doc). Both must pass.
 
 - [ ] **R1** Codex-owned FIRST_ACTIVE milestone checklist passed and its go/no-go table filled
       with evidence.
-- [ ] **R2** All 7 blockers of `iphone_pan_tilt_firmware_readiness.md §8` green, or explicitly
-      deferred with recorded owner sign-off.
+- [ ] **R2** All 7 blockers of `iphone_pan_tilt_firmware_readiness.md §8` accounted for.
+      **Rewritten 2026-07-30 — the blanket "or explicitly deferred with recorded owner sign-off"
+      is DELETED.** That clause was a waiver route around four items that carry no waiver of
+      their own: six of the seven blockers are already independently mandated elsewhere, so
+      deferring one under R2 could be read as overriding the R-item that requires it. R2 is now
+      cross-references plus one promotion:
+
+      | readiness §8 blocker | Discharged by |
+      |---|---|
+      | 1. Physical servo endpoint validation | **R7** (endpoints + deg↔count table) |
+      | 2. Smoothing / rate-limiting ownership confirmed **and built** | **R12** (constants signed) **and R13** (matrix green — R12 covers the values, R13 proves the mechanism exists) |
+      | 3. Stale-decay-to-center policy | design §2.3.11.2 item 6 + **R4** |
+      | 4. Manual override | C1/C2 + design §2.3.11.2 item 7 |
+      | 5. Windows log-only bridge validated | **R9** (real-device log-only bridge, U1/CB6) |
+      | 6. Real iPhone axis/mount validation | **R8** (U5 / Codex Batch 5) |
+      | 7. Bench-only servo sweep, wheels off | **R16** — promoted, see below; R2 was its only home |
+
+      R2 therefore carries **no independent evidence obligation and no waiver**. It passes when
+      the referenced items pass.
 - [ ] **R3** Owner decision **#2 video-loss reaction** (§4) resolved — the arbiter cannot
       safely go active while "blind driver, camera keeps following" is unresolved.
 - [ ] **R4** Owner decision **#3 / U8 failsafe hold-vs-center** (radio-loss firmware behavior)
@@ -773,6 +814,18 @@ Codex milestone gates movement (§ top-of-doc). Both must pass.
       with reconnect proven not to restore authority. Proves I10 and the §2.3.11.1
       input-provenance rule against the real SDL/OS device-removal path, which is where the
       hold-last defect lives. Group D rows D19–D22.
+- [ ] **R16** **Bench-only servo sweep before any driving use** (promoted out of R2's blocker 7,
+      2026-07-30, because R2 was its only home and R2 carried a blanket waiver clause). A
+      scripted ch9/ch10 sweep — Wokwi Stage-2, then real servos on the bench, car elevated /
+      wheels off the ground — exercising the full commanded range with **no stall, no rail
+      brown-out, and correct direction**, with an observer present. **No waiver clause**: this
+      is the last check before anything moves under power, and nothing else in R1–R15 covers
+      it. Requires Phase B (powered), so it is gated behind R6.
+
+**Precedence rule (added 2026-07-30).** A deferral or sign-off recorded under any one R-item
+**cannot** waive an obligation that another R-item states independently. Where two items cover
+the same ground, the stricter governs. This is the general fix; R2's blocker-1-vs-R7 collision
+is simply where it surfaced.
 
 ##### 2.3.11.7 This slice's proof — mapper unchanged, CRSF byte-identical
 
@@ -1167,7 +1220,7 @@ below are additional gated-implementation tests):
 | Item | Status | Evidence / blocker |
 |---|---|---|
 | R1 Codex milestone checklist | **NO-GO** | not run; milestone doc has uncommitted edits in `iPhone_rc` |
-| R2 readiness §8 blockers green | **NO-GO** | majority are hardware-evidence class |
+| R2 readiness §8 blockers accounted for | **NO-GO** | rewritten 2026-07-30 as cross-references with **no independent waiver**; passes only when R7/R12/R13/R4/R8/R9/R16 do, and most of those are hardware-evidence class |
 | R3 video-loss decision | **PASS (decision)** | §2.3.12.1, 2026-07-15 |
 | R4 hold-vs-center recorded | **PASS (bench scope only)** | §2.3.12.2; driving scope re-review still required |
 | R5 driving protocol/spotter | **PASS (decision)** | §2.3.12.3; bench-only, separate driving milestone |
@@ -1181,7 +1234,8 @@ below are additional gated-implementation tests):
 | R13 test matrix green | **NO-GO** | no U4 code exists (by design; gated) |
 | R14 written rollback | **PASS** | §2.3.12.12 |
 | R15 device-loss disarm (I10) | **NO-GO** | added 2026-07-30; no U4 code exists to test, and the §2.3.11.1 hold-last defect it guards against is confirmed present in the fork's channel assembler (`output_tx.go:43`). Needs a physical unplug demonstration, so it is hardware-*procedure* class, not bench-power class — it does **not** require Phase B |
-| **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13, R15 open |
+| R16 bench-only servo sweep | **NO-GO** | promoted out of R2 blocker 7, 2026-07-30; no waiver clause; requires Phase B, so gated behind R6 |
+| **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13, R15, R16 open |
 
 Missing hardware evidence is **not** converted into PASS anywhere in this table.
 
@@ -1239,7 +1293,7 @@ The concrete cross-repo order from here to a driving milestone. Status annotatio
 | I | Measure center, endpoints, signs, usable counts, counts/degree (per axis) | Claude (fw) + bench | blocked on H (U3/CB9) |
 | J | Validate real iPhone axes, mount orientation, lifecycle, CB6 bridge behavior | Codex + Claude | needs device + bench network (U1/U5) |
 | K | Derive and **sign** the exact shaping constants (§2.3.12.8 policy) | owner | blocked on I, J |
-| L | Fresh adversarial review (full §2.3.11.6 R1–R14 re-check) | owner + review | blocked on A–K |
+| L | Fresh adversarial review (full §2.3.11.6 R1–R16 re-check) | owner + review | blocked on A–K |
 | M | Only after approval: implement U4 in small reviewed slices | Claude (mapper) | **GATED** |
 | N | Bench-only physical validation (U6/U7) | Claude + observer | gated (Phase B + milestone) |
 | O | Separate driving-readiness milestone (incl. §2.3.12.2 re-review, spotter) | owner | gated |
