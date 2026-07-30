@@ -27,10 +27,23 @@ Because it is all copies, it is guarded rather than shared:
 > **Reading this in `w17-soundlight-fw`?** Everything from here to the end of this section
 > is **control-fw-local** and describes tooling that lives only in the owner repo. The
 > checker script, the `pio test -e native` test names below, and `lib/crsf` are all
-> control-fw paths — board #2 has none of them. The normative content (frame layout,
-> payload table, state matrix, timing rule, worked example) starts at *Frame layout* below
-> and **is** byte-identical across both repos. Do not copy this section's claims forward as
+> control-fw paths — board #2 has none of them. Do not copy this section's claims forward as
 > though they were local facts.
+>
+> **The normative content — frame layout, payload table, state matrix, timing rule, worked
+> example — matches across both repos** and starts at *Frame layout* below. Note the precise
+> claim: it is the normative *content* that matches, **not** the whole region byte-for-byte.
+> (Corrected 2026-07-30 — this note previously claimed everything from *Frame layout* onward
+> "**is** byte-identical across both repos", which is false and was verified false: the
+> drive-mode naming commentary under *Drive mode* carries the same repo-local point-of-view
+> split as this section — control-fw says "the CRSF FLIGHTMODE string this firmware emits",
+> soundlight says "this board emits no CRSF whatsoever". That is legitimate local prose, not
+> drift, but it sits inside the region the old sentence promised was identical.)
+>
+> **Why the wrong claim mattered:** the guard's doc tier reports this file as differing on
+> every run. Someone trusting the old sentence would conclude the report *must* mean normative
+> drift and go hunting — or, worse, learn to dismiss the report as noise and miss a real one.
+> A guard that cries wolf teaches `--no-verify`; a doc that over-claims teaches the same habit.
 
 - `tools/link2_copy_check.sh` (**control-fw only** — it does not exist in soundlight)
   compares against a checked-out `../w17-soundlight-fw`. Run it after **any** change to
