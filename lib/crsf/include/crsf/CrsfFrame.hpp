@@ -67,6 +67,24 @@ inline constexpr uint16_t kChannelRawMin = 172;
 inline constexpr uint16_t kChannelRawCenter = 992;
 inline constexpr uint16_t kChannelRawMax = 1811;
 
+// Plausibility band for a raw channel value, wider than the nominal 172..1811.
+// A TX with expanded endpoints legitimately overshoots the nominal range, so
+// values just outside it are clamped to the endpoint (full deflection was
+// intended). A value far outside it is not an expanded endpoint -- it is a
+// sender that is not speaking the protocol (a corrupt frame that passed CRC, or
+// an out-of-band sentinel such as an all-zeros payload), and normalizing it to
+// full deflection would be the least safe available reading. Outside this band
+// the channel decodes as ABSENT (analog 0 / switch OFF), reusing the existing
+// "control absent" semantics.
+//
+// PROVISIONAL VALUES -- mechanism is the fix, thresholds are not yet bench
+// evidence. 100 sits ~72 counts (~45 us) below nominal min and 1900 ~89 counts
+// (~56 us) above nominal max, which covers expanded-endpoint TXs while still
+// catching the degenerate 11-bit extremes (0 and 2047). Confirm against the
+// real TX during Phase B endpoint calibration and narrow if warranted.
+inline constexpr uint16_t kChannelRawPlausibleMin = 100;
+inline constexpr uint16_t kChannelRawPlausibleMax = 1900;
+
 // CRSF UART rate for ELRS receivers, 8N1, not inverted. See CLAUDE.md section 1.
 inline constexpr uint32_t kCrsfBaud = 420000;
 

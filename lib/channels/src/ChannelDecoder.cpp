@@ -4,12 +4,22 @@ namespace channels {
 
 namespace {
 
+// True when a raw value is inside the plausibility band (CrsfFrame.hpp). A
+// value outside it is treated as ABSENT, not as full deflection -- see the
+// constant's comment for why. Frame-level rejection is deliberately NOT used:
+// one bad channel must not escalate into a link dropout.
+bool rawPlausible(uint16_t raw) {
+    return raw >= crsf::kChannelRawPlausibleMin && raw <= crsf::kChannelRawPlausibleMax;
+}
+
 // Piecewise-linear normalization, exact at the CRSF anchors: raw 172 -> -1000,
 // 992 -> 0, 1811 -> +1000 (CLAUDE.md section 2.1 raw range). The low and high
 // half-spans differ by one raw unit (820 vs 819), so a single-span formula
 // cannot hit both endpoints exactly. Integer division truncates toward zero,
-// biasing toward neutral -- the safe direction. Raw values outside the
-// nominal range (the 11-bit field can carry 0..2047) clamp to the endpoints.
+// biasing toward neutral -- the safe direction. Raw values outside the nominal
+// range but still PLAUSIBLE (an expanded-endpoint TX) clamp to the endpoints;
+// implausible values never reach here -- callers reject them first via
+// rawPlausible() and decode the channel as absent.
 int16_t normalizeRaw(uint16_t raw) {
     constexpr int32_t kLowSpan = crsf::kChannelRawCenter - crsf::kChannelRawMin;  // 820
     constexpr int32_t kHighSpan = crsf::kChannelRawMax - crsf::kChannelRawCenter; // 819
@@ -36,6 +46,9 @@ int16_t ChannelDecoder::normalizedAnalog(const crsf::RcChannelsFrame& frame, uin
     if (index >= crsf::kNumChannels) {
         return 0; // control absent
     }
+    if (!rawPlausible(frame.channels[index])) {
+        return 0; // implausible raw: same "absent" reading, never full deflection
+    }
     const int16_t value = normalizeRaw(frame.channels[index]);
     return invert ? static_cast<int16_t>(-value) : value;
 }
@@ -44,6 +57,13 @@ bool ChannelDecoder::decodeSwitch(const crsf::RcChannelsFrame& frame, uint8_t in
                                    bool& state) const {
     if (index >= crsf::kNumChannels) {
         state = false; // control absent
+        return state;
+    }
+    if (!rawPlausible(frame.channels[index])) {
+        // Implausible raw: force OFF, do NOT fall through to hysteresis. A
+        // neutral 0 would sit inside the dead band and HOLD the previous state,
+        // which for the arm switch means a garbage payload could not disarm.
+        state = false;
         return state;
     }
     const int16_t value = normalizeRaw(frame.channels[index]);
@@ -67,6 +87,9 @@ bool ChannelDecoder::decodeSwitch(const crsf::RcChannelsFrame& frame, uint8_t in
 uint8_t ChannelDecoder::decodeTriState(const crsf::RcChannelsFrame& frame, uint8_t index) const {
     if (index >= crsf::kNumChannels) {
         return 1; // control absent: RACE (gearbox), the safe middle
+    }
+    if (!rawPlausible(frame.channels[index])) {
+        return 1; // implausible raw: same "absent" reading, the safe middle
     }
     const int16_t value = normalizeRaw(frame.channels[index]);
     if (value < -333) {

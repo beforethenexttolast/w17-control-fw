@@ -60,19 +60,93 @@ void test_normalization_truncates_toward_neutral() {
     TEST_ASSERT_EQUAL_INT16(1, c.steering);
 }
 
-void test_normalization_clamps_out_of_range_raw() {
+void test_normalization_clamps_plausible_out_of_range_raw() {
     ChannelDecoder decoder;
     auto frame = makeFrame();
 
-    // The 11-bit field can physically carry 0..2047, outside the nominal
-    // 172..1811 CRSF range (e.g. a zero-initialized frame).
-    frame.channels[0] = 0;
+    // Outside the nominal 172..1811 but inside the plausibility band: an
+    // expanded-endpoint TX meant full deflection, so clamp to the endpoint.
+    frame.channels[0] = crsf::kChannelRawPlausibleMin; // 100
     Controls c = decoder.decode(frame);
     TEST_ASSERT_EQUAL_INT16(-1000, c.steering);
 
-    frame.channels[0] = 2047;
+    frame.channels[0] = crsf::kChannelRawPlausibleMax; // 1900
     c = decoder.decode(frame);
     TEST_ASSERT_EQUAL_INT16(1000, c.steering);
+}
+
+void test_implausible_raw_decodes_as_absent_not_full_deflection() {
+    ChannelDecoder decoder;
+    auto frame = makeFrame();
+
+    // The 11-bit field can physically carry 0..2047. A value this far outside
+    // the nominal range is not an expanded endpoint -- it is a sender that is
+    // not speaking the protocol. Decoding it as full deflection would slam the
+    // steering to full lock on a frame that passes CRC, so failsafe never fires.
+    frame.channels[0] = 0;
+    Controls c = decoder.decode(frame);
+    TEST_ASSERT_EQUAL_INT16(0, c.steering);
+
+    frame.channels[0] = 2047;
+    c = decoder.decode(frame);
+    TEST_ASSERT_EQUAL_INT16(0, c.steering);
+}
+
+void test_plausibility_band_boundaries_are_inclusive() {
+    ChannelDecoder decoder;
+    auto frame = makeFrame();
+
+    // Inclusive on both edges, absent one step outside.
+    frame.channels[0] = crsf::kChannelRawPlausibleMin - 1; // 99
+    TEST_ASSERT_EQUAL_INT16(0, decoder.decode(frame).steering);
+
+    frame.channels[0] = crsf::kChannelRawPlausibleMin; // 100
+    TEST_ASSERT_EQUAL_INT16(-1000, decoder.decode(frame).steering);
+
+    frame.channels[0] = crsf::kChannelRawPlausibleMax; // 1900
+    TEST_ASSERT_EQUAL_INT16(1000, decoder.decode(frame).steering);
+
+    frame.channels[0] = crsf::kChannelRawPlausibleMax + 1; // 1901
+    TEST_ASSERT_EQUAL_INT16(0, decoder.decode(frame).steering);
+}
+
+void test_implausible_raw_forces_switch_off_and_does_not_hold() {
+    ChannelDecoder decoder;
+
+    // Seed the arm switch ON from a valid frame.
+    auto frame = makeFrame();
+    frame.channels[4] = kRawOn;
+    TEST_ASSERT_TRUE(decoder.decode(frame).armSwitch);
+
+    // Now an implausible raw on the same channel. This must force OFF, NOT fall
+    // through to hysteresis: a neutral 0 sits inside the dead band and would
+    // HOLD the previous state, meaning a garbage payload could not disarm.
+    frame.channels[4] = 0;
+    TEST_ASSERT_FALSE(decoder.decode(frame).armSwitch);
+}
+
+void test_all_zero_payload_decodes_fully_safe() {
+    ChannelDecoder decoder;
+
+    // The concrete regression: a sender emitting an all-zeros channel array
+    // (e.g. an out-of-band "no data" sentinel) inside a well-formed, CRC-valid
+    // frame. Before the plausibility band every analog read full negative
+    // deflection -- steering to full lock -- while the link stayed up and
+    // failsafe never fired.
+    auto frame = makeFrame(0);
+    Controls c = decoder.decode(frame);
+
+    TEST_ASSERT_EQUAL_INT16(0, c.steering);
+    TEST_ASSERT_EQUAL_INT16(0, c.throttle);
+    TEST_ASSERT_EQUAL_INT16(0, c.pan);
+    TEST_ASSERT_EQUAL_INT16(0, c.tilt);
+    TEST_ASSERT_FALSE(c.armSwitch);
+    TEST_ASSERT_FALSE(c.drsSwitch);
+    TEST_ASSERT_FALSE(c.boostHeld);
+    TEST_ASSERT_FALSE(c.overtakeHeld);
+    TEST_ASSERT_EQUAL_UINT8(1, c.driveMode); // RACE, the safe middle
+    TEST_ASSERT_FALSE(c.gearUpEdge);
+    TEST_ASSERT_FALSE(c.gearDownEdge);
 }
 
 void test_invert_flags_flip_analog_sign() {
@@ -349,7 +423,11 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_normalization_exact_at_crsf_anchors);
     RUN_TEST(test_normalization_truncates_toward_neutral);
-    RUN_TEST(test_normalization_clamps_out_of_range_raw);
+    RUN_TEST(test_normalization_clamps_plausible_out_of_range_raw);
+    RUN_TEST(test_implausible_raw_decodes_as_absent_not_full_deflection);
+    RUN_TEST(test_plausibility_band_boundaries_are_inclusive);
+    RUN_TEST(test_implausible_raw_forces_switch_off_and_does_not_hold);
+    RUN_TEST(test_all_zero_payload_decodes_fully_safe);
     RUN_TEST(test_invert_flags_flip_analog_sign);
     RUN_TEST(test_switch_hysteresis_on_off_and_hold_in_band);
     RUN_TEST(test_first_decode_seeds_levels_and_fires_no_edges);
