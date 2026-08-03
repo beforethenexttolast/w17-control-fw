@@ -252,6 +252,18 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
 - **Fix direction:** Confirm/force H.264 on the camera, or add an ffmpeg transcode step; documented already as a bench gate.
 
 ### R16 — `main.cpp` orchestration + Wokwi sim not asserted in CI; named coverage gaps
+
+> ⚠ **NAME COLLISION — this is not the only R16 in this repo.** `head_tracking_unlock_plan.md`
+> §2.3.11.6 carries a **separate, unrelated** R-series, whose **R16 is the bench-only servo sweep
+> before any driving use** — a Phase-B-gated safety item with **no waiver clause**, currently
+> **NO-GO**. The two numbering spaces are independent and neither constrains the other.
+>
+> **Never write "R16 closed" unqualified.** Say **risk-register R16** or **FIRST_ACTIVE R16**. This
+> warning exists because of a real near-miss on 2026-08-04: the first observed Wokwi run advanced
+> *this* R16, and the commit subject (`3eb7a66`) records it as "R16 closed" — which, read in this
+> repo, most naturally suggests the servo sweep. It does not. Nothing about driving readiness
+> changed. (The commit body and the entry below are correct; only the subject is ambiguous, and it
+> is left as-is rather than rewritten.)
 - **Sev/Conf:** Medium / High. **Verdict:** CONFIRMED. **HW?** Partial. **Fix:** now (CI) / wait (HIL).
 - **Affected:** `w17-control-fw` src/main.cpp, wokwi.toml; test suites across repos.
 - **Evidence:** No unit test exercises the main.cpp control-loop wiring; the Wokwi sim is a manual build, not a CI assertion. Documented gaps: NVS corruption on real flash, ADC saturation extremes, Hall glitch/bounce, board-#2 boot-staleness.

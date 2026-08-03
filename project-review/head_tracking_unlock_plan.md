@@ -814,7 +814,12 @@ Codex milestone gates movement (§ top-of-doc). Both must pass.
       with reconnect proven not to restore authority. Proves I10 and the §2.3.11.1
       input-provenance rule against the real SDL/OS device-removal path, which is where the
       hold-last defect lives. Group D rows D19–D22.
-- [ ] **R16** **Bench-only servo sweep before any driving use** (promoted out of R2's blocker 7,
+- [ ] **R16** **Bench-only servo sweep before any driving use** ⚠ **(name collision: a
+      *different* R16 exists in `10_risk_register.md` — `main.cpp` orchestration + Wokwi sim not
+      asserted in CI. The two R-series are independent. Risk-register R16 was partially advanced by
+      the first Wokwi run on 2026-08-04 and its commit subject says "R16 closed"; that says
+      NOTHING about this one, which remains NO-GO. Always qualify: "FIRST_ACTIVE R16".)**
+      (promoted out of R2's blocker 7,
       2026-07-30, because R2 was its only home and R2 carried a blanket waiver clause). A
       scripted ch9/ch10 sweep — Wokwi Stage-2, then real servos on the bench, car elevated /
       wheels off the ground — exercising the full commanded range with **no stall, no rail
