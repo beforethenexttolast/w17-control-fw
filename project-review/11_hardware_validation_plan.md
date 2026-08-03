@@ -26,7 +26,7 @@ Mostly software/config + a multimeter. Clear these first; several are one-line s
 | A1.3 | Decide + apply the **canonical gear count** (fw 4 / doc 6 / HUD 8) and **drive-mode labels** (Gearbox vs RACE). | R05, R19 |
 | A1.4 | Add CI steps: build `esp32dev_tuning`; package + serialport-rebuild smoke on the ground station. | R17 |
 | A1.5 | Decide whether HUD `armed`/`failsafe` should be real (encode in FLIGHTMODE) or documented as sim-on-loss. | R01 |
-| A1.6 | Run the **control-fw Wokwi sim once end-to-end**; confirm the serial log reaches DRIVING with `failsafe=0` (validates the 420000-baud loopback the Stage-2 story rests on). | R16 |
+| A1.6 | **DONE 2026-08-04.** Run the **control-fw Wokwi sim once end-to-end**; confirm the serial log reaches DRIVING with `failsafe=0` (validates the 420000-baud loopback the Stage-2 story rests on). Transcript: `docs/SIMULATION.md` → "Observed run — 2026-08-04". | R16 |
 
 ### A2. Physical checks before battery (multimeter, power OFF)
 
@@ -120,7 +120,7 @@ Corresponds to D8 Phases 7–11. Only after Phase B passes.
 2. Wire the serialport Electron-ABI rebuild or the `.exe` ships telemetry-disabled. **(R03)**
 3. Diff PinMap.hpp vs the soldered board — continuity-check every signal. **(R08, A2.1)**
 4. Confirm ESC +5 V BEC isolated + single common ground before any battery. **(A2.2/A2.3)**
-5. Run the control-fw Wokwi sim once to a live link (`failsafe=0`). **(R16)**
+5. ~~Run the control-fw Wokwi sim once to a live link (`failsafe=0`).~~ **DONE 2026-08-04** — reached ≈2.5 s from boot. **(R16, A1.6)**
 6. Decide canonical gear count + drive-mode labels; apply. **(R05, R19)**
 7. Add CI: build `esp32dev_tuning`; package/serialport smoke on the ground station. **(R17)**
 8. Add a link2 drift-guard (CI diff or submodule) across the copied trees. **(R06)**

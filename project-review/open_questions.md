@@ -131,18 +131,44 @@ was answered by the R5-a remediation — see the correction there.
 
 ## Simulation / test / CI
 
-- **[OWNER/tooling — ANSWERED "only built", STILL UNRESOLVED] Has the control-fw Wokwi sim ever
-  actually been run to a live link (failsafe=0), or only built? The SIMULATION.md checklist boxes
-  are all unchecked.** (→ R16) **Only built — never once loaded** (confirmed 2026-07-25; the build
-  itself re-verified green). So `failsafe=0` over the 420000-baud `TX2→RX2` loopback is still an open
-  question, and the checklist boxes stay unchecked on purpose.
-  **Retagged [HW] → [OWNER/tooling]:** the blocker is a credential, not the bench. Every Wokwi route
-  uploads the firmware image to Wokwi's servers and needs auth — `wokwi-cli` is not installed and
-  `WOKWI_CLI_TOKEN` is unset here; the VS Code extension is installed and licensed (3.6.0) but only
-  starts from an interactive `Wokwi: Start Simulator`, which an automated session cannot drive.
-  One short owner action unblocks the observation; a CI token unblocks the automated version.
-  Same blocker holds the R5-b stall → TWDT panic → reboot observation, whose injector is already
-  built and ELF-verified (`W17_SIM_WDT_STALL`). Details + the exact recipe: `docs/SIMULATION.md`.
+- **[CLOSED 2026-08-04] Has the control-fw Wokwi sim ever actually been run to a live link
+  (failsafe=0), or only built?** (→ R16) **Yes — it reaches a live link.** The owner loaded the
+  `esp32dev_sim` build in Wokwi on 2026-08-04 and CRSF decoded over the 420000-baud `TX2→RX2`
+  loopback with no baud override: `failsafe=0` appears on the second `[state]` line after the
+  feeder starts sending, ≈2.5 s from boot, and the arm gate, gearbox, ERS overboost, both failsafe
+  paths (frame-timeout **and** LQ=0-with-fresh-frames), and the fresh-neutral re-arm rule all
+  behaved as `docs/SIMULATION.md` said they would. Full transcript and a phase-by-phase evidence
+  table are in that file under "Observed run — 2026-08-04". The question that carried since the
+  audit is answered; the *tooling* tag was right — one owner action closed it.
+  **What the run did NOT close, and is now tracked below:** the R5-b watchdog observation (still
+  never run — different binary), the battery-pot reading, and the spurious wheel pulses.
+- **[OWNER/tooling] R5-b: stall → 2 s TWDT panic → reboot → `reset=TASK_WDT` with the retained
+  boot counter incremented — still never observed.** The injector is built and ELF-verified
+  (`W17_SIM_WDT_STALL`, re-verified 2026-08-04: once in the stall ELF, zero times in `esp32dev`,
+  `esp32dev_tuning`, `esp32dev_sim`), but it is a *separate ad-hoc build* and nobody has started
+  it. The 2026-08-04 sim run booted `reset=POWER_ON boots=1 retained=no`, making it a fourth
+  POWER_ON data point rather than evidence for the crash-class branch — that branch and the RTC
+  retained-counter increment are still native-test-only, zero-for-four in the real world.
+  Recipe (one command, one `Wokwi: Start Simulator` click, ~6 s of simulated time):
+  `docs/SIMULATION.md` → "Watchdog stall validation". Note this closing R5-b would **not** promote
+  the 2 s timeout out of provisional, nor any of the three Phase-B items in that file's limits
+  section — a sim confirms the mechanism fires, not that 2 s is the right number under real load.
+- **[Q — new 2026-08-04] Why does the Wokwi battery pot read ≈37 % when `diagram.json` presets
+  `value: "69"`?** Observed `batt=1384mV` flat for ~14 s, then a noisy climb to a steady 4588 mV
+  (≈1240 mV at the pin through the 37/10 divider). `BatteryMonitor` behaved correctly on that
+  input — seeded from the first sample, EMA-smoothed, `lowBatt` latched after 3 s below 7000 mV
+  and correctly refused to clear below 7400 mV — so this is Wokwi's potentiometer/ADC model or
+  `analogReadMilliVolts`'s calibration fallback with no eFuse Vref, not firmware. Telemetry-only,
+  no control authority. **Consequence:** the sim cannot sanity-check the divider maths; battery
+  ADC calibration stays a Phase-B bench item exactly as before.
+- **[Q — new 2026-08-04] Why did GPIO35 produce two wheel-pulse edge pairs with nobody clicking
+  the button?** `rpm` read 600 then 1500 during DRIVING (implied edge spacings 100 ms and 40 ms —
+  real pairs, well outside the 2 ms ISR lockout, below the 5000 `maxPlausibleRpm` clamp) on a pin
+  held at 3V3 through a 10 kΩ pull-up. The decay tail afterwards was textbook-correct
+  (`176 → 71 → 44 → 0`, matching `60000/elapsed` then the 1500 ms hard-zero timeout), which is
+  real evidence for that logic. Unresolved whether the edges are Wokwi's pin model or something
+  the real A3144 wiring would also see; the sim cannot distinguish them, so Hall bounce under
+  real pulses stays a bench item.
 - **[Q] Does the Hall ISR `read()` snapshot need to be coherent? The period-based rpm math assumes
   count and period come from the same edge pair; the two-independent-atomic-loads design permits
   tearing — does the pure logic tolerate a mismatched pair?** (telemetry-only; relates to R18/R21)

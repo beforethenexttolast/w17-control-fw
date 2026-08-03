@@ -273,6 +273,25 @@ Plus an appendix of ~30 additional Low findings carried as-authored (not individ
   - Related and unchanged: the R5-b stall → TWDT panic → reboot observation is still PENDING for the
     same reason. The injector itself is ready (`W17_SIM_WDT_STALL`, verified present-when-flagged and
     absent from all three checked-in ELFs), so the run is one command once the sim can start.
+- **2026-08-04 — the sim has now been run; the "never run at all" escalation above is superseded, the
+  underlying risk is not.** The owner loaded `esp32dev_sim` in Wokwi: the diagram loads, CRSF decodes
+  at 420000 baud over the `TX2→RX2` loopback, and `failsafe=0` is reached ≈2.5 s from boot. The
+  `main.cpp` composition this risk is really about — arm gate, gearbox, ERS overboost past the gear
+  cap, the frame-timeout failsafe **and** the LQ=0-with-fresh-frames failsafe, the fresh-neutral
+  re-arm rule — was observed end to end. Transcript + phase-by-phase evidence: `docs/SIMULATION.md`,
+  "Observed run — 2026-08-04". This satisfies plan item **A1.6**.
+  - **What is still open under R16, unchanged:** the sim is still a *manual* run, not a CI assertion
+    (that half still needs `WOKWI_CLI_TOKEN`), and none of the named coverage gaps moved —
+    NVS-corruption-on-real-flash, ADC saturation extremes, Hall glitch/bounce, board-#2
+    boot-staleness. R16 stays CONFIRMED / partial.
+  - **The run also produced two analog-input anomalies**, both telemetry-only and neither a firmware
+    defect: the battery pot reads ≈37 % against a `value: "69"` preset, and GPIO35 produced wheel
+    pulses with nobody clicking the button. Written up in `docs/SIMULATION.md` → "Anomalies" and
+    tracked in `open_questions.md`. Note the second one lands squarely on R16's own "Hall
+    glitch/bounce" gap and makes it *harder* to close in the sim, not easier.
+  - R5-b (stall → TWDT panic → reboot) is **still PENDING** — separate binary, never started. The
+    run booted `reset=POWER_ON boots=1 retained=no`, a fourth POWER_ON data point, so the crash-class
+    branch of `reset_diag::classify` and the RTC retained-counter increment remain native-test-only.
 
 ### R17 — CI gaps: `esp32dev_tuning` never built; ground CI never packages the app
 - **Sev/Conf:** Medium / High. **Verdict:** CONFIRMED. **HW?** No. **Fix:** now.
