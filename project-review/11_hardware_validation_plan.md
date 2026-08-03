@@ -30,17 +30,25 @@ Mostly software/config + a multimeter. Clear these first; several are one-line s
 
 ### A2. Physical checks before battery (multimeter, power OFF)
 
-> **Step-by-step runbook:** `13_phase_a_a2_no_power_checklist.md` (tools, per-pin continuity,
-> divider/Hall/ESC-isolation/ground/WS2812 measurements, table template, PASS/FAIL, hard-stops).
+> **Step-by-step runbook:** `13_phase_a_a2_no_power_checklist.md`. **A2 is STAGED
+> (2026-07-30) and REVISED (2026-08-04, closing
+> `14_a2_staged_gates_adversarial_review.md`)** — it no longer has the single-pass
+> A2.1–A2.5 shape this section once described. The executable form is the S-gates, run in
+> build order on isolated subassemblies: **S0** PDB frame → **S1** divider → **S2** Hall →
+> **S3** link2 → **S4/S4b** CRSF + actuator leads and the isolation matrices (**S8a**, the
+> ESC red-wire cut half of the hard gate, executes here) → **S5** WS2812 → **S6** batt+
+> consumers (UBECs, ESC 12 AWG feed, C1) → **S7** whole-harness composite (grounds +
+> batt+/rail screens + master-switch pigtail) → **S8b** ESC red-wire final. The A2.x rows
+> below are retained **only as the risk-register mapping** — do not run them as written.
 > **A2 has NOT been executed; Phase B stays blocked until the filled checklist is reviewed and approved.**
 
-| # | Do | R## |
+| # | Maps to (checklist gates/rows) | R## |
 |---|---|---|
-| A2.1 | **Diff PinMap.hpp against the actual soldered board** — continuity-check every signal: steering 13, ESC 14, DRS 18, gimbal 19/23, battery 34, Hall 35, CRSF 16/17, link2 25→16. (Atlas is illustrative-only; PinMap+BOM are the authority.) | R08 |
-| A2.2 | **Confirm the ESC's +5 V BEC (red) wire is physically isolated** at ESP32 #1 before any battery — BEC back-feed damages the ESC. | — |
-| A2.3 | **Confirm one common ground** across battery, ESC, both BECs, both ESP32s, camera, WiFi module, RP1 — the cross-board UART (25→16) and CRSF both depend on it. | R06 |
-| A2.4 | Confirm the **WS2812 level path** (1N5819 diode *or*, preferred, 74AHCT125 shifter) is populated per the build sheet. | R20 |
-| A2.5 | (Recommended) add a **pull-down/RC on the ESC (GPIO14) + steering (GPIO13) signal lines** so the boot float reads as safe/no-pulse. | R04 |
+| A2.1 Pin continuity vs `PinMap.hpp` (Atlas is illustrative-only; PinMap+BOM are the authority) | S3 (C3/C4) + S4 (C1–C11) | R08 |
+| A2.2 ESC +5 V BEC (red) wire physically isolated | S8a (E0–E3, E6) + S8b (E4/E5/E7) | — |
+| A2.3 One common ground across every board/device | S7 (G1–G14) | R06 |
+| A2.4 WS2812 level path (fixed to the 1N5819, decision 2026-07-30) | S5 (W1–W5) | R20 |
+| A2.5 GPIO13/14 boot-float pull-down/RC | S4 (PD1 — populated *or* explicitly recorded as not populated; no longer allowed to go unrecorded) | R04 |
 
 ---
 
