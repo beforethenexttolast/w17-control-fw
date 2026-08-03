@@ -386,3 +386,70 @@ F1+F2+F3 (the composite screens — one edit session), F4 (S8a/S8b restage), F5 
 reference), F8 (S0 + guide order), F6/F7 (matrix extensions), then the rest.
 
 **Gate state after this review: unchanged. A2 NOT-EXECUTED. Phase B BLOCKED.**
+
+---
+
+## Owner decisions taken 2026-08-03 (answering F9, F11, F12)
+
+Four decisions the revision pass needs and the checklist cannot make for itself. Recorded here
+rather than in `CURRENT_STATUS.md` because the RESIDUAL B+D session is live on that file; they
+move to the workspace record when this branch merges.
+
+### F9a — the IP2326 is NOT fitted during A2 build week
+
+**Decision: defer the whole charger.** Drop guide step 8 from the A2 build; add the IP2326 to
+S6's "after this point" list; charging is gated behind its own checklist. Rationale: A2 stays a
+pure no-power continuity exercise, and charging is powered work — Phase B class — regardless.
+This is the reviewer's second option, taken cleanly: **nothing about the charge path is left
+silent, and nothing unmeasured is built.**
+
+Revision pass must: strike step 8 from the A2 build sequence, add the S6 entry, and state
+explicitly in §14 that the charge path is out of A2's scope and owns its own gate.
+
+### F9b — the charge tap is PACK-SIDE of the XT90-S master switch
+
+**Decision taken now even though the build is deferred**, because it constrains PDB layout and
+the reviewer was right that a recorded tap-point decision is required either way.
+
+Pack-side keeps the **pull-the-XT90 charge interlock real**: pulling the master genuinely
+isolates the car from the charge path. The PDB-side alternative was rejected specifically
+because the interlock would have become a false safety story that then had to be struck from
+the docs — a worse outcome than the extra run.
+
+Consequence for the revision pass and the guide: the IP2326 does **not** sit on the PDB as
+currently drawn. `w17-pdb-build-and-connector-guide.md` needs the charger moved off the PDB
+block diagram and onto the pack side of the switch.
+
+### F11 — the Hall pull-up goes at the ESP32 end
+
+**Decision: 10 kΩ at the board end, where 3V3 actually exists.** The sensor lead stays a
+standard 3-wire run (sig/+5V/GND). Electrically equivalent to the sensor-side placement, and it
+makes the dangerous improvisation *structurally impossible*: with no pull-up expected at the
+sensor, there is no reason to reach for the +5 that is there, which is verbatim §13 hard stop 8
+on input-only GPIO35. The 4-conductor alternative was rejected — non-standard lead, extra loom
+conductor, and a 3V3 output position the PDB does not have.
+
+Revision pass must: correct the guide's connector row, and add **H1b `GPIO35 → 5V wiring: no
+beep`** so hard stop 8 finally has a generating measurement (it currently has none).
+
+### F12 — MH-ET boards are SOCKETED, with a verification owed
+
+**Decision: female headers on the PDB; boards lift out.** §3 rule 2's unseat-for-isolation stays
+runnable as written, a dead board is swappable without desoldering ~30 pins inside the cassette,
+and the pre-soldered male pins the boards arrived with are already the correct half.
+
+⚠ **This decision carries an owed verification and is NOT final until it clears.** Socket height
+eats into the **S0 ≥ 9.82 mm** cassette clearance from the ZK study. Nobody has calipered a
+female header against that headroom. **If the measurement breaks S0, this decision reopens** and
+direct-soldering returns — which would in turn require the revision pass to write a different
+board-isolation method, since rule 2 would no longer be runnable. Do not treat socketing as
+settled in any document that depends on S0.
+
+The measurement is a no-power job and the boards are on hand: it belongs in the batch-2
+measurement session, ahead of the S2 adjacency re-derivation F12 also calls for.
+
+### Still open, not decided here
+
+F12's other half — re-deriving the §2 adjacency call-outs from the **MH-ET silkscreen** instead
+of the DevKit V1 layout — is measurement work, not a decision, and is blocked on nothing but
+someone with the boards and a magnifier.
