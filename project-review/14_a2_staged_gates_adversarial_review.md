@@ -453,3 +453,88 @@ measurement session, ahead of the S2 adjacency re-derivation F12 also calls for.
 F12's other half — re-deriving the §2 adjacency call-outs from the **MH-ET silkscreen** instead
 of the DevKit V1 layout — is measurement work, not a decision, and is blocked on nothing but
 someone with the boards and a magnifier.
+
+---
+
+## Revision pass 2026-08-04 — closure table
+
+Executed on branch `docs/a2-revision-pass` (this repo: checklist §13, plan §11, this
+register) and `docs/a2-revision-pass` (workspace repo: the PDB guide, `CURRENT_STATUS.md`).
+**Revision only: A2 stays NOT-EXECUTED and Phase B stays BLOCKED — closing findings makes
+A2 executable, not executed.** Line refs in this document remain pre-revision checklist
+refs, as before.
+
+| Finding | What changed | Where |
+|---|---|---|
+| F1 | batt+→GND composite screen added post-S6 (M1, ohms, §3-rule-1 language, no numeric expectation, persistent ≈0 Ω = stop 1); the mated pigtail chain incl. the owner-made XT60-female tail joint gets pin-for-pin rows (CP1–CP3) before it ever carries pack current, with a NOT-ASSEMBLED record option that becomes a hard precondition to first pack connection | checklist §S7, §14 |
+| F2 | Rail isolation matrix now exists: rail↔rail + rails↔batt+ at S0 (P3–P5) re-screened at S4b (S6r/S7r, marked single-shot); rails↔GND post-S6 at S7 (M2/M3, charging language for C1); S6 states rails↔batt+ is not re-runnable after the UBECs attach | checklist §S0, §S4b, §S6, §S7 |
+| F3 | Signals→batt+ generating row added (S5r) covering 13/14/16/17/18/19/23/25/35, with GPIO34 annotated ≈27 kΩ (top leg) as the expected non-beep reading; §13 stop 4 now reachable | checklist §S4b, §13 map |
+| F4 | S8 split: **S8a at the cut** (executes during S4's ESC-lead step, before insulation — E0 falsifies the cut itself, E1–E3 probe the named **ESC-side end**, E6 covers red→GND, photos before/after shrink) + **S8b whole-harness** (E4, E5, E7 — the header +5 position probed from the accessible side, with an explicit "no metal in position" PASS so the row can't silently pass on empty air) | checklist §S8a/§S8b, §S4, §2, §10 |
+| F5 | S7 reference redefined harness-side: PDB input XT60 male − pin = star node; §1 reference-points paragraph rewritten; §14's battery paragraph rewritten against inventory reality (no in-envelope pack exists; the ZEEE 1500 never arrived; XT90-S set arrived 2026-07-30) | checklist §1, §S7, §14; `CURRENT_STATUS.md` Hardware gates (same stale text lived there) |
+| F6 | CRSF-lead internal isolation block added (K1–K4 at the JST-XH connector); 16/17/25 added to S2r and S5r; link2 noted as covered by 25's matrix membership (no 5 V conductor) | checklist §S4, §S4b, §S3 note |
+| F7 | PD1 row added, H5-pattern: populated (measure + record value) or explicitly not populated; blank is not a pass — plus the F15 annotations so the row can't false-FAIL S2r/rule 2 | checklist §S4; plan §A2.5 mapping |
+| F8 | S0 (PDB frame) added — XT60 + star + ESP32 sockets + output headers + rail looms built and verified before any gate consumes them (H3/S4r now reachable by construction); guide §5 build order rewritten to BE the S-gate order (divider before UBECs; each step names its gate) | checklist §S0; guide §5 |
+| F9a | Owner decision implemented: IP2326 NOT fitted during A2 build week — guide step 8 struck, S6 "after this point" carries the exclusion, §14 states the charge path owns its own (not-yet-written) gate | guide §5; checklist §S6, §14 |
+| F9b | Owner decision implemented: charge tap is PACK-side of the XT90-S — guide §1 topology redrawn (charger off the PDB), §3 "what lives where" moves the IP2326 off-PDB, interlock bullet states the placement is what makes it real | guide §1, §2, §3 |
+| F10 | Photo item 3 retagged (two shots at S8a: pre-shrink severed conductor + insulated result); item 9 + the §12 photo bullet scoped to what an image can show — topology evidence is the S7/S8b rows alone | checklist §10, §12 |
+| F11 | Owner decision implemented: pull-up at the ESP32 #1 end — S2 preamble states it and why; H1b added as stop 8's generating row; guide §2 Hall row + §3 table corrected | checklist §S2, §2; guide §2, §3 |
+| F12 | Socketing decision recorded in §3 rule 2 **with its owed caliper verification and the reopening condition stated** (socket stack vs the ZK clearance "S0" ≥ 9.82 mm — no relation to gate S0 — due before S0's first socket joint); §2 adjacency call-outs replaced by an explicit OWED placeholder (inspect every joint until the MH-ET list exists). **Neither measurement is closed — see below** | checklist §3, §2, §S0; guide §5 |
+| F13.1 | GPIO34's ≈10 kΩ (bottom leg) and ≈27 kΩ (top leg) written into §3 rule 2's exceptions list and S2r/S5r annotations | checklist §3, §S4b |
+| F13.2 | G14 blower connector GND added, record-or-N/A pattern | checklist §S7 |
+| F13.3 | Decided: guide §4 wins — C3 lives at the GPIO34 pin end. S1 preamble rewritten (divider is bare, readings settle immediately), §2 divider row corrected, photo 4 retagged capless, C10b + photo 12 verify the pin-end fit at S4 | checklist §S1, §2, §S4, §10 |
+| F13.4 | The `(opt GPIO26←17)` conductor struck from the guide's link2 row — the row now states GPIO26 stays unwired by design (C4, §13 stop 9) | guide §2 |
+| F13.5 | Plan §A2 rewritten: the A2.1–A2.5 rows are now explicitly the risk-register mapping onto the S-gates, not a runnable list; A2.5 maps to PD1 | plan §A2 |
+| F13.6 | ESC 12 AWG power-feed rows added (PW1/PW2 at S7) and the §2 polarity bullet now names the pair; the feed's attach moment sequenced at S6 | checklist §S7, §2, §S6 |
+| F14 | §3 rule 4 (every pre-S6 row is single-shot, valid only at its own gate) — S1's box, W2/W3's new note, and S6r/S7r are instances of the stated rule; rule 1 extended to diode mode at W2 | checklist §3, §S5 |
+
+**§13 walk performed:** every hard stop now has at least one generating row; the
+stop→row map is written into §13 itself so the property stays checkable, not asserted.
+
+### Deliberately NOT closed
+
+- **F12, both measurement halves.** The MH-ET adjacency re-derivation and the socket-height
+  caliper check are bench work with the boards in hand. The revision marks both as OWED
+  placeholders/preconditions (due before S0's first joint) rather than absorbing them —
+  writing pairs from memory or treating socketing as settled would be the exact
+  asserted-over-unchecked-set defect this file exists to catch.
+- **The charge-path gate itself.** F9 is closed via the owner's option (b) — the exclusion
+  is explicit everywhere it matters — but the no-power checklist the charge path will need
+  does not exist yet. Tracked in checklist §14 as a prerequisite of building the path.
+
+### F15 — CONFIRMED (found during the revision pass). F7's minimal fix, implemented as specified, manufactures a §3-rule-2 false FAIL when the pull-downs are fitted.
+
+**Where:** this document's F7 fix (:197–199); S2r (:160); §3 rule 2 (:74–78).
+
+The H5-style row F7 asks for makes "pull-downs populated" a legitimate PASS — but S2r
+expects every signal → GND open, and rule 2's hard-wired variant expects **≫ 10 kΩ**. A
+fitted 10 kΩ pull-down on GPIO13/14 reads ≈ 10 kΩ to GND: beeper-mode S2r passes (10 kΩ
+doesn't beep), but the resistance-mode variant — exactly the fallback that becomes the norm
+if F12's socket-height verification fails — reads a correctly built board as a rule-2 FAIL.
+Same shape as F13.1's pin-34 case, and another instance of the recurring class (a property,
+"all signals ≫ 10 kΩ to GND," asserted over a set with an unchecked member) — this time
+introduced by a fix inside the review itself. **Fix applied:** PD1 records the fitted value;
+§3 rule 2 carries an explicit exceptions list (34→GND, 34→batt+, 35→3V3, 13/14→GND when
+PD1 says populated); S2r annotated.
+
+### F16 — CONFIRMED (found during the revision pass). C1's fit moment was sequenced by neither document, and the revision's own new rows made it load-bearing.
+
+**Where:** guide §5 old step 4 (C1 between the UBECs and the divider); the F2/F8 fixes'
+new pre-S6 rail rows.
+
+Neither document ever said when C1 (the rail-B 1000 µF) goes on relative to the gates. In
+the pre-revision checklist this was latent — no pre-S6 rail↔GND row existed (that absence
+was F2). The moment F2/F8's rows exist, C1's fit moment decides their validity: fitted
+early, P7/S2r's clean-OPEN expectation reads a charging transient it has no language for;
+deferred past S7, M3's expected charging signature is wrong instead. The fix F2 prescribed
+would have introduced the hole it was fixing — the same pattern this review's preamble
+notes about the restructure it reviewed. **Fix applied:** C1 is explicitly fitted at S6
+with the UBECs, stated at S0 (absent by construction), S6 (attach moment), S7/M3 (expected
+signature), and guide §5.
+
+### Register note (not a finding)
+
+Gate **S0** collides by name with the ZK study's cassette clearance **"S0" ≥ 9.82 mm**.
+Both usages now appear in the checklist; each mention disambiguates in text. Renaming
+either would break external references, so the collision is documented instead.
+
+**Gate state after the revision pass: unchanged. A2 NOT-EXECUTED. Phase B BLOCKED.**
