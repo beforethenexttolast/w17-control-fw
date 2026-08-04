@@ -502,13 +502,65 @@ record and the two findings closing *them* generated (F17, F18 below).
 | F16 | C1's fit moment sequenced: **fitted at S6 with the UBECs**, and said so at every row whose expected value depends on it — SF (absent by construction, P7's clean OPEN), S6 (the attach moment, in one sitting), S7/M3 (a rising reading is the expected signature), guide §5 step 6. Closing it exposed the corollary the fit moment makes visible: C1 is the only PDB electrolytic with **no photo**, while §12 Part 1 claims cap-stripe polarity is photo-checkable and **no no-power reading tells a reversed 1000 µF from a correct one** — so **photo item 14** (C1 at S6, stripe visible) is added and §13's stop-6 row now names §2 + photo 14 as the whole of C1's evidence | checklist §SF, §S6, §S7, §10 item 14, §12, §13 map; guide §5 |
 | — | **`S0` naming settled** (was "Register note (not a finding)"): the frame gate is renamed **SF**; `S0` now names only the ZK cassette clearance. Swept across both repos — see the naming record below | checklist (all), plan §A2, this register's pointers, guide §5, `CURRENT_STATUS.md` |
 
+### Closure pass 2026-08-04 (third) — F17/F18 closed, same table
+
+Same rule again: **A2 stays NOT-EXECUTED and Phase B stays BLOCKED.** One thing is different
+about this pass and it is worth stating before the table, because it is itself a finding
+(F19): **the document edits below were already in place.** The F15/F16 pass applied both
+fixes in the same edit that recorded the findings — its finding bodies say "Fix applied" and
+the checklist's closure box says "Both are closed here" — but it wrote no closure rows for
+them, and the workspace record said "recorded, not quietly fixed", which reads as *not
+fixed*. This pass **verified every prescribed edit against the artifacts**, found all of them
+present, and supplies the missing record. The rows below are therefore a verification, not a
+re-implementation; where each edit lives is stated so the next reader can check the claim
+instead of trusting it.
+
+| Finding | What changed | Where |
+|---|---|---|
+| F17 | 13↔14 added to §3 rule 2's exceptions list with the ≈2× arithmetic and the worked value (two 4.7 kΩ parts → ≈ 9.4 kΩ, which a strict "≫ 10 kΩ" reading calls a bridged pair on a correct board); S1r annotated with the exception **and its fault signature restated** — the failure is a beep / ≈0 Ω, not a finite resistance; PD1 points at S1r as well as S2r; §11's S1r template row reads `OPEN; 13-14 per PD1`. The exceptions list is declared **closed by construction**, with the standing instruction that any revision adding a deliberate resistance to the signal set extends it in the same edit — that instruction, not the enumeration, is the actual fix | checklist §3 rule 2, §S4 (PD1), §S4b (S1r), §11 |
+| F18 | Placement and fit moment decided on the document's own precedent (F11's Hall pull-up, F13.3's C3) rather than escalated: *if* fitted, each pull-down lives **harness side at the ESP32 #1 socket position**, returning to the star ground, fitted **at S4** with the board-end signal wiring, before S4b's matrices read it — with the reason written down, that a board-side part comes out with the board and would make F15's own exception unmeasurable and PD1/S2r contradict each other on a correctly built car. The honest A2-time state is recorded as **NOT POPULATED** (R04's evidence is the B1.4 boot-float scope, which is Phase B and has not run); fitting them later invalidates no A2 row, it only moves 13/14 — and the 13↔14 pair — into the exceptions list for any re-measure | checklist §2 (visual bullet), §S4 (PD1 + the placement/fit-moment prose), §11 (`value+where, or N/A`); plan §A2.5; guide §3 "what lives where", §5 step 4 |
+| — | **Closure-record correction.** The two rows above did not exist; the finding bodies' "Fix applied" was carrying the whole claim, and `CURRENT_STATUS.md` plus commit `92f3b0d`'s subject read as "recorded instead of fixed". Corrected here and in the workspace record. The rule this pass adopts: **a finding is closed when it has a closure-table row** — "recorded" and "fixed" are two claims and the table is where both get made | this register; `CURRENT_STATUS.md` — see **F19** |
+
+**Walk performed on both closures**, per the standing instruction. F18 first, since its answer
+is what makes F17's exception well-defined:
+
+- **F18 makes S4 a fit moment** (F16's shape). Rows that read GPIO13/14 → GND: none before S4
+  (SF carries no signal rows; S1/S2/S3 do not touch 13/14), S2r and S1r after it — both
+  annotated. S8a's E2 (red end → GPIO14) and S8b's E7 (+5 position → GPIO14) are unaffected:
+  a pull-down to the star node creates no path from an isolated red end or an empty header
+  position, and E6 already requires red → GND OPEN. S3r (signal ↔ +5 V within a lead) is
+  unaffected because rail B ↔ GND is open by P7/M2. **No row's expected value changes except
+  the two already annotated.**
+- **F17 enlarges §3 rule 2's exceptions list.** The rows that quantify over it are S1r, S2r,
+  S5r, H1b and E7. S5r (signals → batt+) is untouched — the pull-downs return to GND, not
+  batt+. H1b and E7 are untouched. S2r and S1r carry the exceptions. **§3 rule 1's cap
+  enumeration is deliberately not extended** for the optional 1–10 nF Hall RC (H5) or the
+  optional C4 decoupling: rule 1 is a general rule with examples ("any resistance reading
+  across a node with a cap on it"), so an unnamed cap still falls under it, whereas rule 2 is
+  a *closed enumeration* and is the only one an omission can false-FAIL through. That
+  distinction is why the same omission is a defect in one rule and not the other.
+- **If F12's caliper forces hard-wired boards**, F18's placement wording ("harness side at the
+  socket position") loses its literal referent but not its conclusion: with no socket there is
+  nothing to unseat, so the pull-down is in circuit for every reading and F15/F17's exceptions
+  hold unchanged — which is the case F17 was written for in the first place.
+- **What the walk found:** one row whose *membership* had never been examined — see **F20**.
+  A walk is not a proof; it is the same method that found F17 and F18, and it found one more.
+
 ### Deliberately NOT closed
 
 - **F12, both measurement halves.** The MH-ET adjacency re-derivation and the socket-height
   caliper check are bench work with the boards in hand. The revision marks both as OWED
   placeholders/preconditions (due before SF's first joint) rather than absorbing them —
   writing pairs from memory or treating socketing as settled would be the exact
-  asserted-over-unchecked-set defect this file exists to catch.
+  asserted-over-unchecked-set defect this file exists to catch. **Re-checked again this pass:
+  both still OWED, neither promoted anywhere in either repo** (checklist §SF, guide §5 step 1,
+  `HARDWARE_INVENTORY.md`, `CURRENT_STATUS.md` all still say so).
+- **F20**, per the standing instruction — recorded, not fixed. Its minimal fix extends S1r's
+  membership, which enlarges the set §3 rule 2 quantifies over, so it needs a closing pass
+  that walks the enlarged set. That is the whole lesson of F13.1 → F15 → F17, and doing it in
+  the same breath as recording it is how the chain got started. The checklist gets a **scope
+  statement** at S1r so the row no longer reads as a complete signal matrix — that is honesty
+  about the gap, not a fix for it.
 - **The charge-path gate itself.** F9 is closed via the owner's option (b) — the exclusion
   is explicit everywhere it matters — but the no-power checklist the charge path will need
   does not exist yet. Tracked in checklist §14 as a prerequisite of building the path.
@@ -605,6 +657,87 @@ not run. Fitting nothing and recording that is the expected outcome, not a lapse
 the pull-downs later invalidates no A2 row, it only moves 13/14 into the exceptions list for
 any re-measure. PD1 and §A2.5 now say so.
 
+### F19 — CONFIRMED (found closing F17/F18). The closure record says "recorded" where the artifacts say "recorded and fixed", and the ambiguity cost a whole session.
+
+**Where:** this register's F15/F16 closure table (no F17/F18 rows, and "Deliberately NOT
+closed" does not list them either — silent in both directions); the F17/F18 finding bodies
+("**Fix applied:**"); the checklist's closure-pass box ("Both are closed here"); commit
+`92f3b0d`'s subject ("record F17/F18"); `CURRENT_STATUS.md` ("recorded, not quietly fixed").
+
+Four documents, three states. The **checklist** says the two findings are closed. The
+register's **finding bodies** say the fixes were applied — and they were, all of them, in both
+repos. But the register's **closure table**, which is the authoritative finding → change →
+where record and the thing a later reader greps, carries no F17/F18 rows. And the **workspace
+record** says "recorded, not quietly fixed" — a phrase written to mean *recorded in the
+register rather than silently patched*, which reads as *recorded instead of fixed*.
+
+**Failure scenario — not hypothetical, it already happened.** The next session was commissioned
+off the workspace record to implement F17 and F18 across the checklist and the guide, and told
+that the guide "currently does not mention PD1 anywhere." Every prescribed edit was already
+present: 13↔14 in §3 rule 2 with the ≈9.4 kΩ worked value, S1r's annotation, PD1's placement
+and fit moment, §11's two template cells, plan §A2.5, guide §3 and §5 step 4. The cost was one
+session; the cost of the *uncaught* version is worse, because the natural next move on
+"F18 isn't in the guide" is to write it in — and a second, differently-worded placement
+paragraph in a build guide is how two documents start disagreeing about where a part goes,
+which is F18 itself, one turn of the wheel later.
+
+This is the register's own recurring class, applied to the register: a document asserting a
+state that no longer matches the artifacts. F5 (stale battery text), F13.5 (stale
+cross-reference to the plan) and the `main`-vs-`origin` corrections in `CURRENT_STATUS.md` are
+the same defect elsewhere. What makes this one different is that the stale claim is *about the
+register's own bookkeeping*, so nothing downstream could catch it — every document that would
+have contradicted it was correct.
+
+**Fix applied:** the F17/F18 closure rows above, the walk that goes with them, and the
+workspace record reworded from "recorded, not quietly fixed" to what actually happened. Plus
+the rule the next pass inherits: **a finding is closed when it has a closure-table row.**
+"Recorded" and "fixed" are two separate claims; the table is where both are made; a finding
+body's "Fix applied" is prose, not the record. If a pass genuinely wants to record without
+fixing — which is often right — it says so in the table and in "Deliberately NOT closed", the
+way F12 and now F20 do.
+
+### F20 — CONFIRMED (found walking F17's closure). S1r's *membership* excludes GPIO34 and GPIO35, and the 34↔35 pair is measured nowhere: a bridge on it passes every beeper-mode row in the document. **RECORDED, NOT FIXED.**
+
+**Where:** S1r (S4b); C10/C11 (S4); H1/H2 (S2); D1 (S1); §2's F12 adjacency placeholder.
+
+F17 annotated S1r's *expected values* and left its *membership* unexamined — the same
+asserted-over-an-unchecked-set shape one level up, where the set is the matrix's pin list
+rather than the exceptions list. S1r quantifies over `13/14/18/19/23`, the five actuator
+signals. Of the other signals this document names — 16, 17, 25, 34, 35 — the UART pins have
+pairwise coverage elsewhere: 16↔17 by C1/C2's "no beep to the other", 25↔26 by C3/C4.
+**34↔35 has none, and neither pin appears in any signal↔signal row anywhere.**
+
+**Failure scenario:** a bridge between the GPIO34 and GPIO35 harness positions — directly
+adjacent on the DevKit V1 layout the checklist's old §2 call-outs were derived from; on the
+MH-ET the true neighbours are F12's owed measurement, so nobody currently knows whether these
+two are adjacent on the build board.
+D1 still reads ≈ 10 kΩ (the divider bottom leg dominates; the 10 kΩ pull-up sits on a 3V3 node
+that is dead with the board unseated). H1 still reads ≈ 10 kΩ to 3V3. C10 and C11 still beep.
+S2r's `35 → GND` now reads ≈ 10 kΩ through the divider — **which does not beep**, so the
+beeper-mode variant passes. A2 closes clean; the car arrives at Phase B with the battery ADC
+reading the Hall line's state and the wheel-speed input loaded by a 7.3 kΩ divider. Only the
+resistance-mode variant of S2r catches it, and then as an unexplained 10 kΩ on a pin whose
+exceptions list does not mention one — i.e. as an anomaly, not as a named expectation.
+
+**Severity, stated honestly: below F1–F4.** Both pins are input-only, so nothing is driven into
+anything; the consequence is corrupted battery telemetry and corrupted wheel speed, not a fire
+or a dead board. It is partially mitigated: §2's F12 placeholder already instructs a
+beeper-check of **every** header joint until the MH-ET adjacency list exists. But that is an
+inspection instruction, not a §11 row with an expected value and a P/F cell — §12 Part 1 cannot
+audit it — and it covers the socket only, not a mis-landed crimp or a chafe further down the
+loom.
+
+**Minimal fix (NOT applied — recorded per the standing instruction):** extend S1r's set to
+`13/14/18/19/23/34/35`, annotated `34 ↔ 35: OPEN` — there is no legitimate path between them
+(the divider returns to GND, the pull-up to 3V3, neither pin is the other's return) — and
+update §11's S1r row to match. **The closing pass must then walk the enlarged set**: adding
+34 and 35 to a matrix that §3 rule 2 quantifies over is exactly the move that produced F13.1,
+F15 and F17 in turn, and the first two of those were introduced by fixes inside this register.
+
+**What this pass did instead:** S1r carries a **scope statement** in the checklist — the row
+now says what it does and does not cover, and points here. That stops the row from reading as
+a complete signal matrix. It is not the fix.
+
 ### Naming record — the `S0` collision, settled (supersedes the 2026-08-04 "Register note")
 
 The revision pass created gate **S0** (PDB frame, F8) while `S0 ≥ 9.82 mm` already existed as
@@ -638,3 +771,16 @@ cases together establish: **rename before publication, annotate after.**
 Phase B BLOCKED.** Closing findings makes A2 executable, not executed. The two F12 bench
 measurements above remain **OWED and open** — this pass re-checked that neither has been
 promoted anywhere in either repo.
+
+**Gate state after the third closure pass (F17/F18) as well: unchanged. A2 NOT-EXECUTED.
+Phase B BLOCKED.** Nothing built, powered, flashed or connected; documents only. The **F12
+caliper stays a precondition to SF's first socket joint** and nothing in this pass touched it
+— F17 in fact leans on it, since the hard-wired fallback is the variant its exception exists
+for. Open at the end of this pass: **F12** (two bench measurements), **F20** (recorded, not
+fixed), and the charge-path gate that does not exist yet. The register now runs F1–F20, and
+**every one of the last six was generated by work inside it** — F15 from F7's fix, F16 from
+F2/F8's, F17 and F18 from F15's, F19 from the F15/F16 pass's bookkeeping, F20 from walking
+F17. Six from fourteen, with no external input since 2026-08-03. That is
+the method working, not failing: each fix legitimises something new, and the property the
+neighbouring rows assert has to be re-walked over the enlarged set. It is also why none of
+these passes claims to be the last one.

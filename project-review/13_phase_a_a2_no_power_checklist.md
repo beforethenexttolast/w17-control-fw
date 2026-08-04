@@ -63,6 +63,17 @@
 > register carries all four. Also: photo item 14 (C1 at S6 — the one PDB electrolytic with no
 > frame) and S1r's annotation.
 >
+> **THIRD CLOSURE PASS 2026-08-04 — F17/F18 formally closed; F19/F20 recorded.** The pass above
+> applied F17's and F18's edits but wrote no closure rows for them, and the workspace record
+> said "recorded, not quietly fixed" — which reads as *not fixed*. Every prescribed edit was
+> re-verified against this document, the plan and the guide, all present; the register now
+> carries the missing closure rows. **F19** records the closure-record defect itself (the cost
+> was a session commissioned to redo finished work). **F20** is new and **open, recorded not
+> fixed**: S1r's *membership* covers the five actuator signals only, and **34 ↔ 35 is measured
+> by no row here** — a bridge on that pair passes every beeper-mode check. S1r now carries a
+> scope statement saying so. **A2 remains NOT-EXECUTED; Phase B remains BLOCKED; the F12
+> caliper remains a precondition to SF's first socket joint.**
+>
 > **Naming — there is no gate S0.** The frame gate is **SF**. The token `S0` in this project
 > means one thing only: the **ZK cassette clearance `S0 ≥ 9.82 mm`** (§3 rule 2, §SF). The
 > frame gate was proposed as "S0" by review finding F8 and renamed on 2026-08-04, before
@@ -332,7 +343,7 @@ OPEN.
 
 | # | Check | Expect |
 |---|---|---|
-| S1r | **Signal isolation matrix** — 13/14/18/19/23 against each other | **no beep between any pair** (no shared/bridged signals). Annotated exception (F17): if PD1 recorded pull-downs **populated**, **13 ↔ 14 reads ≈2× the fitted value** — both legs return to the star node, so the pair reads through them in series. That is the expected reading; the fault signature is a **beep / ≈0 Ω**, not a finite resistance. All other pairs stay open either way |
+| S1r | **Signal isolation matrix** — 13/14/18/19/23 against each other | **no beep between any pair** (no shared/bridged signals). Annotated exception (F17): if PD1 recorded pull-downs **populated**, **13 ↔ 14 reads ≈2× the fitted value** — both legs return to the star node, so the pair reads through them in series. That is the expected reading; the fault signature is a **beep / ≈0 Ω**, not a finite resistance. All other pairs stay open either way. ⚠ **Scope (F20 — open, recorded not fixed):** this matrix covers the **five actuator signals only**. 16↔17 and 25↔26 are covered by C1/C2 and C3/C4's "no beep to the other"; **34 ↔ 35 is covered by no row in this document** and a bridge there passes every beeper-mode check (§2's every-joint beeper sweep is the only thing looking). Do not read a clean S1r as "no signals are bridged" |
 | S2r | Each signal (**13/14/16/17/18/19/23/25/34/35**) → rail-A/rail-B wiring and → GND | **no beep to either** (per §3 rule 2 — unseat the ESP32). Annotated exceptions per §3 rule 2: 34 → GND ≈ 10 kΩ in resistance mode (F13.1); 13/14 → GND = fitted pull-down value if PD1 populated (F15) |
 | S3r | Each 3-pin lead, at the connector: signal↔+5 V within that lead | **no beep** |
 | S4r | Each 3-pin lead, at the connector: GND pin → harness ground | beep (the star node exists from §SF) |
