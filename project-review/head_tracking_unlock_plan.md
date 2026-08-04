@@ -514,18 +514,23 @@ arbiter memory, monotonic now) → `[16]CRSFValue`. It touches **only** indices 
 = pan/tilt; `ChannelDecoder.hpp:20-21`). It never writes back into the receiver, the monitor,
 the broadcaster, the node graph, or firmware.
 
-###### Input-provenance rule (added 2026-07-30) — arm/deadman/override must NOT come from the channel array
+###### Input-provenance rule (added 2026-07-30; **premise corrected 2026-08-04**) — arm/deadman/override must NOT come from the channel array
 
 **The arbiter must not read arm, deadman, or manual-override state from the eval
-`[16]CRSFValue` array.** That array carries **hold-last semantics** from upstream, so a value
-read out of it cannot distinguish "the operator is holding this control" from "this value is
-stale because the input device is gone." Sourcing a safety precondition from it silently
-defeats I2.
+`[16]CRSFValue` array.** That array carries **no validity channel**: a value read out of it
+cannot say whether it came from a live device on this tick. Sourcing a safety precondition
+from it silently defeats I2.
 
-The mechanism, traced in the fork 2026-07-30:
+The rule is unchanged. Its **original justification is not.** The specific defect it was
+written against on 2026-07-30 — hold-last in the fork's channel assembler — was fixed the same
+day and hardened twice since. The trace below is kept in the **past tense** as the record of
+why the rule exists; what replaced it, and why the rule still binds anyway, follow it.
 
-1. `pkg/config/input_button.go:77` — when the gamepad is absent from the device registry,
-   `GetInputGamepad` returns `!ok` and the node returns **`nan=true`**. Same shape at
+**The mechanism as it stood on 2026-07-30** (line numbers as read then, at `w17-mapper`
+`0e11d6b`; **history, not current behaviour**):
+
+1. `pkg/config/input_button.go:77` — when the gamepad was absent from the device registry,
+   `GetInputGamepad` returned `!ok` and the node returned **`nan=true`**. Same shape at
    `input_axis.go:87` and `input_hat.go:52`.
 2. `pkg/config/output_tx.go:43` — the channel assembler:
    ```go
@@ -533,33 +538,89 @@ The mechanism, traced in the fork 2026-07-30:
    if nan || ch < 1 || ch > 16 { continue }
    (*i.Values)[ch-1] = util.CRSFValue(out)
    ```
-   `i.Values` is a **persistent `*[16]util.CRSFValue` struct field**, allocated once and
+   `i.Values` was a **persistent `*[16]util.CRSFValue` struct field**, allocated once and
    mutated in place across eval ticks, never reset to a neutral value at the top of a tick.
-   So `continue` does not mean "neutral" or "invalid" — the channel **retains its value from
-   the previous tick, indefinitely, for as long as NaN persists.**
+   So `continue` did not mean "neutral" or "invalid" — the channel **retained its value from
+   the previous tick, indefinitely, for as long as NaN persisted.**
 
-The failure this produces, absent the rule: operator in `ACTIVE` with the D-pad DOWN deadman
+The failure it produced, absent the rule: operator in `ACTIVE` with the D-pad DOWN deadman
 held; the USB gamepad drops (cable, hub, driver hiccup); the deadman channel **latches at its
 held value**; head intent is still fresh/centered/enabled with flags on, so the arbiter reads
 `armed == true` and **stays ACTIVE**, head motion still commanding the gimbal. The C1
 right-stick override is dead too, because it reads the same frozen array. The only remaining
 remedy is killing the mapper process or the radio.
 
+**What the fork does now** — three commits on `w17-headtrack`, source read at HEAD `432a809`,
+not commit messages:
+
+- **`2dc7c5a`** (2026-07-30, the same day this rule was written) — a `nan` channel is **driven
+  to its configured failsafe value** (`ChannelT.Failsafe`, defaulting to `util.CRSFCenterValue`
+  = 992) instead of being skipped by the assembler; and `Config.GetInputGamepad` now gates on
+  device presence (`InputGamepad.Attached()`), so a **detached gamepad no longer resolves by id
+  at all** (`pkg/config/config.go:26-38`). Transmitter arrays also start centered rather than
+  zeroed (`centeredValues`, `output_tx.go:31-36`) — a zero array is not neutral on the wire.
+- **`e452d55`** (2026-08-03) — the neutral is resolved from the **owning `channel` node**
+  rather than from the top-level holder, and frames are **suppressed across a config swap**.
+- **`c60843e`** (2026-08-04) — neutralization is **per owner**, so a channel that stops
+  resolving is railed even when its holder still reports healthy; and a **truncated**
+  channel-owner walk fails safe.
+
+Verified by reading `pkg/config/output_tx.go` at `432a809`: `centeredValues()` exists (`:31`),
+the assembler's neutralizing paths sit at `:278-296` and `:308-326`, and
+`OutputTransmitter.Unresolved` (`:59`, atomic) gates transmission — the send loop suppresses a
+port's frames when the channel-owner walk cannot account for every channel
+(`pkg/link/send.go:107`, used at `:319-323`). **Hold-last in the assembler is gone.**
+
+**Why the rule still binds — it was never only about hold-last:**
+
+1. **The fix changes what a stale slot *contains*, not whether the array carries provenance.**
+   A stale channel now reads as its configured failsafe — by default **992**, which is exactly
+   what a live, centred control reads. "Neutral" is not "valid". And `ChannelT.Failsafe` is a
+   **per-channel, user-configurable** field, so a config can give a channel a non-neutral
+   failsafe that reads as an active command.
+2. **The original end-to-end failure is still reachable for switch channels**, now through the
+   firmware decoder rather than the mapper assembler: 992 normalizes to **0**, which sits
+   inside this firmware's ±250 hysteresis dead band (`switchOnAbove = 250` /
+   `switchOffBelow = -250`, `ChannelDecoder.hpp:38-39`), and `decodeSwitch` **holds the
+   previous state** in between (`ChannelDecoder.cpp:78-84`). A deadman carried on a switch
+   channel, with the shipped default failsafe, therefore still latches across a dropout. That
+   is RESIDUAL A in `CURRENT_STATUS.md` — a **config** obligation (`failsafe: 172` on the six
+   `decodeSwitch` channels), open, with no mapper config on this Mac yet carrying it.
+3. **R15 is open and no U4 code exists**, so nothing has been demonstrated against the real
+   SDL/OS device-removal path — the fix is verified by unit tests and source reading, not by a
+   physical unplug.
+4. **Provenance is an architectural requirement, not a workaround for one upstream bug.** The
+   assembler's behaviour is a mapper-internal decision a future rebase onto upstream could undo
+   without anyone noticing; the arbiter's safety must not depend on it.
+
 **Required instead:** the arbiter derives arm/deadman/override from a source carrying
 **explicit validity** — query the device layer directly and treat *device absent* as disarm,
 with a positive liveness signal (a monotonic per-device sequence, or the SDL removal event via
 `Controller.AlertDeviceChan`, `pkg/devices/controller.go:106`) rather than inferring liveness
-from a value that cannot distinguish held from stale.
+from a value that cannot distinguish held, neutral-by-failsafe, and genuinely centred.
 
 Stated as a rule because it is exactly the constraint that gets quietly violated during
 implementation, when the channel array is right there and convenient.
 
-> **Scope note.** The same hold-last behaviour affects **every** gamepad-driven channel today,
-> including throttle and steering, with no head tracking involved — a dropout freezes the last
-> command while the mapper keeps transmitting well-formed CRSF at full rate, so the firmware's
-> radio-loss failsafe does **not** fire. That is a pre-existing defect on the stick path,
-> outside CB8 and outside this gate, and it is tracked separately. It is **not** closed by
-> I10/R15, which only bind the future arbiter.
+> **Scope note (rewritten 2026-08-04 — the defect it described is closed; two residuals are
+> not).** As written on 2026-07-30 this note said the same hold-last behaviour affected
+> **every** gamepad-driven channel including throttle and steering, that a dropout froze the
+> last command, and that it was a pre-existing defect tracked separately. **The freeze is
+> closed** by the three commits above: a dropped gamepad now drives every affected channel to
+> its configured neutral instead of holding. Two things that closure does **not** cover, which
+> is why this note stays:
+>
+> - **Switch channels still latch downstream** on the shipped default failsafe (992 ⇒
+>   normalized 0 ⇒ inside the firmware's ±250 dead band ⇒ `decodeSwitch` holds). Arm, DRS,
+>   gear up/down, boost and overtake are affected: the car goes neutral but stays *armed*.
+>   RESIDUAL A in `CURRENT_STATUS.md` — open, config-class.
+> - **The mapper still transmits at full rate on input loss** — fail-to-neutral, not
+>   fail-silent — so the firmware's radio-loss failsafe still does **not** fire on a gamepad
+>   dropout. That is by design. Frame suppression exists only for no-config (`630ea96`), a
+>   config swap (`e452d55`), and a truncated owner walk (`c60843e`).
+>
+> Neither is closed by I10/R15, which bind only the future arbiter. Status and residuals for
+> the stick path are tracked in `CURRENT_STATUS.md`, not here.
 
 ##### 2.3.11.2 The shaping/arbitration model
 
@@ -671,9 +732,9 @@ gated code must prove (test matrix, §2.3.11.5):
 - **I10 — Loss of the arm/deadman input *device* is a disarm, identical to release.** (Added
   2026-07-30.) Gamepad disappearance and gamepad button-release must reach the same arbiter
   state. Arm/deadman/override state is sourced per the input-provenance rule (§2.3.11.1), never
-  from the hold-last `[16]CRSFValue` array; "device absent" is an affirmative disarm, not an
-  absence of evidence. Device *disappearance* and value *release* are distinct events and both
-  are tested (D15 covers release; D19–D22 cover disappearance).
+  from the `[16]CRSFValue` array, which carries no validity of its own; "device absent" is an
+  affirmative disarm, not an absence of evidence. Device *disappearance* and value *release*
+  are distinct events and both are tested (D15 covers release; D19–D22 cover disappearance).
 
 ##### 2.3.11.4 The FIRST_ACTIVE flag (compile-time AND runtime, both default off)
 
@@ -812,8 +873,9 @@ Codex milestone gates movement (§ top-of-doc). Both must pass.
 - [ ] **R15** **Input-device-loss disarm demonstrated by physically unplugging the gamepad**
       (added 2026-07-30), not simulated — from `ARMING`, from `ACTIVE`, and from `OVERRIDDEN`,
       with reconnect proven not to restore authority. Proves I10 and the §2.3.11.1
-      input-provenance rule against the real SDL/OS device-removal path, which is where the
-      hold-last defect lives. Group D rows D19–D22.
+      input-provenance rule against the real SDL/OS device-removal path — the one path no unit
+      test exercises, and the one the mapper-side hold-last fix (§2.3.11.1) does **not**
+      establish. Group D rows D19–D22.
 - [ ] **R16** **Bench-only servo sweep before any driving use** ⚠ **(name collision: a
       *different* R16 exists in `10_risk_register.md` — `main.cpp` orchestration + Wokwi sim not
       asserted in CI. The two R-series are independent. Risk-register R16 was partially advanced by
@@ -1203,7 +1265,7 @@ below are additional gated-implementation tests):
 | Stale timeout | active gate 250 ms receive-time (249/250 fresh, 251 stale), distinct from 300 ms log-only | B5 |
 | Stale decay | rate-limited ramp to exactly 992; `virtualCameraCenter` discarded; no re-acquisition without recenter | B6, D14 |
 | Disconnect/reconnect (**iPhone / UDP 5602 stream**) | silence ⇒ decay; reconnect alone never restores ACTIVE | D14 |
-| Disconnect (**gamepad / arm-input device**) | device loss ⇒ **disarm**, identical to deadman release (I10); arm/deadman/override never sourced from the hold-last channel array (§2.3.11.1 input-provenance rule); reconnect alone never restores authority | D19–D22, R15 |
+| Disconnect (**gamepad / arm-input device**) | device loss ⇒ **disarm**, identical to deadman release (I10); arm/deadman/override never sourced from the channel array, which carries no validity (§2.3.11.1 input-provenance rule); reconnect alone never restores authority | D19–D22, R15 |
 | Video loss | sender suppression ⇒ ordinary stale path; no direct video→output coupling | D16 (suppressed stream indistinguishable from stale at the arbiter) |
 | Radio loss | firmware layer, hold-last, bench scope only — out of arbiter scope | firmware bench evidence (Phase B), not a U4 unit test |
 | Deadband | degrees, via measured deg↔count; inside band ⇒ exactly 992 offset | B2 |
@@ -1218,7 +1280,7 @@ below are additional gated-implementation tests):
 | Diagnostic-state semantics | arbiter state exported read-only via the existing diagnostics stream; no active enum value exists before the gated slice adds it under review | D13 |
 | Hybrid blend continuity | position→rate transition continuous, no command discontinuity | D6 |
 | Missing calibration | no signed calibration record ⇒ arbiter refuses non-passthrough | D18 (fail-closed) |
-| **Arm-input device loss** (I10, added 2026-07-30) | gamepad disappearance ⇒ disarm, identical to release; never inferred from the hold-last channel array | **D19** unplug in `ARMING` ⇒ `MANUAL`; **D20** unplug in `ACTIVE` ⇒ `DECAYING`→`MANUAL`, ramped to 992; **D21** unplug in `OVERRIDDEN` ⇒ stays non-active, no head re-acquisition; **D22** reconnect alone (no recenter, no rearm) ⇒ authority **not** restored. All four physically unplugged per R15, plus a unit-level seam test proving `nan`/device-absent maps to disarm and *not* to a retained previous value |
+| **Arm-input device loss** (I10, added 2026-07-30) | gamepad disappearance ⇒ disarm, identical to release; never inferred from the channel array | **D19** unplug in `ARMING` ⇒ `MANUAL`; **D20** unplug in `ACTIVE` ⇒ `DECAYING`→`MANUAL`, ramped to 992; **D21** unplug in `OVERRIDDEN` ⇒ stays non-active, no head re-acquisition; **D22** reconnect alone (no recenter, no rearm) ⇒ authority **not** restored. All four physically unplugged per R15, plus a unit-level seam test proving `nan`/device-absent maps to disarm and *not* to a retained previous value |
 
 ##### 2.3.12.11 FIRST_ACTIVE go/no-go table (honest, 2026-07-15) — **NO-GO / BLOCKED**
 
@@ -1238,7 +1300,7 @@ below are additional gated-implementation tests):
 | R12 shaping constants signed | **NO-GO** | derivation policy recorded (§2.3.12.8); values need R7 measurement |
 | R13 test matrix green | **NO-GO** | no U4 code exists (by design; gated) |
 | R14 written rollback | **PASS** | §2.3.12.12 |
-| R15 device-loss disarm (I10) | **NO-GO** | added 2026-07-30; no U4 code exists to test, and the §2.3.11.1 hold-last defect it guards against is confirmed present in the fork's channel assembler (`output_tx.go:43`). Needs a physical unplug demonstration, so it is hardware-*procedure* class, not bench-power class — it does **not** require Phase B |
+| R15 device-loss disarm (I10) | **NO-GO** | added 2026-07-30; no U4 code exists to test. **Evidence line corrected 2026-08-04:** it previously read "the §2.3.11.1 hold-last defect it guards against is confirmed present in the fork's channel assembler (`output_tx.go:43`)" — both the claim and the line reference are stale. The assembler defect was fixed at `w17-mapper` `2dc7c5a`/`e452d55`/`c60843e` (§2.3.11.1). R15 is unaffected: it demonstrates **device-loss disarm** against the real SDL/OS removal path, which no unit test covers and which the fix was never claimed to establish. Needs a physical unplug demonstration, so it is hardware-*procedure* class, not bench-power class — it does **not** require Phase B |
 | R16 bench-only servo sweep | **NO-GO** | promoted out of R2 blocker 7, 2026-07-30; no waiver clause; requires Phase B, so gated behind R6 |
 | **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13, R15, R16 open |
 
