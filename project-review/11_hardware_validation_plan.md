@@ -34,7 +34,8 @@ Mostly software/config + a multimeter. Clear these first; several are one-line s
 > (2026-07-30) and REVISED (2026-08-04, closing
 > `14_a2_staged_gates_adversarial_review.md`)** — it no longer has the single-pass
 > A2.1–A2.5 shape this section once described. The executable form is the S-gates, run in
-> build order on isolated subassemblies: **S0** PDB frame → **S1** divider → **S2** Hall →
+> build order on isolated subassemblies: **SF** PDB frame (renamed from "S0" 2026-08-04 —
+> `S0` now names only the ZK cassette clearance) → **S1** divider → **S2** Hall →
 > **S3** link2 → **S4/S4b** CRSF + actuator leads and the isolation matrices (**S8a**, the
 > ESC red-wire cut half of the hard gate, executes here) → **S5** WS2812 → **S6** batt+
 > consumers (UBECs, ESC 12 AWG feed, C1) → **S7** whole-harness composite (grounds +
@@ -48,7 +49,7 @@ Mostly software/config + a multimeter. Clear these first; several are one-line s
 | A2.2 ESC +5 V BEC (red) wire physically isolated | S8a (E0–E3, E6) + S8b (E4/E5/E7) | — |
 | A2.3 One common ground across every board/device | S7 (G1–G14) | R06 |
 | A2.4 WS2812 level path (fixed to the 1N5819, decision 2026-07-30) | S5 (W1–W5) | R20 |
-| A2.5 GPIO13/14 boot-float pull-down/RC | S4 (PD1 — populated *or* explicitly recorded as not populated; no longer allowed to go unrecorded) | R04 |
+| A2.5 GPIO13/14 boot-float pull-down/RC | S4 (PD1 — populated *or* explicitly recorded as not populated; no longer allowed to go unrecorded). Placement + fit moment decided 2026-08-04/F18: harness side at the ESP32 #1 socket positions, fitted at S4. **Expected A2-time state is NOT populated** — R04's evidence is the B1.4 scope, which is Phase B | R04 |
 
 ---
 

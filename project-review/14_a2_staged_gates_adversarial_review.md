@@ -467,18 +467,18 @@ refs, as before.
 | Finding | What changed | Where |
 |---|---|---|
 | F1 | batt+→GND composite screen added post-S6 (M1, ohms, §3-rule-1 language, no numeric expectation, persistent ≈0 Ω = stop 1); the mated pigtail chain incl. the owner-made XT60-female tail joint gets pin-for-pin rows (CP1–CP3) before it ever carries pack current, with a NOT-ASSEMBLED record option that becomes a hard precondition to first pack connection | checklist §S7, §14 |
-| F2 | Rail isolation matrix now exists: rail↔rail + rails↔batt+ at S0 (P3–P5) re-screened at S4b (S6r/S7r, marked single-shot); rails↔GND post-S6 at S7 (M2/M3, charging language for C1); S6 states rails↔batt+ is not re-runnable after the UBECs attach | checklist §S0, §S4b, §S6, §S7 |
+| F2 | Rail isolation matrix now exists: rail↔rail + rails↔batt+ at SF (P3–P5) re-screened at S4b (S6r/S7r, marked single-shot); rails↔GND post-S6 at S7 (M2/M3, charging language for C1); S6 states rails↔batt+ is not re-runnable after the UBECs attach | checklist §SF, §S4b, §S6, §S7 |
 | F3 | Signals→batt+ generating row added (S5r) covering 13/14/16/17/18/19/23/25/35, with GPIO34 annotated ≈27 kΩ (top leg) as the expected non-beep reading; §13 stop 4 now reachable | checklist §S4b, §13 map |
 | F4 | S8 split: **S8a at the cut** (executes during S4's ESC-lead step, before insulation — E0 falsifies the cut itself, E1–E3 probe the named **ESC-side end**, E6 covers red→GND, photos before/after shrink) + **S8b whole-harness** (E4, E5, E7 — the header +5 position probed from the accessible side, with an explicit "no metal in position" PASS so the row can't silently pass on empty air) | checklist §S8a/§S8b, §S4, §2, §10 |
 | F5 | S7 reference redefined harness-side: PDB input XT60 male − pin = star node; §1 reference-points paragraph rewritten; §14's battery paragraph rewritten against inventory reality (no in-envelope pack exists; the ZEEE 1500 never arrived; XT90-S set arrived 2026-07-30) | checklist §1, §S7, §14; `CURRENT_STATUS.md` Hardware gates (same stale text lived there) |
 | F6 | CRSF-lead internal isolation block added (K1–K4 at the JST-XH connector); 16/17/25 added to S2r and S5r; link2 noted as covered by 25's matrix membership (no 5 V conductor) | checklist §S4, §S4b, §S3 note |
 | F7 | PD1 row added, H5-pattern: populated (measure + record value) or explicitly not populated; blank is not a pass — plus the F15 annotations so the row can't false-FAIL S2r/rule 2 | checklist §S4; plan §A2.5 mapping |
-| F8 | S0 (PDB frame) added — XT60 + star + ESP32 sockets + output headers + rail looms built and verified before any gate consumes them (H3/S4r now reachable by construction); guide §5 build order rewritten to BE the S-gate order (divider before UBECs; each step names its gate) | checklist §S0; guide §5 |
+| F8 | **SF** (PDB frame) added — XT60 + star + ESP32 sockets + output headers + rail looms built and verified before any gate consumes them (H3/S4r now reachable by construction); guide §5 build order rewritten to BE the S-gate order (divider before UBECs; each step names its gate). *Proposed here as "S0"; renamed **SF** in the closure pass — see the naming record below* | checklist §SF; guide §5 |
 | F9a | Owner decision implemented: IP2326 NOT fitted during A2 build week — guide step 8 struck, S6 "after this point" carries the exclusion, §14 states the charge path owns its own (not-yet-written) gate | guide §5; checklist §S6, §14 |
 | F9b | Owner decision implemented: charge tap is PACK-side of the XT90-S — guide §1 topology redrawn (charger off the PDB), §3 "what lives where" moves the IP2326 off-PDB, interlock bullet states the placement is what makes it real | guide §1, §2, §3 |
 | F10 | Photo item 3 retagged (two shots at S8a: pre-shrink severed conductor + insulated result); item 9 + the §12 photo bullet scoped to what an image can show — topology evidence is the S7/S8b rows alone | checklist §10, §12 |
 | F11 | Owner decision implemented: pull-up at the ESP32 #1 end — S2 preamble states it and why; H1b added as stop 8's generating row; guide §2 Hall row + §3 table corrected | checklist §S2, §2; guide §2, §3 |
-| F12 | Socketing decision recorded in §3 rule 2 **with its owed caliper verification and the reopening condition stated** (socket stack vs the ZK clearance "S0" ≥ 9.82 mm — no relation to gate S0 — due before S0's first socket joint); §2 adjacency call-outs replaced by an explicit OWED placeholder (inspect every joint until the MH-ET list exists). **Neither measurement is closed — see below** | checklist §3, §2, §S0; guide §5 |
+| F12 | Socketing decision recorded in §3 rule 2 **with its owed caliper verification and the reopening condition stated** (socket stack vs the ZK clearance `S0` ≥ 9.82 mm, due before **SF**'s first socket joint — the name clash that annotation used to carry is gone, see the naming record below); §2 adjacency call-outs replaced by an explicit OWED placeholder (inspect every joint until the MH-ET list exists). **Neither measurement is closed — see below** | checklist §3, §2, §SF; guide §5 |
 | F13.1 | GPIO34's ≈10 kΩ (bottom leg) and ≈27 kΩ (top leg) written into §3 rule 2's exceptions list and S2r/S5r annotations | checklist §3, §S4b |
 | F13.2 | G14 blower connector GND added, record-or-N/A pattern | checklist §S7 |
 | F13.3 | Decided: guide §4 wins — C3 lives at the GPIO34 pin end. S1 preamble rewritten (divider is bare, readings settle immediately), §2 divider row corrected, photo 4 retagged capless, C10b + photo 12 verify the pin-end fit at S4 | checklist §S1, §2, §S4, §10 |
@@ -490,11 +490,23 @@ refs, as before.
 **§13 walk performed:** every hard stop now has at least one generating row; the
 stop→row map is written into §13 itself so the property stays checkable, not asserted.
 
+### Closure pass 2026-08-04 (later) — F15/F16, same table
+
+Same branches, same rule: **A2 stays NOT-EXECUTED and Phase B stays BLOCKED.** These two are
+the revision pass's own findings, closed on the same terms as F1–F14, plus the `S0` naming
+record and the two findings closing *them* generated (F17, F18 below).
+
+| Finding | What changed | Where |
+|---|---|---|
+| F15 | §3 rule 2's blanket "≫ 10 kΩ" replaced by a **closed exceptions list** — 34→GND (≈10 kΩ), 34→batt+ (≈27 kΩ), 35→3V3 (≈10 kΩ), 13/14→GND (= the fitted pull-down when PD1 is populated) — with a standing instruction that any future revision adding a deliberate resistance to the signal set must extend the list in the same edit, since that omission *is* the F13.1/F15/F17 defect. PD1 states the populated case is the expected reading, not a fault; S2r annotated | checklist §3 rule 2, §S4 (PD1), §S4b (S2r) |
+| F16 | C1's fit moment sequenced: **fitted at S6 with the UBECs**, and said so at every row whose expected value depends on it — SF (absent by construction, P7's clean OPEN), S6 (the attach moment, in one sitting), S7/M3 (a rising reading is the expected signature), guide §5 step 6. Closing it exposed the corollary the fit moment makes visible: C1 is the only PDB electrolytic with **no photo**, while §12 Part 1 claims cap-stripe polarity is photo-checkable and **no no-power reading tells a reversed 1000 µF from a correct one** — so **photo item 14** (C1 at S6, stripe visible) is added and §13's stop-6 row now names §2 + photo 14 as the whole of C1's evidence | checklist §SF, §S6, §S7, §10 item 14, §12, §13 map; guide §5 |
+| — | **`S0` naming settled** (was "Register note (not a finding)"): the frame gate is renamed **SF**; `S0` now names only the ZK cassette clearance. Swept across both repos — see the naming record below | checklist (all), plan §A2, this register's pointers, guide §5, `CURRENT_STATUS.md` |
+
 ### Deliberately NOT closed
 
 - **F12, both measurement halves.** The MH-ET adjacency re-derivation and the socket-height
   caliper check are bench work with the boards in hand. The revision marks both as OWED
-  placeholders/preconditions (due before S0's first joint) rather than absorbing them —
+  placeholders/preconditions (due before SF's first joint) rather than absorbing them —
   writing pairs from memory or treating socketing as settled would be the exact
   asserted-over-unchecked-set defect this file exists to catch.
 - **The charge-path gate itself.** F9 is closed via the owner's option (b) — the exclusion
@@ -528,13 +540,101 @@ early, P7/S2r's clean-OPEN expectation reads a charging transient it has no lang
 deferred past S7, M3's expected charging signature is wrong instead. The fix F2 prescribed
 would have introduced the hole it was fixing — the same pattern this review's preamble
 notes about the restructure it reviewed. **Fix applied:** C1 is explicitly fitted at S6
-with the UBECs, stated at S0 (absent by construction), S6 (attach moment), S7/M3 (expected
+with the UBECs, stated at SF (absent by construction), S6 (attach moment), S7/M3 (expected
 signature), and guide §5.
 
-### Register note (not a finding)
+### F17 — CONFIRMED (found closing F15). F15's exceptions list omits the 13↔14 pair, and S1r false-FAILs on it in resistance mode.
 
-Gate **S0** collides by name with the ZK study's cassette clearance **"S0" ≥ 9.82 mm**.
-Both usages now appear in the checklist; each mention disambiguates in text. Renaming
-either would break external references, so the collision is documented instead.
+**Where:** F15's fix — §3 rule 2's exceptions list; checklist S1r (S4b); PD1 (S4).
 
-**Gate state after the revision pass: unchanged. A2 NOT-EXECUTED. Phase B BLOCKED.**
+F15's fix legitimises a finite 13/14 → **GND** reading when PD1 records the pull-downs
+populated. It stops there. **S1r is the signal↔signal matrix**, and with a pull-down on
+GPIO13 *and* one on GPIO14 both returning to the star node, the pair 13↔14 reads through
+them in series: **≈2× the fitted value.** Beeper mode is safe at any plausible value. The
+**resistance-mode variant is not** — and that variant is not hypothetical: §3 rule 2 makes it
+the norm for hard-wired boards, which is exactly what F12's socket-height caliper may force.
+No pull-down value is mandated anywhere (R04 says "pull-down/RC" and leaves it to the bench),
+so two ordinary 4.7 kΩ parts put 13↔14 at **≈ 9.4 kΩ** — a plain rule-2 FAIL, on a correctly
+built board, reported to the builder as *"the ESC signal line and the steering signal line
+are bridged."* The two most safety-critical outputs, on the false-FAIL polarity.
+
+This is the third instance of the same class in this register (F13.1 pin 34, F15 pin 13/14 to
+GND, F17 the 13↔14 pair) and the second generated by a fix inside it. The pattern is not
+carelessness — it is that each fix legitimises **one** new reading and the property "all
+other pairs are open" is re-asserted over the enlarged set without re-walking it.
+
+**Fix applied:** 13↔14 added to §3 rule 2's exceptions list with the ≈2× arithmetic and a
+worked value; S1r annotated with the exception **and its fault signature restated** (the
+failure is a beep / ≈0 Ω, not a finite resistance); PD1 points at S1r as well as S2r; §11's
+S1r template row reads `OPEN; 13-14 per PD1`. And the list is now declared **closed by
+construction**: any future revision that adds a deliberate resistance to the signal set must
+extend it in the same edit. That instruction is the actual fix — the enumeration is only as
+good as the next person who adds a part.
+
+### F18 — CONFIRMED (found closing F15). PD1's pull-downs have no stated location and no fit moment — F16's defect, one row over.
+
+**Where:** checklist PD1 (S4); guide §5 step 4 and §3 "what lives where"; §3 rule 2's
+unseat-for-isolation instruction.
+
+PD1 says *whether* the pull-downs are populated and *what value*. It never says **where they
+sit** or **when they go on**, and the guide never mentions them at all — they appear in
+neither §5's build steps nor §3's "what lives where" table. F16 is the same sentence about
+C1.
+
+It bites through §3 rule 2: **isolation rows are measured with the ESP32 unseated.** A
+harness-side pull-down (at the socket position) is still in circuit with the board out, so
+F15's exception reads true. A **board-side** pull-down — soldered to the module's own pin,
+which is a perfectly natural reading of "GPIO13 → GND" — comes out with the board, so S2r
+reads OPEN while PD1 says populated: two rows of one document contradicting each other on a
+correctly built car, with no text to arbitrate. The same ambiguity decides whether F17's
+13↔14 exception applies at all.
+
+**Fix applied — decided, on the document's own precedent rather than escalated:** *if*
+fitted, each pull-down lives **harness side at the ESP32 #1 socket position**, returning to
+the star ground, fitted **at S4 with the board-end signal wiring**, before S4b's matrices
+read it. This follows the placement rule F11 already set for the Hall pull-up and F13.3 for
+C3, it is the only placement under which F15's exception is measurable, and it is the only
+one that holds the ESC/steering line low with **no board seated** — which is the R04
+boot-float window the part exists for. Written into checklist §2 (a visual bullet), PD1
+(placement recorded, not just value), §11 (`value+where, or N/A`), plan §A2.5, and guide §5
+step 4.
+
+**Also recorded, because it changes what the bench should expect:** the honest A2-time state
+is **NOT POPULATED**. R04's evidence is the B1.4 boot-float scope, which is Phase B and has
+not run. Fitting nothing and recording that is the expected outcome, not a lapse — and adding
+the pull-downs later invalidates no A2 row, it only moves 13/14 into the exceptions list for
+any re-measure. PD1 and §A2.5 now say so.
+
+### Naming record — the `S0` collision, settled (supersedes the 2026-08-04 "Register note")
+
+The revision pass created gate **S0** (PDB frame, F8) while `S0 ≥ 9.82 mm` already existed as
+the ZK cassette clearance. The first note here documented the clash and left both names
+standing. That was the wrong call, and it was the second such collision in two days — the
+R16 one produced a near-miss where a commit subject read as closing a Phase-B safety gate.
+
+**Settled by renaming the gate: SF (PDB frame).** Reference sweep before deciding, since
+"rename the newer one" is a rule of thumb, not evidence:
+
+- **ZK clearance `S0`** — 7 workspace files, incl. a rendered diagram that uses it as a datum
+  (`S0=0 → lower bound`), three Codex-handoff documents already sent, and a derivation formula
+  (`S0 = board-top 32 + 5 − roof-Z`). Renaming it means editing documents already handed over
+  and a published artifact. (The Codex repos themselves carry **no** `S0` — checked read-only;
+  the exposure is the handoff docs on our side.)
+- **Gate `S0`** — the checklist, this register, plan §A2, guide §5, `CURRENT_STATUS.md`. All
+  on the two unmerged `docs/a2-revision-pass` branches. **Nothing published, nothing sent.**
+
+So the gate is the cheap rename, as expected — but now on counted references. Row IDs stay
+**P1–P7**. Every pointer into the checklist says **SF**; the **finding bodies of F8/F2/F12
+keep their original "S0" wording as written history**, because falsifying what the reviewer
+proposed on 2026-08-03 to tidy a name would cost more than the ambiguity it removes. The
+checklist states flatly that **there is no gate S0** and that `S0` names the clearance only,
+so the next grep is unambiguous in both directions.
+
+Unlike R16 — annotated because the name was already load-bearing in two published series —
+nothing here was published, so it was fixed while it was cheap. That is the rule the two
+cases together establish: **rename before publication, annotate after.**
+
+**Gate state after the revision pass and this closure pass: unchanged. A2 NOT-EXECUTED.
+Phase B BLOCKED.** Closing findings makes A2 executable, not executed. The two F12 bench
+measurements above remain **OWED and open** — this pass re-checked that neither has been
+promoted anywhere in either repo.

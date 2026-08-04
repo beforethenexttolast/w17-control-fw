@@ -34,9 +34,9 @@
 > unfalsifiable as built; S7's reference point did not exist on hand; and the gate order
 > contradicted the PDB soldering guide. This revision closes those findings:
 >
-> - **S0 (PDB frame)** opens the sequence — the nodes every later gate probes are now built
+> - **SF (PDB frame)** opens the sequence — the nodes every later gate probes are now built
 >   and verified before they are consumed (F8), and the pre-S6 rail isolation rows live
->   there (F2).
+>   there (F2). *(Proposed as "S0"; renamed **SF** on 2026-08-04 — see the naming note below.)*
 > - **S7 is now the whole-harness composite gate**: grounds, the post-S6 batt+→GND and
 >   rail→GND screens (F1/F2), the mated master-switch pigtail chain (F1), and the ESC
 >   power-feed rows (F13.6). Its reference point is **harness-side** — no battery (F5).
@@ -50,9 +50,26 @@
 >   pull-up lives **at the ESP32 end** (F11); the boards are **socketed** — with an owed
 >   caliper verification, see §3 rule 2 (F12).
 >
-> Gate order is now **S0 → S1 → S2 → S3 → S4/S4b (S8a executes here) → S5 → S6 → S7 → S8b**.
+> Gate order is now **SF → S1 → S2 → S3 → S4/S4b (S8a executes here) → S5 → S6 → S7 → S8b**.
 > Finding-by-finding edit map: review doc §"Revision pass 2026-08-04". **A2 remains
 > NOT-EXECUTED — this revision makes it executable, not executed.**
+
+> **CLOSURE PASS 2026-08-04 (later) — F15/F16 closed, F17/F18 recorded, the `S0` name
+> collision settled.** The revision above generated two findings of its own (F15, F16); both
+> are now closed, and closing them generated two more, recorded rather than quietly fixed:
+> **F17** (F15's own exceptions list omits the 13↔14 pair, which reads ≈2× the fitted
+> pull-down in resistance mode → false FAIL at S1r) and **F18** (PD1's pull-downs have no
+> stated location and no fit moment — the F16 shape, one row over). Both are closed here; the
+> register carries all four. Also: photo item 14 (C1 at S6 — the one PDB electrolytic with no
+> frame) and S1r's annotation.
+>
+> **Naming — there is no gate S0.** The frame gate is **SF**. The token `S0` in this project
+> means one thing only: the **ZK cassette clearance `S0 ≥ 9.82 mm`** (§3 rule 2, §SF). The
+> frame gate was proposed as "S0" by review finding F8 and renamed on 2026-08-04, before
+> anything was published, because two live `S0`s in one build week is how a commit subject
+> ends up reading as if it closed a gate it never touched. The review register's F8/F2/F12
+> **finding bodies keep the original wording as written history**; every pointer into *this*
+> document says SF. Row IDs are unchanged (P1–P7).
 
 **Golden rules for this session:** battery stays disconnected and out of reach. No USB, no
 bench PSU, nothing flashed. Multimeter only. If any measurement is suspicious → **stop,
@@ -75,7 +92,7 @@ photograph, report** — don't "try again with power to see."
 > which is weaker and needs writing before S5 runs.
 
 **Reference points used below (redefined 2026-08-04, F5):** **"GND" = the star-ground node,
-probed at the PDB input XT60 male − pin.** This is harness-side — it exists from S0 onward,
+probed at the PDB input XT60 male − pin.** This is harness-side — it exists from SF onward,
 needs no battery, and no in-envelope pack exists anyway (`../../HARDWARE_INVENTORY.md` §E;
 the golden rule keeps any pack away from this bench regardless). **"batt+" = the switched
 battery + node, probed at the PDB input XT60 male + pin.** "5 V rail A/B" = the two UBEC
@@ -88,7 +105,7 @@ nodes** — rail rows before S6 verify *where a wire goes*, not a voltage.
 Do the relevant subset at each S-gate on the subassembly in front of you, then repeat the
 whole list once after §S6. Work under strong light, top then bottom of every board:
 
-- [ ] **Solder bridges** — every hand-soldered joint on both ESP32 sockets and headers, the divider, the Hall wiring, WS2812 connections. ⚠ **Adjacency placeholder (F12):** the old call-outs (16/17, 25/26, 18/19) were derived from the **DevKit V1** single-row layout; the build boards are **MH-ET Live D1-Minis** and the true adjacent-pair list is **owed from the MH-ET silkscreen** — a bench job with the board in hand, due **before S0's socket soldering**. Until it is done, beeper-check and inspect **every** header joint, not a favored subset.
+- [ ] **Solder bridges** — every hand-soldered joint on both ESP32 sockets and headers, the divider, the Hall wiring, WS2812 connections. ⚠ **Adjacency placeholder (F12):** the old call-outs (16/17, 25/26, 18/19) were derived from the **DevKit V1** single-row layout; the build boards are **MH-ET Live D1-Minis** and the true adjacent-pair list is **owed from the MH-ET silkscreen** — a bench job with the board in hand, due **before SF's socket soldering**. Until it is done, beeper-check and inspect **every** header joint, not a favored subset.
 - [ ] **Polarity** — XT60 orientation; UBEC in/out polarity; **ESC 12 AWG power input: + to batt+, − to star** (F13.6 — a reversed ESC power input is destroyed at first connect; S7's PW rows measure it); electrolytic caps (1000 µF servo-rail, 1000 µF WS2812) stripe = negative; 1N5819 band toward the strip VDD side
 - [ ] **Connector orientation** — every 3-pin servo plug: signal–+5–GND order matches its header (MG90S lead: orange=signal, red=+, brown=−; DS3235SG same scheme). Mark verified plugs with a paint dot
 - [ ] **Loose wires / strain relief** — tug-test every crimp and solder joint gently
@@ -98,6 +115,7 @@ whole list once after §S6. Work under strong light, top then bottom of every bo
 - [ ] **Battery divider** — 27 kΩ from batt+ side, 10 kΩ to GND, tap to GPIO34. **C3 (100 nF) lives at the GPIO34 pin end, not at the divider** (F13.3 — guide §4 wins; verified at S4, not S1)
 - [ ] **Hall sensor** — A3144: VCC to **5 V**, GND common, output to GPIO35 with **10 kΩ pull-up to 3.3 V at the ESP32 #1 end** (owner decision 2026-08-03/F11 — the sensor lead has no 3V3 conductor, so a sensor-side pull-up is unbuildable and invites exactly §13 stop 8). Pull-up to 3V3, *not* 5 V — check this specifically; H1/H1b measure it
 - [ ] **Servo/ESC signal wiring** — five signal wires route to GPIO13 (steer), 14 (ESC), 18 (DRS), 19 (pan), 23 (tilt); none to strapping pins 0/2/12/15
+- [ ] **Boot-float pull-downs (if fitted)** — GPIO13 and GPIO14 only, **harness side at the ESP32 #1 socket positions**, each to the star ground, fitted at §S4 with the board-end signal wiring (F18). Not fitted is equally valid — PD1 records which, and §2 has nothing to inspect in that case
 
 ## 3. Measurement conventions (read once, applies to every gate below)
 
@@ -112,19 +130,26 @@ Four rules that resolve ambiguities the single-pass version left open:
 2. **Isolation rows are measured with the ESP32 unseated.** The boards are **SOCKETED** —
    female headers on the PDB, boards lift out (owner decision 2026-08-03/F12), so unseating
    is always available. ⚠ **That decision carries an owed verification:** the socket stack
-   height has never been calipered against the ZK study's cassette clearance **"S0" ≥
-   9.82 mm** (a clearance ID — no relation to gate S0 below). If the measurement breaks the
-   clearance, the socketing decision **reopens**, the boards go hard-wired, and every
-   isolation row in this document falls back to the resistance-mode variant — so do the
-   caliper check **before S0's first socket joint**. Rationale for unseating: an installed
-   ESP32 presents internal ESD protection diodes from every GPIO to GND and 3V3, which can
+   height has never been calipered against the ZK study's cassette clearance **`S0` ≥
+   9.82 mm** (the *only* thing `S0` names in this project — the frame gate is **SF**). If the
+   measurement breaks the clearance, the socketing decision **reopens**, the boards go
+   hard-wired, and every isolation row in this document falls back to the resistance-mode
+   variant — so do the caliper check **before SF's first socket joint**. Rationale for
+   unseating: an installed ESP32 presents internal ESD protection diodes from every GPIO to GND and 3V3, which can
    read as a low resistance and produce a false failure. If a board ends up hard-wired, use
    **resistance mode**, do not use the beeper for that row, and record the actual value.
    Resistance-mode expectations are ≫ 10 kΩ **except the documented exceptions** — a blanket
    "≫ 10 kΩ everywhere" would manufacture false FAILs on a correctly built board:
    GPIO34 → GND **≈ 10 kΩ** (divider bottom leg — F13.1); GPIO34 → batt+ **≈ 27 kΩ** (top
    leg — F3); GPIO35 → 3V3 **≈ 10 kΩ** (Hall pull-up — H1); GPIO13/14 → GND **= the fitted
-   pull-down value** if PD1 recorded pull-downs populated (F15).
+   pull-down value** if PD1 recorded pull-downs populated (F15); **GPIO13 ↔ GPIO14 ≈ 2× the
+   fitted pull-down value** in that same case (F17 — both legs return to the star node, so
+   the pair reads through them in series; e.g. two 4.7 kΩ pull-downs put 13↔14 at ≈ 9.4 kΩ,
+   which a strict "≫ 10 kΩ" reading calls a bridged pair on a correctly built board).
+   **The exceptions list is closed by construction, not by memory:** it must name every pair
+   this document itself legitimizes a non-open reading on. If a later revision adds a
+   deliberate resistance anywhere in the signal set, it belongs here in the same edit — that
+   omission is the defect F13.1, F15 and F17 each are.
 3. **Continuity rows are measured with the plug seated**, at the connector, so the row proves
    the *assembled* path. Isolation and continuity therefore run as two passes over the same
    connector, not one.
@@ -143,14 +168,17 @@ ESC-lead step** — its rows are only probeable at the moment the red wire is cu
 mandated insulation goes on (F4). Each gate is a build step plus its verification. Do not
 proceed to the next gate with an unresolved failure — a §13 hard stop halts everything.
 
-## S0 — PDB frame (added 2026-08-04 — F8; home of the pre-S6 rail rows — F2)
+## SF — PDB frame (added 2026-08-04 — F8; home of the pre-S6 rail rows — F2)
+
+> **SF, not S0.** Proposed as gate "S0" by F8 and renamed 2026-08-04 so that `S0` keeps a
+> single meaning in this project — the ZK cassette clearance below. Row IDs stay P1–P7.
 
 **Before the first joint, two owed bench measurements** (both no-power, both with parts on
-hand):
+hand). **Neither is closed by this document, and neither may be closed on paper:**
 
-1. **Caliper the female-header socket stack** against the ZK cassette clearance "S0" ≥
-   9.82 mm — the socketing decision is conditional on it (§3 rule 2).
-2. **Derive the adjacent-pair list from the MH-ET silkscreen** (§2 placeholder).
+1. **Caliper the female-header socket stack** against the ZK cassette clearance `S0` ≥
+   9.82 mm — the socketing decision is conditional on it (§3 rule 2). **OWED.**
+2. **Derive the adjacent-pair list from the MH-ET silkscreen** (§2 placeholder). **OWED.**
 
 Build: the XT60 input connector, the **star-ground node**, both ESP32 female header sockets
 (boards **not** seated), the rail A/B output headers, and the rail branch looms. This is
@@ -188,7 +216,7 @@ more just before S6; after S6, none of these pairs are cleanly measurable again.
 The divider is bare at this gate: **C3 (100 nF) lives at the GPIO34 pin end and is not in
 circuit yet** (F13.3 — the old "wait for the cap to charge" preamble described a cap that
 isn't built until S4), so D1–D3 settle immediately; any slow drift means something
-unexpected is on the node. §S0 must already have passed — P2 proved batt+ ↔ GND OPEN before
+unexpected is on the node. §SF must already have passed — P2 proved batt+ ↔ GND OPEN before
 the divider existed, so D3's ≈37 kΩ is the first legitimate non-open reading on that pair.
 
 | # | Measure | Expected | Hard-stop if |
@@ -215,7 +243,7 @@ the board-end pull-up and the sensor lead in this gate.
 | H1 | GPIO35 → **3V3 pin** | **≈ 10 kΩ** (the pull-up) | Hard-stop if it reads to the **5 V** rail instead — that would put 5 V on an input-only pin with no protection |
 | H1b | GPIO35 → **rail-A / 5 V wiring** | **no beep** (resistance mode: ≫ 10 kΩ) | **the generating row for §13 stop 8** — it previously had none (F11). A beep or ≈10 kΩ here means the pull-up landed on 5 V |
 | H2 | GPIO35 → GND | **not a short** | open-collector output; open/OL or high/diode-ish through the sensor is fine; ≈0 Ω is a fail |
-| H3 | A3144 VCC lead → the **rail-A harness node** | beep | it's a 5 V part; pre-S6 this proves *which wire it lands on*, not a voltage (rail-A loom exists from §S0) |
+| H3 | A3144 VCC lead → the **rail-A harness node** | beep | it's a 5 V part; pre-S6 this proves *which wire it lands on*, not a voltage (rail-A loom exists from §SF) |
 | H4 | A3144 VCC lead → 3V3 | **no beep** | |
 | H5 | Optional 1–10 nF Hall RC (D8 note / R18) | present and to GND, **or** recorded as not populated | "add only if the bench scope shows double-counts" — either state is a valid PASS, but it must be *recorded*, not left blank |
 
@@ -277,20 +305,37 @@ kills the failsafe's input path at the moment it is first trusted:
 | K4 | GPIO17 ↔ lead GND pin | **no beep** |
 
 **Boot-float pull-downs (old A2.5 / R04 — F7):** the two safety-critical outputs, recorded
-either way per the H5 pattern:
+either way per the H5 pattern.
+
+**Where they live and when they go on (decided 2026-08-04 — F18; neither document said
+before).** *If* fitted, each pull-down lives **harness side, at the ESP32 #1 socket
+position** for GPIO13 / GPIO14, returning to the star ground — the same placement rule the
+Hall pull-up (F11) and C3 (F13.3) already follow, and it is fitted **here, at §S4, with the
+board-end signal wiring**, before §S4b's matrices read it. Two reasons this placement is not
+arbitrary: a harness-side pull-down is **present with the board unseated**, which is the only
+reason §3 rule 2's exception ("13/14 → GND = the fitted value") is measurable at all — a
+board-side pull-down would vanish on unseating and make PD1 and S2r contradict each other on
+a correctly built car; and it holds the ESC/steering line low even with **no board seated**,
+which is exactly the R04 boot-float window the part exists for.
+
+**The expected A2-time state is NOT POPULATED.** R04's evidence is a Phase-B scope (B1.4) that
+has not run, so "fit nothing yet, record that" is the honest default, not a lapse. Adding the
+pull-downs after A2 invalidates no A2 row — but it does move 13/14 into §3 rule 2's exceptions
+list, so a later re-measure reads the fitted value and the 13↔14 pair reads ≈2× it (F17), not
+OPEN.
 
 | # | Measure | Expected | Note |
 |---|---|---|---|
-| PD1 | GPIO13 / GPIO14 boot-float pull-down/RC | **populated** — measure each: ≈ the fitted value, signal node → GND, record it — **or explicitly recorded as not populated** | either is a PASS, **blank is not**. "Not populated" records that the R04 boot-float exposure on the ESC + steering lines was accepted deliberately. If populated: S2r and §3 rule 2 read the fitted value on 13/14 → GND — that is the expected reading, not a fault (F15) |
+| PD1 | GPIO13 / GPIO14 boot-float pull-down/RC | **populated** — measure each: ≈ the fitted value, signal node → GND, record it, **and record the placement** (harness-side at the socket position — anything else is a build deviation, note it) — **or explicitly recorded as not populated** | either is a PASS, **blank is not**. "Not populated" records that the R04 boot-float exposure on the ESC + steering lines was accepted deliberately, pending the B1.4 scope. If populated: S2r and §3 rule 2 read the fitted value on 13/14 → GND, and S1r reads ≈2× it on 13↔14 — those are the expected readings, not faults (F15, F17) |
 
 ### S4b — cross-signal isolation (all five actuator leads present, UBECs still off)
 
 | # | Check | Expect |
 |---|---|---|
-| S1r | **Signal isolation matrix** — 13/14/18/19/23 against each other | **no beep between any pair** (no shared/bridged signals) |
+| S1r | **Signal isolation matrix** — 13/14/18/19/23 against each other | **no beep between any pair** (no shared/bridged signals). Annotated exception (F17): if PD1 recorded pull-downs **populated**, **13 ↔ 14 reads ≈2× the fitted value** — both legs return to the star node, so the pair reads through them in series. That is the expected reading; the fault signature is a **beep / ≈0 Ω**, not a finite resistance. All other pairs stay open either way |
 | S2r | Each signal (**13/14/16/17/18/19/23/25/34/35**) → rail-A/rail-B wiring and → GND | **no beep to either** (per §3 rule 2 — unseat the ESP32). Annotated exceptions per §3 rule 2: 34 → GND ≈ 10 kΩ in resistance mode (F13.1); 13/14 → GND = fitted pull-down value if PD1 populated (F15) |
 | S3r | Each 3-pin lead, at the connector: signal↔+5 V within that lead | **no beep** |
-| S4r | Each 3-pin lead, at the connector: GND pin → harness ground | beep (the star node exists from §S0) |
+| S4r | Each 3-pin lead, at the connector: GND pin → harness ground | beep (the star node exists from §SF) |
 | S5r | Each signal (**13/14/16/17/18/19/23/25/35**) → **batt+ wiring** | **no beep** — §13 stop 4's generating row (F3). **GPIO34 → batt+: no beep in beeper mode; ≈ 27 kΩ in resistance mode** (the divider top leg — expected, not a fault); ≈0 Ω or a beep on any pin = §13 stop 4 |
 | S6r | rail-A wiring ↔ rail-B wiring | **no beep** — last clean look before §S6 (F2; single-shot, §3 rule 4) |
 | S7r | Each rail ↔ batt+ wiring | **no beep** — same (F2; single-shot, §3 rule 4) |
@@ -346,12 +391,15 @@ After this point:
   unpredictable (F2).
 - Rail A and rail B become real nodes; rail B now carries C1, so every later rail-B
   resistance reading shows the §3 rule 1 charging signature.
+- **Photograph C1 with its stripe visible** (§10 item 14) — no later measurement can tell a
+  correctly oriented 1000 µF from a reversed one, so this shot plus the §2 visual is all the
+  evidence §13 stop 6 gets for C1.
 - Re-run the full §2 visual list once, now that everything is together.
 
 ## S7 — Whole-harness composite gate (A2.3 + the post-S6 screens)
 
 **Reference point (redefined 2026-08-04, F5):** one probe stays on the **PDB input XT60
-male − pin — the star-ground node**. Harness-side; exists since S0; needs no battery, and
+male − pin — the star-ground node**. Harness-side; exists since SF; needs no battery, and
 none may be on this bench (golden rule).
 
 ### Grounds — beep / ≤ 1 Ω to each
@@ -382,7 +430,7 @@ feed — and these are the only rows that ever look at the assembled configurati
 | M3 | rail B → GND, **ohms mode** | **a rising reading is the expected signature** — C1 (1000 µF) lives here | persistent ≈0 Ω = §13 stop 1 |
 
 rail↔rail and rails↔batt+ are **not re-runnable here** (§S6 list); their evidence is
-S0/S4b, single-shot per §3 rule 4.
+SF/S4b, single-shot per §3 rule 4.
 
 ### Master-switch pigtail chain + ESC power feed (F1 / F13.6)
 
@@ -423,7 +471,7 @@ matters (F4.4) — except E0, which uses both ends.
 
 - [ ] E0 ESC-side red end ↔ connector-side red stub: **OPEN** — the row that falsifies "the
       cut was made"; an intact wire beeps (F4.2)
-- [ ] E1 ESC-side red end → rail-A wiring: **OPEN** (the rail looms exist from §S0)
+- [ ] E1 ESC-side red end → rail-A wiring: **OPEN** (the rail looms exist from §SF)
 - [ ] E2 ESC-side red end → GPIO14 signal (white wire): **OPEN**
 - [ ] E3 ESC-side red end → rail-B wiring: **OPEN**
 - [ ] E6 ESC-side red end → common GND (star node, and the lead's own GND wire): **OPEN** —
@@ -470,9 +518,15 @@ Photograph at the gate where the subassembly is still accessible, not all at the
 9. The common-ground junction / harness *(at S7)* — corroborates only that **a junction
    exists**; the S7 G-row beeps are the sole evidence for topology (F10)
 10. Whole-bench overview (proves battery not connected)
-11. PDB frame: XT60 input, star node, ESP32 sockets, output headers *(at S0)*
+11. PDB frame: XT60 input, star node, ESP32 sockets, output headers *(at SF)*
 12. C3 (100 nF) at the GPIO34 pin end *(at S4)*
 13. ESC header +5 position at board #1 *(at S8b — feeds E7 either way: metal or no metal)*
+14. **C1 (1000 µF) across rail B, stripe visible** *(at S6, immediately after it goes on —
+    F16's fit moment is what makes a gate-tagged shot possible)*. C1 is the only electrolytic
+    on the PDB and it had no frame in this list: §12 Part 1 claims cap stripe polarity is
+    photo-checkable, §13 stop 6 names reversed caps, and **no no-power measurement
+    distinguishes a correctly oriented 1000 µF from a reversed one** — M3 reads a charging
+    cap either way. The photo and the §2 visual are the whole of stop 6's evidence for C1
 
 ## 11. Measurement table template
 
@@ -482,13 +536,13 @@ evidence.
 ```
 | #   | Gate | Item                            | Expected            | Measured | P/F | Photo # |
 |-----|------|---------------------------------|---------------------|----------|-----|---------|
-| P1  | S0   | star node <-> XT60 - pin        | beep                |          |     |         |
-| P2  | S0   | batt+ <-> GND                   | OPEN                |          |     |         |
-| P3  | S0   | rail-A wiring <-> rail-B wiring | no beep             |          |     |         |
-| P4  | S0   | rail-A wiring <-> batt+         | no beep             |          |     |         |
-| P5  | S0   | rail-B wiring <-> batt+         | no beep             |          |     |         |
-| P6  | S0   | rail-A wiring <-> GND           | no beep             |          |     |         |
-| P7  | S0   | rail-B wiring <-> GND           | no beep (C1 absent) |          |     |         |
+| P1  | SF   | star node <-> XT60 - pin        | beep                |          |     |         |
+| P2  | SF   | batt+ <-> GND                   | OPEN                |          |     |         |
+| P3  | SF   | rail-A wiring <-> rail-B wiring | no beep             |          |     |         |
+| P4  | SF   | rail-A wiring <-> batt+         | no beep             |          |     |         |
+| P5  | SF   | rail-B wiring <-> batt+         | no beep             |          |     |         |
+| P6  | SF   | rail-A wiring <-> GND           | no beep             |          |     |         |
+| P7  | SF   | rail-B wiring <-> GND           | no beep (C1 absent) |          |     |         |
 | D1  | S1   | GPIO34 tap -> GND               | ~10 kΩ              |          |     |         |
 | D2  | S1   | tap -> batt+ lead               | ~27 kΩ              |          |     |         |
 | D3  | S1   | batt+ lead -> GND               | ~37 kΩ              |          |     |         |
@@ -514,13 +568,13 @@ evidence.
 | K2  | S4   | GPIO17 <-> CRSF lead 5V pin     | no beep             |          |     |         |
 | K3  | S4   | GPIO16 <-> CRSF lead GND pin    | no beep             |          |     |         |
 | K4  | S4   | GPIO17 <-> CRSF lead GND pin    | no beep             |          |     |         |
-| PD1 | S4   | GPIO13/14 pull-downs            | value, or N/A       |          |     |         |
+| PD1 | S4   | GPIO13/14 pull-downs            | value+where, or N/A |          |     |         |
 | E0  | S8a  | ESC red: ESC end <-> stub       | OPEN (cut proven)   |          |     |         |
 | E1  | S8a  | ESC-side red end -> rail A      | OPEN                |          |     |         |
 | E2  | S8a  | ESC-side red end -> GPIO14      | OPEN                |          |     |         |
 | E3  | S8a  | ESC-side red end -> rail B      | OPEN                |          |     |         |
 | E6  | S8a  | ESC-side red end -> GND         | OPEN                |          |     |         |
-| S1r | S4b  | signal matrix 13/14/18/19/23    | all OPEN pairs      |          |     |         |
+| S1r | S4b  | signal matrix 13/14/18/19/23    | OPEN; 13-14 per PD1 |          |     |         |
 | S2r | S4b  | signals+16/17/25 -> rails / GND | all OPEN (see §3.2) |          |     |         |
 | S3r | S4b  | per-lead signal <-> +5V         | all OPEN            |          |     |         |
 | S4r | S4b  | per-lead GND -> common          | beep each           |          |     |         |
@@ -561,7 +615,7 @@ Scope, stated honestly because it bounds what this review is worth:
 - [ ] **Arithmetic and tolerance** — divider within ±5 % of 10/27/37 kΩ, Hall pull-up ≈10 kΩ **to 3V3** (board end), W1 ≈330 Ω, W2 in 0.15–0.35 V
 - [ ] **Internal consistency** — no row contradicting another (e.g. CP3 vs M1)
 - [ ] **Cross-reference** against `11_hardware_validation_plan.md` (§A2 there maps A2.1–A2.5 onto these S-gates)
-- [ ] **Direct inspection of the §10 photos** — solder bridges, connector orientation, cap stripe polarity, **1N5819 band direction**, and the **pre-shrink severed red conductor** (item 3) are all visually checkable from an image. **Scoped honestly (F10): a photo can show bridges, orientation, polarity marks, band direction, and the pre-shrink cut. It cannot show harness topology** — that all G-row conductors reach one junction, or that no second ground path exists, is attested by the §S7/§S8b electrical rows alone; item 9 corroborates only that a junction exists. Within that scope this is the one part of the review that is independent observation rather than trust in the transcription, so it is mandatory, not optional.
+- [ ] **Direct inspection of the §10 photos** — solder bridges, connector orientation, cap stripe polarity (**including C1, item 14 — the only evidence stop 6 gets for it**), **1N5819 band direction**, and the **pre-shrink severed red conductor** (item 3) are all visually checkable from an image. **Scoped honestly (F10): a photo can show bridges, orientation, polarity marks, band direction, and the pre-shrink cut. It cannot show harness topology** — that all G-row conductors reach one junction, or that no second ground path exists, is attested by the §S7/§S8b electrical rows alone; item 9 corroborates only that a junction exists. Within that scope this is the one part of the review that is independent observation rather than trust in the transcription, so it is mandatory, not optional.
 
 **What this review cannot attest.** The reviewer cannot see the hardware. If a probe lands on
 the wrong pin, a range is misread, or 37 kΩ is transcribed as 3.7 kΩ, there is no independent
@@ -601,12 +655,12 @@ stop by stop at revision time:
 
 | Stop | Generating rows (gate) |
 |---|---|
-| 1 | P2/P6/P7 (S0) · W5 (S5) · **M1–M3, CP3 (S7)** |
+| 1 | P2/P6/P7 (SF) · W5 (S5) · **M1–M3, CP3 (S7)** |
 | 2 | E0–E3/E6 (S8a) · E4/E5/E7 (S8b) |
 | 3 | D1–D3 (S1) · C10b (S4) |
 | 4 | **S5r (S4b)** |
 | 5 | S4r (S4b) · G1–G14 (S7) |
-| 6 | §2 visual at every gate · W2–W4 (S5) · CP1/CP2, PW1/PW2 (S7) |
+| 6 | §2 visual at every gate · W2–W4 (S5) · CP1/CP2, PW1/PW2 (S7) · **C1 stripe: §2 + photo 14 (S6) only** — no no-power reading distinguishes a reversed 1000 µF |
 | 7 | §2 + S3r/S4r (S4b) |
 | 8 | **H1b (S2)** |
 | 9 | C4 (S3) |
