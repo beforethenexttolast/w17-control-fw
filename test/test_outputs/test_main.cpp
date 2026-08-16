@@ -157,6 +157,35 @@ void test_drs_open_and_closed_positions() {
     TEST_ASSERT_EQUAL_UINT16(1000, pwm.lastMicroseconds);
 }
 
+// Contract pin for main.cpp's failsafe Safe branch (steering.setPosition(0),
+// esc.setThrottle(0), drs.setOpen(false) with the compiled default configs):
+// these three commanded microseconds are the non-gimbal failsafe semantics
+// and they are BYTE-FROZEN. Recorded 2026-08-16 alongside the gimbal
+// decay-to-center change (vision decision 11), which altered gimbal failsafe
+// behavior ONLY -- if this test ever fails, drive-output failsafe semantics
+// changed and that requires its own review, not a tuning pass.
+void test_failsafe_safe_branch_drive_output_micros_are_frozen() {
+    MockPwmOutput steeringPwm;
+    ServoOutput steering(steeringPwm); // default ServoConfig, as in main.cpp
+    steering.setPosition(0);
+    TEST_ASSERT_EQUAL_UINT16(1500, steeringPwm.lastMicroseconds); // center
+
+    MockPwmOutput escPwm;
+    FakeClock clock;
+    EscOutput esc(escPwm, clock); // default EscConfig, as in main.cpp
+    clock.setNowMs(0);
+    esc.setThrottle(0); // boot-hold or not, neutral is neutral...
+    TEST_ASSERT_EQUAL_UINT16(1500, escPwm.lastMicroseconds);
+    clock.setNowMs(2000); // ...including after the boot-arm hold elapsed
+    esc.setThrottle(0);
+    TEST_ASSERT_EQUAL_UINT16(1500, escPwm.lastMicroseconds);
+
+    MockPwmOutput drsPwm;
+    DrsOutput drs(drsPwm); // default DrsConfig, as in main.cpp
+    drs.setOpen(false);
+    TEST_ASSERT_EQUAL_UINT16(1000, drsPwm.lastMicroseconds); // closed
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_servo_center_position_default_config);
@@ -169,5 +198,6 @@ int main(int, char**) {
     RUN_TEST(test_esc_boundary_tick_exactly_at_boot_arm_hold_is_armed);
     RUN_TEST(test_esc_hold_starts_at_first_command_not_construction);
     RUN_TEST(test_drs_open_and_closed_positions);
+    RUN_TEST(test_failsafe_safe_branch_drive_output_micros_are_frozen);
     return UNITY_END();
 }

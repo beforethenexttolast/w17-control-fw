@@ -810,6 +810,53 @@ void test_battery_setconfig_changes_calibration() {
     TEST_ASSERT_TRUE(mon.batteryMv() > before);
 }
 
+// --- gimbal.decay: the blob-v2 tunable (vision decision 11, 2026-08-16) ---
+
+void test_gimbal_decay_get_and_set() {
+    Console c;
+    Settings s = kDefaults;
+
+    Result g = c.handleLine("get gimbal.decay", s, /*armed=*/false);
+    TEST_ASSERT_TRUE(std::strstr(g.text, "gimbal.decay=2000") != nullptr);
+
+    Result r = c.handleLine("set gimbal.decay 500", s, /*armed=*/false);
+    TEST_ASSERT_TRUE(r.settingsChanged);
+    TEST_ASSERT_EQUAL_UINT16(500, s.gimbalDecay.fullToCenterMs);
+
+    // help advertises the key; status reports the live value.
+    TEST_ASSERT_TRUE(std::strstr(c.handleLine("help", s, false).text, "gimbal.decay") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(c.handleLine("status", s, false).text, "gimbal.decay=500") != nullptr);
+}
+
+void test_gimbal_decay_range_and_type_rejections() {
+    Console c;
+    Settings s = kDefaults;
+
+    // GimbalDecayConfig::valid() boundaries through the real console path:
+    // 99 / 20001 are representable but violate the config range; the exact
+    // 100 / 20000 bounds are accepted.
+    TEST_ASSERT_TRUE(isInvariantReject(c.handleLine("set gimbal.decay 99", s, false)));
+    TEST_ASSERT_TRUE(c.handleLine("set gimbal.decay 100", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set gimbal.decay 20000", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(isInvariantReject(c.handleLine("set gimbal.decay 20001", s, false)));
+
+    // Type-representability gate BEFORE narrowing: no wrap into acceptance.
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gimbal.decay 65536", s, false)));
+    TEST_ASSERT_TRUE(isUnrepresentable(c.handleLine("set gimbal.decay -1", s, false)));
+
+    // Rejections left the last accepted value in place.
+    TEST_ASSERT_EQUAL_UINT16(20000, s.gimbalDecay.fullToCenterMs);
+}
+
+void test_gimbal_decay_set_refused_while_armed() {
+    Console c;
+    Settings s = kDefaults;
+    Result r = c.handleLine("set gimbal.decay 500", s, /*armed=*/true);
+    TEST_ASSERT_FALSE(r.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "refused") != nullptr);
+    TEST_ASSERT_EQUAL_UINT16(2000, s.gimbalDecay.fullToCenterMs);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_get_and_set_disarmed);
@@ -869,5 +916,8 @@ int main(int, char**) {
     RUN_TEST(test_servo_setconfig_applies);
     RUN_TEST(test_gearbox_setconfig_clamps_current_not_reset);
     RUN_TEST(test_battery_setconfig_changes_calibration);
+    RUN_TEST(test_gimbal_decay_get_and_set);
+    RUN_TEST(test_gimbal_decay_range_and_type_rejections);
+    RUN_TEST(test_gimbal_decay_set_refused_while_armed);
     return UNITY_END();
 }

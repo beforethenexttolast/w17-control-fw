@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "failsafe/GimbalDecay.hpp"
 #include "gearbox/Gearbox.hpp"
 #include "outputs/ServoOutput.hpp"
 #include "telemetry/BatteryMonitor.hpp"
@@ -18,12 +19,14 @@ struct Settings {
     outputs::ServoConfig steering{};
     gearbox::GearboxConfig gearbox{};
     telemetry::BatteryConfig battery{};
+    failsafe::GimbalDecayConfig gimbalDecay{}; // v2: gimbal link-loss decay rate
 
     // Composes each sub-config's own valid(). This is BOTH the compile-time
     // net (static_assert(kDefaults.valid())) and the runtime second line of
     // defense (a persisted blob that fails this is rejected -> defaults).
     constexpr bool valid() const {
-        return steering.valid() && gearbox.valid() && battery.valid();
+        return steering.valid() && gearbox.valid() && battery.valid() &&
+               gimbalDecay.valid();
     }
 };
 
@@ -36,7 +39,11 @@ static_assert(kDefaults.valid(), "default Settings are invalid");
 // --- Versioned blob format: [version][struct bytes][crc8], CRC over
 // [version + struct bytes]. Bump kBlobVersion on ANY layout change so an old
 // persisted blob fails the version check and falls back to defaults. ---
-inline constexpr uint8_t kBlobVersion = 1;
+// History: v1 = steering + gearbox + battery. v2 (2026-08-16) adds
+// failsafe::GimbalDecayConfig (vision decision 11). A stored v1 blob fails
+// the guard chain (its length AND version both differ) -> complete compiled
+// defaults, all-or-nothing as always; re-tune and `save` once on v2.
+inline constexpr uint8_t kBlobVersion = 2;
 inline constexpr size_t kBlobLen = 1 + sizeof(Settings) + 1;
 
 // CRC-8 poly 0xD5, the same algorithm CRSF/link2 use, DUPLICATED here so

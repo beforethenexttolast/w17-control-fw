@@ -120,7 +120,8 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
     if (tokEq(c0, c0e, "help")) {
         say(r,
             "commands: help | status | get <key> | set <key> <val> | save | load | reset\r\n"
-            "keys: steer.min steer.max steer.center steer.trim batt.ppt gear.<N>.max gear.<N>.expo\r\n"
+            "keys: steer.min steer.max steer.center steer.trim batt.ppt gimbal.decay\r\n"
+            "      gear.<N>.max gear.<N>.expo\r\n"
             "note: set/save/load/reset only while DISARMED; channels are read-only");
         return r;
     }
@@ -128,10 +129,11 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
     if (tokEq(c0, c0e, "status")) {
         std::snprintf(r.text, kMaxOutput,
                       "armed=%d\r\nsteer.center=%u steer.trim=%d [%u..%u]\r\n"
-                      "batt.ppt=%u\r\ngears=%u  g1.max=%d g1.expo=%u ...\r\n"
+                      "batt.ppt=%u gimbal.decay=%u\r\ngears=%u  g1.max=%d g1.expo=%u ...\r\n"
                       "channels(read-only): steer=%u thr=%u arm=%u drs=%u",
                       armed ? 1 : 0, s.steering.centerMicros, s.steering.trimMicros,
                       s.steering.minMicros, s.steering.maxMicros, s.battery.calibrationPpt,
+                      s.gimbalDecay.fullToCenterMs,
                       s.gearbox.numGears, s.gearbox.gears[0].maxOutput, s.gearbox.gears[0].expoPercent,
                       0u, 2u, 4u, 5u);
         return r;
@@ -239,6 +241,17 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
             }
             next.battery.calibrationPpt = static_cast<uint16_t>(v);
         } else std::snprintf(r.text, kMaxOutput, "batt.ppt=%u", s.battery.calibrationPpt);
+    } else if (tokEq(k, ke, "gimbal.decay")) {
+        // Gimbal link-loss decay: ms for a full deflection to reach center
+        // (vision decision 11). Range rule lives in GimbalDecayConfig::valid().
+        matched = true;
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.gimbalDecay.fullToCenterMs = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "gimbal.decay=%u", s.gimbalDecay.fullToCenterMs);
     } else {
         const char* suffix = nullptr;
         const int gear = parseGearIndex(k, ke, &suffix);

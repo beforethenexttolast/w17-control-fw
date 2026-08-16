@@ -23,6 +23,7 @@
 #include "crsf_hal_esp32/Esp32CrsfUart.hpp"
 #include "ers/ErsSystem.hpp"
 #include "failsafe/FailsafeStateMachine.hpp"
+#include "failsafe/GimbalDecay.hpp"
 #include "gearbox/Gearbox.hpp"
 #include "hal/IClock.hpp"
 #include "link2/Link2Sender.hpp"
@@ -93,6 +94,15 @@ static_assert(kErsConfig.valid(), "ers: bad rate/bonus/threshold values");
 ers::ErsSystem ersSystem(kErsConfig);
 
 failsafe::FailsafeStateMachine failsafeStateMachine;
+
+// Gimbal link-loss decay, one per axis (vision decision 11, 2026-08-16):
+// during failsafe the camera glides to center instead of holding its last
+// look direction; on recovery it slews to the live stick command (no snap).
+// Outside failsafe episodes both are transparent passthrough. Rate is the
+// NVS tunable `gimbal.decay` (Settings::gimbalDecay), applied in
+// applySettings() below.
+failsafe::GimbalDecay panDecay;
+failsafe::GimbalDecay tiltDecay;
 
 Esp32MillisClock clock;
 
@@ -272,6 +282,8 @@ void applySettings(const settings::Settings& s) {
     steering.setConfig(s.steering);
     virtualGearbox.setConfig(s.gearbox);
     batteryMonitor.setConfig(s.battery);
+    panDecay.setConfig(s.gimbalDecay); // same rate for both axes by design
+    tiltDecay.setConfig(s.gimbalDecay);
 }
 
 #ifdef W17_TUNING_CONSOLE
@@ -577,11 +589,17 @@ void loop() {
 
         // Camera gimbal (right stick -> ch9/ch10 in elrs-joystick-control).
         // Not safety-gated: aiming the camera is harmless armed or disarmed,
-        // so it just follows the last commanded look direction. During a
-        // failsafe `controls` is frozen (no decode), so the camera holds its
-        // last position rather than snapping to center.
-        panServo.setPosition(controls.pan);
-        tiltServo.setPosition(controls.tilt);
+        // so it follows the stick while the link is up. On failsafe it no
+        // longer holds the last look direction: each axis DECAYS TO CENTER
+        // at the tunable GimbalDecay rate (vision decision 11, 2026-08-16;
+        // the driving-readiness re-review on unlock-plan decision #3/U8 is
+        // still owed), and on recovery it slews back to the live stick
+        // command instead of snapping. `controls` stays frozen during the
+        // outage (no decode) -- harmless, since the decay modules ignore the
+        // commanded value while engaged.
+        const bool gimbalFailsafe = state == failsafe::State::Safe;
+        panServo.setPosition(panDecay.update(nowMs, gimbalFailsafe, controls.pan));
+        tiltServo.setPosition(tiltDecay.update(nowMs, gimbalFailsafe, controls.tilt));
 
         // --- Control-loop Task Watchdog feed (R5-a) -------------------------
         // The ONE and ONLY application feed, placed as the final statement of

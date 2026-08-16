@@ -25,7 +25,8 @@ struct Result {
 //
 // Grammar (dotted keys, space-separated): help | status | get [key] |
 //   set <key> <value> | save | load | reset
-// Keys: steer.center steer.trim batt.ppt gear.<N>.max gear.<N>.expo
+// Keys: steer.min steer.max steer.center steer.trim batt.ppt gimbal.decay
+//   gear.<N>.max gear.<N>.expo
 //   (channels are read-only: `status` shows the map; there is no set).
 //
 // `armed` gates MUTATIONS: set/save/load/reset are refused while armed (tuning
