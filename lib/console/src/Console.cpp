@@ -123,6 +123,7 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
             "keys: steer.min steer.max steer.center steer.trim batt.ppt gimbal.decay\r\n"
             "      sound.profile (0=V10 1=V6) sound.volume (0..100, 0=silent)\r\n"
             "      gear.<N>.max gear.<N>.expo\r\n"
+            "      btpad.max btpad.expo btpad.deadzone btpad.invert btpad.armhold btpad.pairwin\r\n"
             "note: set/save/load/reset only while DISARMED; channels are read-only");
         return r;
     }
@@ -133,12 +134,15 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
                       "batt.ppt=%u gimbal.decay=%u\r\n"
                       "sound.profile=%u sound.volume=%u\r\n"
                       "gears=%u  g1.max=%d g1.expo=%u ...\r\n"
+                      "btpad: max=%d expo=%u dz=%d inv=%u armhold=%u pairwin=%u\r\n"
                       "channels(read-only): steer=%u thr=%u arm=%u drs=%u",
                       armed ? 1 : 0, s.steering.centerMicros, s.steering.trimMicros,
                       s.steering.minMicros, s.steering.maxMicros, s.battery.calibrationPpt,
                       s.gimbalDecay.fullToCenterMs,
                       s.sound.profile, s.sound.volume,
                       s.gearbox.numGears, s.gearbox.gears[0].maxOutput, s.gearbox.gears[0].expoPercent,
+                      s.btpad.maxOutput, s.btpad.expoPercent, s.btpad.steerDeadzone,
+                      s.btpad.invertSteering, s.btpad.armHoldMs, s.btpad.pairWindowMs,
                       0u, 2u, 4u, 5u);
         return r;
     }
@@ -276,6 +280,63 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
             }
             next.sound.volume = static_cast<uint8_t>(v);
         } else std::snprintf(r.text, kMaxOutput, "sound.volume=%u", s.sound.volume);
+    } else if (tokEq(k, ke, "btpad.max")) {
+        // BT show-off demo-envelope tunables (docs/bt_showoff_design.md §3.3;
+        // OWNER-PENDING(BT-4)/(BT-3)/(BT-10) defaults). Editable in every
+        // tuning build; CONSUMED only by W17_BT_SHOWOFF firmware.
+        matched = true;
+        if (isSet) {
+            if (!fitsI16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.btpad.maxOutput = static_cast<int16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "btpad.max=%d", s.btpad.maxOutput);
+    } else if (tokEq(k, ke, "btpad.expo")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU8(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.btpad.expoPercent = static_cast<uint8_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "btpad.expo=%u", s.btpad.expoPercent);
+    } else if (tokEq(k, ke, "btpad.deadzone")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsI16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.btpad.steerDeadzone = static_cast<int16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "btpad.deadzone=%d", s.btpad.steerDeadzone);
+    } else if (tokEq(k, ke, "btpad.invert")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU8(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.btpad.invertSteering = static_cast<uint8_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "btpad.invert=%u", s.btpad.invertSteering);
+    } else if (tokEq(k, ke, "btpad.armhold")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.btpad.armHoldMs = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "btpad.armhold=%u", s.btpad.armHoldMs);
+    } else if (tokEq(k, ke, "btpad.pairwin")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU16(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.btpad.pairWindowMs = static_cast<uint16_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "btpad.pairwin=%u", s.btpad.pairWindowMs);
     } else {
         const char* suffix = nullptr;
         const int gear = parseGearIndex(k, ke, &suffix);

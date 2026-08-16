@@ -41,6 +41,14 @@ static bool isWhollyDefault(const Settings& s) {
             return false;
         }
     }
+    if (s.btpad.maxOutput != kDefaults.btpad.maxOutput ||
+        s.btpad.expoPercent != kDefaults.btpad.expoPercent ||
+        s.btpad.steerDeadzone != kDefaults.btpad.steerDeadzone ||
+        s.btpad.invertSteering != kDefaults.btpad.invertSteering ||
+        s.btpad.armHoldMs != kDefaults.btpad.armHoldMs ||
+        s.btpad.pairWindowMs != kDefaults.btpad.pairWindowMs) {
+        return false;
+    }
     return true;
 }
 
@@ -176,6 +184,45 @@ void test_crc_matches_crsf_implementation() {
     const uint8_t data[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
     TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(data, sizeof(data)),
                            settings::computeCrc8(data, sizeof(data)));
+}
+
+// --- blob v2: the btpad sub-config (docs/bt_showoff_design.md §3.3) ---
+// (Version-pin and v1-header-rejection coverage lives in the migration tests
+// below -- test_blob_version_is_2_after_gimbal_decay_addition and
+// test_migration_v1_version_byte_on_v2_sized_blob_rejected apply to the whole
+// unified six-group v2, btpad included; a btpad-specific duplicate was
+// dropped at the 2026-08-17 reconciliation.)
+
+void test_btpad_fields_roundtrip() {
+    Settings s = kDefaults;
+    s.btpad.maxOutput = 320;
+    s.btpad.expoPercent = 30;
+    s.btpad.steerDeadzone = 55;
+    s.btpad.invertSteering = 1;
+    s.btpad.armHoldMs = 1500;
+    s.btpad.pairWindowMs = 12000;
+
+    uint8_t blob[kBlobLen];
+    TEST_ASSERT_EQUAL_UINT32(kBlobLen, serialize(s, blob));
+    Settings out;
+    TEST_ASSERT_TRUE(deserialize(blob, kBlobLen, out));
+    TEST_ASSERT_EQUAL_INT16(320, out.btpad.maxOutput);
+    TEST_ASSERT_EQUAL_UINT8(30, out.btpad.expoPercent);
+    TEST_ASSERT_EQUAL_INT16(55, out.btpad.steerDeadzone);
+    TEST_ASSERT_EQUAL_UINT8(1, out.btpad.invertSteering);
+    TEST_ASSERT_EQUAL_UINT16(1500, out.btpad.armHoldMs);
+    TEST_ASSERT_EQUAL_UINT16(12000, out.btpad.pairWindowMs);
+}
+
+void test_crc_valid_but_btpad_out_of_range_rejected() {
+    Settings s = kDefaults;
+    s.btpad.armHoldMs = 50; // below the 100 ms accidental-instant-arm floor
+    uint8_t blob[kBlobLen];
+    serialize(s, blob); // CORRECT CRC over invalid bytes
+    TEST_ASSERT_FALSE(s.valid()); // precondition: Settings::valid() composes btpad.valid()
+
+    Settings out;
+    TEST_ASSERT_FALSE(deserialize(blob, kBlobLen, out));
 }
 
 // --- Shared boot loader (settings::loadOrDefault) ---
@@ -356,6 +403,8 @@ int main(int, char**) {
     RUN_TEST(test_corrupt_blob_rejected);
     RUN_TEST(test_wrong_version_rejected);
     RUN_TEST(test_empty_and_truncated_rejected);
+    RUN_TEST(test_btpad_fields_roundtrip);
+    RUN_TEST(test_crc_valid_but_btpad_out_of_range_rejected);
     RUN_TEST(test_crc_valid_but_out_of_range_rejected);
     RUN_TEST(test_crc_matches_crsf_implementation);
     RUN_TEST(test_loader_valid_store_loads_whole_object);

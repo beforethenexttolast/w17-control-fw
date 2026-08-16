@@ -59,13 +59,21 @@ static bool settingsEqual(const Settings& a, const Settings& b) {
         a.battery.warnClearHysteresisMv != b.battery.warnClearHysteresisMv) {
         return false;
     }
-    // Unified blob v2 (2026-08-17): BOTH new sub-configs compared, keeping
-    // this function's compare-EVERY-field contract true for the
+    // Unified blob v2 (2026-08-17): ALL THREE new sub-configs compared,
+    // keeping this function's compare-EVERY-field contract true for the
     // rejected-leaves-settings-unchanged proofs.
     if (a.gimbalDecay.fullToCenterMs != b.gimbalDecay.fullToCenterMs) {
         return false;
     }
     if (a.sound.profile != b.sound.profile || a.sound.volume != b.sound.volume) {
+        return false;
+    }
+    if (a.btpad.maxOutput != b.btpad.maxOutput ||
+        a.btpad.expoPercent != b.btpad.expoPercent ||
+        a.btpad.steerDeadzone != b.btpad.steerDeadzone ||
+        a.btpad.invertSteering != b.btpad.invertSteering ||
+        a.btpad.armHoldMs != b.btpad.armHoldMs ||
+        a.btpad.pairWindowMs != b.btpad.pairWindowMs) {
         return false;
     }
     return true;
@@ -962,6 +970,145 @@ void test_gimbal_decay_set_refused_while_armed() {
     TEST_ASSERT_EQUAL_UINT16(2000, s.gimbalDecay.fullToCenterMs);
 }
 
+// --- btpad.* keys (BT show-off tunables, docs/bt_showoff_design.md §3.3) ---
+// Editable in every tuning build; consumed only under W17_BT_SHOWOFF.
+
+void test_btpad_get_reports_defaults() {
+    Console c;
+    Settings s = kDefaults;
+    Result r = c.handleLine("get btpad.max", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "btpad.max=400") != nullptr);
+    r = c.handleLine("get btpad.expo", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "btpad.expo=50") != nullptr);
+    r = c.handleLine("get btpad.deadzone", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "btpad.deadzone=40") != nullptr);
+    r = c.handleLine("get btpad.invert", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "btpad.invert=0") != nullptr);
+    r = c.handleLine("get btpad.armhold", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "btpad.armhold=1000") != nullptr);
+    r = c.handleLine("get btpad.pairwin", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "btpad.pairwin=30000") != nullptr);
+}
+
+void test_btpad_set_valid_values_accepted() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.max 250", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(250, s.btpad.maxOutput);
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.expo 0", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(0, s.btpad.expoPercent);
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.deadzone 60", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_INT16(60, s.btpad.steerDeadzone);
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.invert 1", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(1, s.btpad.invertSteering);
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.armhold 1500", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT16(1500, s.btpad.armHoldMs);
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.pairwin 0", s, false).settingsChanged);
+    TEST_ASSERT_EQUAL_UINT16(0, s.btpad.pairWindowMs);
+}
+
+void test_btpad_set_out_of_range_rejected_settings_unchanged() {
+    Console c;
+    Settings s = kDefaults;
+    const Settings before = s;
+    // Config-invariant violations (representable values, BtPadConfig::valid()
+    // says no): demo cap zeroed/oversized, near-instant arm hold, huge window.
+    const char* bad[] = {
+        "set btpad.max 0",       "set btpad.max 1001",   "set btpad.expo 101",
+        "set btpad.deadzone -1", "set btpad.deadzone 301", "set btpad.invert 2",
+        "set btpad.armhold 99",  "set btpad.armhold 10001", "set btpad.pairwin 60001",
+    };
+    for (const char* line : bad) {
+        const Result r = c.handleLine(line, s, false);
+        TEST_ASSERT_FALSE(r.settingsChanged);
+        TEST_ASSERT_TRUE(std::strstr(r.text, "rejected") != nullptr);
+    }
+    TEST_ASSERT_TRUE(settingsEqual(before, s));
+}
+
+void test_btpad_set_type_unrepresentable_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    const Settings before = s;
+    // Values the parser reads cleanly but that do not fit the field's integer
+    // type (would wrap through a bare cast): distinct message, never "ok".
+    const Result r1 = c.handleLine("set btpad.pairwin 70000", s, false); // > uint16
+    TEST_ASSERT_FALSE(r1.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r1.text, "not representable") != nullptr);
+    const Result r2 = c.handleLine("set btpad.expo 300", s, false); // > uint8
+    TEST_ASSERT_FALSE(r2.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r2.text, "not representable") != nullptr);
+    const Result r3 = c.handleLine("set btpad.armhold -1", s, false); // negative for unsigned
+    TEST_ASSERT_FALSE(r3.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r3.text, "not representable") != nullptr);
+    TEST_ASSERT_TRUE(settingsEqual(before, s));
+}
+
+void test_btpad_set_refused_while_armed() {
+    Console c;
+    Settings s = kDefaults;
+    const Result r = c.handleLine("set btpad.max 200", s, /*armed=*/true);
+    TEST_ASSERT_FALSE(r.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "refused") != nullptr);
+    TEST_ASSERT_EQUAL_INT16(400, s.btpad.maxOutput);
+}
+
+// Coexistence on the unified blob v2 (2026-08-17 reconciliation): one console
+// session edits a key from EVERY sub-config group -- steering, gears, battery,
+// gimbal decay, sound, btpad -- and all six edits stick simultaneously; no
+// group's key handling clobbers or shadows another's. Then the whole six-group
+// object survives a save/load round-trip through the runner.
+void test_btpad_coexists_with_decay_and_sound_keys() {
+    Console c;
+    Settings s = kDefaults;
+    TEST_ASSERT_TRUE(c.handleLine("set steer.trim 12", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set gear.1.max 450", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set batt.ppt 1010", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set gimbal.decay 1500", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set sound.volume 40", s, false).settingsChanged);
+    TEST_ASSERT_TRUE(c.handleLine("set btpad.max 300", s, false).settingsChanged);
+
+    TEST_ASSERT_EQUAL_INT16(12, s.steering.trimMicros);
+    TEST_ASSERT_EQUAL_INT16(450, s.gearbox.gears[0].maxOutput);
+    TEST_ASSERT_EQUAL_UINT16(1010, s.battery.calibrationPpt);
+    TEST_ASSERT_EQUAL_UINT16(1500, s.gimbalDecay.fullToCenterMs);
+    TEST_ASSERT_EQUAL_UINT8(40, s.sound.volume);
+    TEST_ASSERT_EQUAL_INT16(300, s.btpad.maxOutput);
+    TEST_ASSERT_TRUE(s.valid());
+
+    // status reports all three 2026-08 groups side by side.
+    const Result st = c.handleLine("status", s, false);
+    TEST_ASSERT_TRUE(std::strstr(st.text, "gimbal.decay=1500") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(st.text, "sound.profile=0 sound.volume=40") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(st.text, "btpad: max=300") != nullptr);
+}
+
+void test_runner_all_six_groups_survive_save_and_load() {
+    test_mocks::MockCharIO io;
+    test_mocks::MockSettingsStore store;
+    ConsoleRunner runner(io, store);
+    runner.loadAtBoot();
+
+    io.feed(
+        "set steer.trim 12\nset gear.1.max 450\nset batt.ppt 1010\n"
+        "set gimbal.decay 1500\nset sound.volume 40\nset btpad.armhold 1500\nsave\n");
+    for (int i = 0; i < 10; ++i) {
+        runner.poll(/*armed=*/false);
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
+
+    // A fresh boot from the same store restores the whole six-group object.
+    test_mocks::MockCharIO io2;
+    ConsoleRunner reborn(io2, store);
+    reborn.loadAtBoot();
+    TEST_ASSERT_EQUAL_INT16(12, reborn.settings().steering.trimMicros);
+    TEST_ASSERT_EQUAL_INT16(450, reborn.settings().gearbox.gears[0].maxOutput);
+    TEST_ASSERT_EQUAL_UINT16(1010, reborn.settings().battery.calibrationPpt);
+    TEST_ASSERT_EQUAL_UINT16(1500, reborn.settings().gimbalDecay.fullToCenterMs);
+    TEST_ASSERT_EQUAL_UINT8(40, reborn.settings().sound.volume);
+    TEST_ASSERT_EQUAL_UINT16(1500, reborn.settings().btpad.armHoldMs);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_get_and_set_disarmed);
@@ -1019,6 +1166,11 @@ int main(int, char**) {
     RUN_TEST(test_r4_rejected_gear_index_cannot_be_saved);
     RUN_TEST(test_r4_valid_gear_max_behavior);
     RUN_TEST(test_r4_valid_gear_expo_behavior);
+    RUN_TEST(test_btpad_get_reports_defaults);
+    RUN_TEST(test_btpad_set_valid_values_accepted);
+    RUN_TEST(test_btpad_set_out_of_range_rejected_settings_unchanged);
+    RUN_TEST(test_btpad_set_type_unrepresentable_rejected);
+    RUN_TEST(test_btpad_set_refused_while_armed);
     RUN_TEST(test_runner_set_then_save_persists);
     RUN_TEST(test_runner_armed_blocks_and_does_not_persist);
     RUN_TEST(test_runner_overlong_line_discarded);
@@ -1029,5 +1181,7 @@ int main(int, char**) {
     RUN_TEST(test_gimbal_decay_get_and_set);
     RUN_TEST(test_gimbal_decay_range_and_type_rejections);
     RUN_TEST(test_gimbal_decay_set_refused_while_armed);
+    RUN_TEST(test_btpad_coexists_with_decay_and_sound_keys);
+    RUN_TEST(test_runner_all_six_groups_survive_save_and_load);
     return UNITY_END();
 }

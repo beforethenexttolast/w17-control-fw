@@ -27,6 +27,9 @@ struct Result {
 //   set <key> <value> | save | load | reset
 // Keys: steer.min steer.max steer.center steer.trim batt.ppt gimbal.decay
 //   sound.profile sound.volume gear.<N>.max gear.<N>.expo
+//   btpad.max btpad.expo btpad.deadzone btpad.invert btpad.armhold
+//   btpad.pairwin (BT show-off tunables -- editable in every tuning build,
+//   consumed only under W17_BT_SHOWOFF; docs/bt_showoff_design.md §3.3)
 //   (channels are read-only: `status` shows the map; there is no set).
 //
 // `armed` gates MUTATIONS: set/save/load/reset are refused while armed (tuning
