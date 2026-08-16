@@ -32,7 +32,7 @@ void Link2Sender::send(const ControlSnapshot& snapshot) {
     state.throttlePercent = toPercent(snapshot.commandedThrottle);
     state.steeringPercent = toPercent(snapshot.steering);
     state.braking = brakingActive_;
-    state.reverse = false; // reserved in v1: the ESC runs forward/brake
+    state.reverse = false; // reserved since v1: the ESC runs forward/brake
     state.drsOpen = snapshot.drsOpen;
     state.armed = snapshot.armed;
     state.failsafe = snapshot.failsafe;
