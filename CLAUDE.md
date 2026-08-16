@@ -34,10 +34,12 @@ hardware outputs**, and only from already-arbitrated inputs.
 - `telemetry` — battery ADC (divider + calibration → volts, monitoring only) and Hall
   wheel-speed (rising-edge ISR → RPM/speed). Pure conversion functions.
 - `ers` — energy-recovery/ERS behavior feeding telemetry + link2 (harvest state, etc.).
-- `link2` — framed one-way UART message (start byte + payload + checksum) to ESP32 #2:
-  throttle%, braking, reverse, rpm/speed, gear, DRS, armed, failsafe. **This repo owns the
-  link2 protocol** (`docs/link2_protocol.md`); the soundlight repo holds a copy — protocol
-  changes happen here first.
+- `link2` — framed one-way UART message (start byte + payload + checksum) to ESP32 #2
+  carrying drive + telemetry state for sound/light. The payload field list lives in
+  `docs/link2_protocol.md` ONLY — deliberately not summarized here: a second list drifts
+  (the one that used to sit here had silently fallen behind the payload table; 2026-08-16
+  vision audit, defect 7). **This repo owns the link2 protocol**; the soundlight repo
+  holds a copy — protocol changes happen here first.
 - `settings`, `console`, `hal`, and the `*_hal_esp32` impls — persisted config, serial
   console, hardware seams. Pure logic files carry no Arduino/ESP32 headers. The UART0 console
   char-IO is its own `console_hal_esp32` lib, kept separate from the NVS store (`settings_hal_esp32`)

@@ -47,11 +47,12 @@ public:
     // Config::rearmConfirmMs; any single bad tick during that window resets
     // the confirmation (it is a continuous-duration check, not cumulative).
     //
-    // NOTE(deliverable-2): this is intentionally scoped to "is the link good
-    // again" only. The separate arm-SWITCH gate from CLAUDE.md section 6.2
-    // ("throttle stays neutral until arm switch ON and throttle observed at
-    // neutral once") is a complementary safety layer that belongs in the
-    // channels module; main.cpp carries a minimal neutral-latch until then.
+    // NOTE: this is intentionally scoped to "is the link good again" only.
+    // The separate arm-SWITCH gate from CLAUDE.md section 6.2 ("throttle
+    // stays neutral until arm switch ON and throttle observed at neutral
+    // once") is a complementary safety layer implemented in channels::ArmGate
+    // (lib/channels/include/channels/ArmGate.hpp): main.cpp runs it every
+    // control tick and feeds it this machine's Safe state as forceDisarm.
     State update(uint32_t nowMs, bool frameArrivedThisTick, bool rxFailsafeFlag);
 
     State state() const { return state_; }

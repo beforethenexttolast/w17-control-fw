@@ -28,8 +28,8 @@ struct EscConfig {
 //
 // NOTE: this is the ESC's own boot-arm requirement (CLAUDE.md 6.3), distinct
 // from the higher-level arm-SWITCH gate (CLAUDE.md 6.2, "throttle stays
-// neutral until arm switch ON and throttle observed at neutral once"), which
-// belongs in the not-yet-built channel-map module. Two separate "arm"
+// neutral until arm switch ON and throttle observed at neutral once"),
+// implemented in channels::ArmGate (lib/channels). Two separate "arm"
 // concepts; this class only implements the boot-hold one.
 class EscOutput {
 public:
