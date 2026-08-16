@@ -684,7 +684,11 @@ All of the following describe the **future gated** arbiter. Commanded center is 
      concern U8 raises (that the hybrid mapping makes sustained off-center positions routine,
      raising the stakes of firmware hold-last): under normal intent loss the camera is already
      commanded home before any radio-layer failsafe would apply. U8 remains an owner decision;
-     this design does not resolve it, it de-risks it.
+     this design does not resolve it, it de-risks it. **[Updated 2026-08-16: the firmware
+     layer now decays to center — vision decision 11, implemented on
+     `feat/gimbal-decay-center`; see the §2.3.12.2 amendment. The driving-readiness
+     re-review is still owed, and the two-layer separation described here is unchanged —
+     the mechanisms now also match in character (both rate-limited decays, never a step).]**
 7. **Right-stick-wins arbitration, no auto-restore.** If the manual right stick (the existing
    `InputAxis` ch9/ch10 path, §2.3.1) is deflected beyond a reviewed threshold, the manual
    value **wins immediately** and head intent is suppressed. Returning the stick to center
@@ -975,6 +979,20 @@ unchanged). Scope limits, recorded verbatim as owner constraints:
   decays to commanded 992 while the radio is up; the firmware radio-loss layer is separate.
 
 This resolves review item **R4** for the bench scope only.
+
+> **Amended 2026-08-16 — implemented as decay-to-center; the driving re-review is still
+> owed.** Vision decision 11 (`W17_PRODUCT_VISION.md`) set the vision-level end-state: on
+> radio loss the gimbal **decays to center**. Now implemented in `w17-control-fw` branch
+> `feat/gimbal-decay-center` (`lib/failsafe/GimbalDecay`, wired into the 50 Hz control
+> tick; rate = NVS tunable `gimbal.decay`, default 2 s full-deflection-to-center; recovery
+> slews back to the live stick command, no snap). The hold-last wording above stands as
+> the record of the 2026-07-15 bench-scope resolution, and is superseded in code for all
+> scopes. Two things do NOT move: (1) the **formal driving-readiness re-review this
+> section requires remains owed** — implementing the intended end-state does not
+> discharge the review (the U8 concern is now mitigated, not retired; the re-review says
+> so formally or revises); (2) the mapper-side U4 design's decay to commanded 992 on
+> intent-loss (§2.3.11.2 item 6) is a **separate, compatible mechanism** — the mapper
+> decays while the radio is up, the firmware decays when the radio itself is lost.
 
 ##### 2.3.12.3 Owner decision #5 — driving policy (RESOLVED: FIRST_ACTIVE is bench-only)
 
@@ -1281,7 +1299,7 @@ below are additional gated-implementation tests):
 | Disconnect/reconnect (**iPhone / UDP 5602 stream**) | silence ⇒ decay; reconnect alone never restores ACTIVE | D14 |
 | Disconnect (**gamepad / arm-input device**) | device loss ⇒ **disarm**, identical to deadman release (I10); arm/deadman/override never sourced from the channel array, which carries no validity (§2.3.11.1 input-provenance rule); reconnect alone never restores authority | D19–D22, R15 |
 | Video loss | sender suppression ⇒ ordinary stale path; no direct video→output coupling | D16 (suppressed stream indistinguishable from stale at the arbiter) |
-| Radio loss | firmware layer, hold-last, bench scope only — out of arbiter scope | firmware bench evidence (Phase B), not a U4 unit test |
+| Radio loss | firmware layer, hold-last, bench scope only — out of arbiter scope. *(2026-08-16: firmware layer is now decay-to-center, vision decision 11 — §2.3.12.2 amendment; still out of arbiter scope)* | firmware bench evidence (Phase B), not a U4 unit test; native decay tests exist in `w17-control-fw` (`test_failsafe`) |
 | Deadband | degrees, via measured deg↔count; inside band ⇒ exactly 992 offset | B2 |
 | Smoothing | single-pole low-pass on head angles before deadband; reviewed time constant | D17 (step response matches constant; no overshoot) |
 | Rate limiting | ≤ maxRate counts/s on every transition path | B3, C5 |
@@ -1347,7 +1365,7 @@ Blocker numbers refer to `iphone_pan_tilt_firmware_readiness.md §8`.
 | U5 | iPhone axis/mount validation in the EMV400 (Codex Batch 5) — signs, ranges, roll isolation | 6 | Codex | real device |
 | U6 | Simulated-output integration: mapper computes hybrid output with physical output disconnected; every safety transition proven in logs (Codex Batch 7 equivalent, run on the U2-chosen host) | 2, 3, 4 verification | Claude + Codex test vectors | U4, U5 |
 | U7 | Bench-only scripted ch9/10 servo sweep, car immobilized/wheels off, tiny limits, slow rate | 7 | Claude (fw bench) + one observer | **Phase B + FIRST_ACTIVE milestone checklist** |
-| U8 | Record the **failsafe hold-vs-center re-decision** (firmware behavior on *radio* loss; today: hold-last, `main.cpp` gimbal tick comment / readiness §2.3.5). The hybrid mapping makes sustained off-center positions routine, which raises the stakes of hold-last. Owner decision; document either way. | re-decision | owner | before any head-tracked driving |
+| U8 | Record the **failsafe hold-vs-center re-decision** (firmware behavior on *radio* loss; today: hold-last, `main.cpp` gimbal tick comment / readiness §2.3.5). The hybrid mapping makes sustained off-center positions routine, which raises the stakes of hold-last. Owner decision; document either way. **Amended 2026-08-16:** the firmware now implements **decay-to-center** (vision decision 11, `feat/gimbal-decay-center`, §2.3.12.2 amendment) — "today: hold-last" is history; the driving-scope re-review this row requires **remains owed** and is unchanged by the implementation. | re-decision | owner | before any head-tracked driving |
 
 Firmware-side work items that fall out of U3/U4 (all identified in readiness §4, none
 authorized yet): wire `gimbalConfig` into the tuning console (§4.9), gimbal endpoint/clamp
@@ -1416,6 +1434,9 @@ the active behavior is NOT implemented. (Historical options context above retain
 2. ~~Firmware failsafe on radio loss: hold-last vs return-to-center (U8).~~ **RESOLVED FOR
    BENCH ONLY 2026-07-15: hold-last stands for the bench-only FIRST_ACTIVE milestone;
    MUST be re-reviewed before any vehicle driving (§2.3.12.2). Driving scope remains open.**
+   **Updated 2026-08-16: vision decision 11 chose decay-to-center and it is implemented
+   (`feat/gimbal-decay-center`; §2.3.12.2 amendment). The driving-scope re-review REMAINS
+   OPEN — implementing the intended end-state does not discharge it.**
 3. ~~Video-loss reaction path (§4, options 1–4).~~ **RESOLVED 2026-07-15: option 3,
    sender-side suppression → ordinary stale decay; operator-facing degraded-video state
    required (§2.3.12.1 / §4).**

@@ -103,6 +103,14 @@ fine today, but worth an explicit re-decision once the signal source changes.
 5. **Safe state for pan/tilt on failsafe:** hold last commanded position. [C]
 6. **Disabled / held / centered?** Held (PWM keeps pulsing the last µs; servo stays
    powered and position-holding). Not disabled, not centered. [C]
+
+   > **Items 5–6 superseded 2026-08-16** (the [C] tags stay true as the record of the
+   > behavior this review examined): the firmware now **decays pan/tilt to center** on
+   > failsafe — vision decision 11, implemented in `lib/failsafe/GimbalDecay` on
+   > `feat/gimbal-decay-center` (rate = NVS tunable `gimbal.decay`, default 2 s
+   > full-deflection; recovery slews back to the live command, no snap; servo stays
+   > powered and pulsing throughout). The driving-readiness re-review of the unlock
+   > plan's §2.3.12.2 remains owed.
 7. **Documented?** Yes: the code comment (`main.cpp:370-374`), ROADMAP item 7
    ("Not safety-gated (aiming a camera is harmless…)", `ROADMAP.md:240-242`), and the
    D8 bench procedure Phase 7b. [C]
@@ -183,6 +191,9 @@ Numbered per the task; "exists" = already in the codebase today.
 3. **Failsafe behavior** — exists and documented (hold-last). Needs an explicit
    re-decision for the head-tracked era: hold vs return-to-center on radio loss (a
    centered camera may be the better FPV recovery view). Document the decision either way. [Decision]
+   *(Decided and implemented 2026-08-16: decay-to-center — vision decision 11,
+   `feat/gimbal-decay-center`. The head-tracked-era driving re-review in the unlock plan
+   §2.3.12.2 stays owed; this item's follow-up lives there.)*
 4. **Neutral return behavior** — center-on-boot exists [C]. Center-on-stale-intent is a
    Windows job (§3.9). Firmware-side neutral return only enters if item 3 chooses it. [Mostly exists]
 5. **Manual override channel** — not a firmware concept: ch9/10 *are* the final
