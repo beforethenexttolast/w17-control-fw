@@ -12,7 +12,8 @@ steering servo + ESC + DRS + camera-gimbal servos, runs failsafe + a "virtual ge
 reports state one-way to ESP32 #2 (sound + light). It is the **only producer of final
 hardware outputs**, and only from already-arbitrated inputs.
 
-- MCU: ESP32-WROOM-32 DevKit V1.
+- MCU: MH-ET Live D1-Mini ESP32 (ESP32-WROOM-32 class; owner decision 2026-07-24). The
+  on-hand USB-C DevKit V1 clones are TEST/SPARE boards only, not the car's controllers.
 - Stack: PlatformIO + Arduino-ESP32. Board env `esp32dev`, plus a `native` test env.
 - The build is mature: the module set below exists, is unit-tested, and is reviewed. Treat
   this as a maintenance codebase, not a greenfield one — no day-1 scaffolding is pending.
