@@ -824,6 +824,20 @@ committed or the FIRST_ACTIVE flag is ever added to a build**. It does not repla
 Codex-owned `iPhone_rc/docs/FIRST_ACTIVE_PAN_TILT_MILESTONE.md` — where they disagree, the
 Codex milestone gates movement (§ top-of-doc). Both must pass.
 
+> **Owner amendment 2026-08-16 — branch-only implementation approved** (recorded at vision
+> lock, `W17_PRODUCT_VISION.md` reality check "Head tracking (9)"; propagated here per that
+> note's "owed when `w17-control-fw` is next touched"). The paragraph above stands as
+> written history; its blanket "before the first line of arbiter code is committed" is
+> superseded in exactly one respect: the U4 arbiter and its Groups A/B/C test matrix
+> (§2.3.11.5) may now be **written on a `w17-mapper` feature branch that is never merged
+> and never pushed** before this R1–R16 checklist passes, with **both FIRST_ACTIVE flags
+> default-off** (§2.3.11.4) and **every shaping constant fail-closed** — no invented
+> calibration values; absent a signed §2.3.12.8 record the arbiter refuses non-passthrough
+> (the R12/D18 semantics). Nothing else moves: **merge, push, and activation remain gated
+> on R1–R16 plus bench evidence**; the `w17-mapper` pre-push guard (§2.3.11.4) and the
+> fork's push-disabled provenance (§2.3.12.9 item 1) stay in force; activation semantics
+> are unchanged (two flags + R-review + bench evidence).
+
 - [ ] **R1** Codex-owned FIRST_ACTIVE milestone checklist passed and its go/no-go table filled
       with evidence.
 - [ ] **R2** All 7 blockers of `iphone_pan_tilt_firmware_readiness.md §8` accounted for.
@@ -1329,7 +1343,7 @@ Blocker numbers refer to `iphone_pan_tilt_firmware_readiness.md §8`.
 | U1 | Validate the existing log-only Windows bridge end-to-end with a **real iPhone** (fake-sender validation exists; real-device pending) | 5 | Claude (GS) + real device | non-isolated bench network (`CURRENT_STATUS.md` pending validations) |
 | U2 | Read-only investigation of elrs-joystick-control ingest capability; then **owner decision** on §2.3 (a)/(b)/(c) and fork ownership | — (prereq for 2,3,4) | Claude investigates; owner decides | none (read-only) |
 | U3 | Bench-measure real gimbal mechanical endpoints on the assembled mount → per-axis `gimbalConfig` `ServoConfig` values; record the **deg ↔ CRSF-count conversion table** at the same bench session (the Codex milestone expresses limits in degrees; the wire carries counts; firmware owns µs — the conversion is bench evidence and lives here in `project-review/`) | 1 | Claude (fw) + bench | **HARD GATE: A2 closed + Phase B approved. This document does not authorize powered-bench work.** Requires `CAMERA_GIMBAL_PLACEMENT.md` mount decision + printed mount |
-| U4 | Implement the mapper in the chosen host (per U2): deadband, low-pass, slew limit; stale-decay-to-992 per §1.1/§1.3; right-stick-wins arbitration with **no auto-restore** (re-arm = explicit operator action); rate limiting applied across **every** authority transition (arm, disarm, override, stale) so no transition can step the output. **Design recorded in §2.3.11 (2026-07-15); code is GATED behind the §2.3.11.6 FIRST_ACTIVE review — not yet authorized.** | 2, 3, 4 | Claude (mapper host per U2) | U2 decision **+ FIRST_ACTIVE review (§2.3.11.6)** |
+| U4 | Implement the mapper in the chosen host (per U2): deadband, low-pass, slew limit; stale-decay-to-992 per §1.1/§1.3; right-stick-wins arbitration with **no auto-restore** (re-arm = explicit operator action); rate limiting applied across **every** authority transition (arm, disarm, override, stale) so no transition can step the output. **Design recorded in §2.3.11 (2026-07-15); code is GATED behind the §2.3.11.6 FIRST_ACTIVE review — not yet authorized.** **Amended 2026-08-16:** writing the arbiter + its test matrix on a never-merged/never-pushed `w17-mapper` branch is now owner-approved (§2.3.11.6 amendment: flags default-off, constants fail-closed); merge/push/activation remain gated on R1–R16 + bench evidence. | 2, 3, 4 | Claude (mapper host per U2) | U2 decision **+ FIRST_ACTIVE review (§2.3.11.6)** |
 | U5 | iPhone axis/mount validation in the EMV400 (Codex Batch 5) — signs, ranges, roll isolation | 6 | Codex | real device |
 | U6 | Simulated-output integration: mapper computes hybrid output with physical output disconnected; every safety transition proven in logs (Codex Batch 7 equivalent, run on the U2-chosen host) | 2, 3, 4 verification | Claude + Codex test vectors | U4, U5 |
 | U7 | Bench-only scripted ch9/10 servo sweep, car immobilized/wheels off, tiny limits, slow rate | 7 | Claude (fw bench) + one observer | **Phase B + FIRST_ACTIVE milestone checklist** |
