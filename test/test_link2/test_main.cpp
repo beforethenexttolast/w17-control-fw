@@ -35,6 +35,8 @@ VehicleState makeGoldenState() {
     s.batteryMv = 7900;
     s.ersPercent = 60;
     s.driveMode = 2;
+    s.soundProfile = link2::kSoundProfileV6Hybrid; // non-default: pins the byte on the wire
+    s.volume = 80;                                 // == kDefaultVolume, spelled as a value
     return s;
 }
 
@@ -43,8 +45,8 @@ VehicleState makeGoldenState() {
 // changed and the doc + board #2 must change with it.
 const uint8_t kGoldenFrame[link2::kFrameLen] = {
     0xA5,             // start
-    0x0B,             // length 11
-    0x01,             // version
+    0x0D,             // length 13
+    0x02,             // version
     0x2A,             // throttlePercent = +42
     0xE7,             // steeringPercent = -25
     0x4C,             // flags: drsOpen | armed | ersDeploying
@@ -53,7 +55,9 @@ const uint8_t kGoldenFrame[link2::kFrameLen] = {
     0xDC, 0x1E,       // batteryMv = 7900 LE
     0x3C,             // ersPercent = 60
     0x02,             // driveMode = Gearbox+ERS
-    0xCE,             // crc8 over [length + payload]
+    0x01,             // soundProfile = V6 turbo-hybrid
+    0x50,             // volume = 80
+    0xCC,             // crc8 over [length + payload]
 };
 
 } // namespace
@@ -70,7 +74,8 @@ void test_golden_frame_bytes() {
 }
 
 void test_crc_matches_crsf_implementation() {
-    const uint8_t data[] = {0x0B, 0x01, 0x2A, 0xE7, 0x4C, 0x03, 0xDC, 0x05, 0xDC, 0x1E, 0x3C, 0x02};
+    const uint8_t data[] = {0x0D, 0x02, 0x2A, 0xE7, 0x4C, 0x03, 0xDC,
+                            0x05, 0xDC, 0x1E, 0x3C, 0x02, 0x01, 0x50};
     TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(data, sizeof(data)),
                            link2::computeCrc8(data, sizeof(data)));
 }
@@ -90,6 +95,8 @@ void test_encode_decode_roundtrip() {
     in.batteryMv = 8400;
     in.ersPercent = 0;
     in.driveMode = 0;
+    in.soundProfile = link2::kSoundProfileV6Hybrid;
+    in.volume = 0; // the true-silence extreme must survive the round trip
 
     uint8_t frame[link2::kFrameLen];
     link2::encodeFrame(in, frame);
@@ -109,6 +116,46 @@ void test_encode_decode_roundtrip() {
     TEST_ASSERT_EQUAL_UINT16(in.batteryMv, out.batteryMv);
     TEST_ASSERT_EQUAL_UINT8(in.ersPercent, out.ersPercent);
     TEST_ASSERT_EQUAL_UINT8(in.driveMode, out.driveMode);
+    TEST_ASSERT_EQUAL_UINT8(in.soundProfile, out.soundProfile);
+    TEST_ASSERT_EQUAL_UINT8(in.volume, out.volume);
+}
+
+// A default-constructed VehicleState must put the DOCUMENTED defaults on the
+// wire: soundProfile 0 (V10) and volume kDefaultVolume (80, loud-but-not-max).
+// Pinning the bytes here keeps the code defaults, the doc, and board #2's
+// expectations from drifting apart.
+void test_default_sound_fields_on_wire() {
+    const VehicleState defaults;
+    uint8_t frame[link2::kFrameLen];
+    link2::encodeFrame(defaults, frame);
+
+    TEST_ASSERT_EQUAL_HEX8(link2::kSoundProfileV10, frame[13]);
+    TEST_ASSERT_EQUAL_HEX8(link2::kDefaultVolume, frame[14]);
+    TEST_ASSERT_EQUAL_HEX8(0x50, frame[14]); // 80, spelled as the wire byte
+
+    VehicleState out;
+    out.soundProfile = 0xEE; // sentinels: decode must overwrite both
+    out.volume = 0xEE;
+    TEST_ASSERT_EQUAL(DecodeResult::Ok, link2::decodeFrame(frame, sizeof(frame), out));
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV10, out.soundProfile);
+    TEST_ASSERT_EQUAL_UINT8(link2::kDefaultVolume, out.volume);
+}
+
+// The decoder is a RAW pass-through for soundProfile/volume (like driveMode):
+// reserved profile values and volumes past kVolumeMax must arrive intact so
+// the CONSUMER can apply the documented fallback/clamp -- a codec that
+// silently rewrote them would hide sender bugs from board #2's tests.
+void test_reserved_sound_values_pass_through_raw() {
+    VehicleState in = makeGoldenState();
+    in.soundProfile = link2::kSoundProfileCount; // first reserved value
+    in.volume = 101;                             // just past kVolumeMax
+
+    uint8_t frame[link2::kFrameLen];
+    link2::encodeFrame(in, frame);
+    VehicleState out;
+    TEST_ASSERT_EQUAL(DecodeResult::Ok, link2::decodeFrame(frame, sizeof(frame), out));
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileCount, out.soundProfile);
+    TEST_ASSERT_EQUAL_UINT8(101, out.volume);
 }
 
 void test_each_flag_bit_pinned() {
@@ -160,7 +207,7 @@ void test_decode_validation_order_crc_before_version() {
     VehicleState out;
 
     // Corrupt version WITHOUT fixing the CRC: reports CrcMismatch (corruption).
-    frame[2] = 2;
+    frame[2] = 3;
     TEST_ASSERT_EQUAL(DecodeResult::CrcMismatch, link2::decodeFrame(frame, sizeof(frame), out));
 
     // Corrupt version WITH a recomputed CRC: a well-formed frame from a newer
@@ -195,6 +242,30 @@ void test_assembler_frame_byte_by_byte() {
     TEST_ASSERT_EQUAL(Link2FrameAssembler::FeedResult::FrameReady, result);
     TEST_ASSERT_EQUAL_INT8(42, assembler.lastState().throttlePercent);
     TEST_ASSERT_EQUAL_UINT16(1500, assembler.lastState().rpm);
+}
+
+// The coordinated-flash compatibility statement, pinned from the v2 side: a
+// well-formed v1 frame (length 0x0B, version 1, correct CRC) must be HARD-
+// REJECTED -- by decodeFrame on length, and by the assembler the moment the
+// length byte arrives. A v1/v2-mismatched pair of boards therefore never
+// exchanges a frame: the receiver sits in its 500 ms staleness failsafe
+// until BOTH boards are flashed together (docs/link2_protocol.md, v1 -> v2).
+void test_v1_frame_hard_rejected() {
+    // A byte-faithful v1 frame: the v1 golden example from the old doc.
+    const uint8_t v1Frame[14] = {0xA5, 0x0B, 0x01, 0x2A, 0xE7, 0x4C, 0x03,
+                                 0xDC, 0x05, 0xDC, 0x1E, 0x3C, 0x02, 0xCE};
+    // Its CRC really is valid (this is a well-formed v1 frame, not garbage):
+    TEST_ASSERT_EQUAL_HEX8(v1Frame[13], link2::computeCrc8(v1Frame + 1, 12));
+
+    VehicleState out;
+    TEST_ASSERT_EQUAL(DecodeResult::BadLength, link2::decodeFrame(v1Frame, sizeof(v1Frame), out));
+
+    Link2FrameAssembler assembler;
+    TEST_ASSERT_EQUAL(Link2FrameAssembler::FeedResult::Incomplete,
+                      assembler.feedByte(v1Frame[0]));
+    // Rejected AT the length byte -- no v1 body byte is ever buffered.
+    TEST_ASSERT_EQUAL(Link2FrameAssembler::FeedResult::FrameInvalid,
+                      assembler.feedByte(v1Frame[1]));
 }
 
 void test_assembler_hard_rejects_bad_length_byte_immediately() {
@@ -269,8 +340,15 @@ void test_sender_writes_one_frame() {
 
     TEST_ASSERT_EQUAL_UINT32(1, sink.writeCount);
     TEST_ASSERT_EQUAL_UINT32(link2::kFrameLen, sink.lastWriteLen);
-    // 420/10 = 42, -250/10 = -25: identical to the golden frame.
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(kGoldenFrame, sink.lastWrite, link2::kFrameLen);
+    // 420/10 = 42, -250/10 = -25: the golden state, except the sender was
+    // given no sound config, so the wire carries the DEFAULTS (V10, volume
+    // 80) rather than the golden frame's V6 byte.
+    VehicleState expected = makeGoldenState();
+    expected.soundProfile = link2::kSoundProfileV10;
+    expected.volume = link2::kDefaultVolume;
+    uint8_t expectedFrame[link2::kFrameLen];
+    link2::encodeFrame(expected, expectedFrame);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedFrame, sink.lastWrite, link2::kFrameLen);
 }
 
 void test_sender_braking_hysteresis() {
@@ -303,12 +381,15 @@ int main(int, char**) {
     RUN_TEST(test_golden_frame_bytes);
     RUN_TEST(test_crc_matches_crsf_implementation);
     RUN_TEST(test_encode_decode_roundtrip);
+    RUN_TEST(test_default_sound_fields_on_wire);
+    RUN_TEST(test_reserved_sound_values_pass_through_raw);
     RUN_TEST(test_each_flag_bit_pinned);
     RUN_TEST(test_decode_rejects_bad_start);
     RUN_TEST(test_decode_rejects_bad_length_and_short_buffer);
     RUN_TEST(test_decode_validation_order_crc_before_version);
     RUN_TEST(test_decode_leaves_out_untouched_on_failure);
     RUN_TEST(test_assembler_frame_byte_by_byte);
+    RUN_TEST(test_v1_frame_hard_rejected);
     RUN_TEST(test_assembler_hard_rejects_bad_length_byte_immediately);
     RUN_TEST(test_assembler_resyncs_after_corruption_with_start_byte_in_payload);
     RUN_TEST(test_sender_writes_one_frame);
