@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "crsf/CrsfParser.hpp" // for the CRC cross-check
+#include "link2/Link2Frame.hpp" // sound profile/volume wire constants
 #include "settings/Settings.hpp"
 #include "settings/SettingsLoader.hpp"
 
@@ -29,7 +30,9 @@ static bool isWhollyDefault(const Settings& s) {
         s.steering.trimMicros != kDefaults.steering.trimMicros ||
         s.battery.calibrationPpt != kDefaults.battery.calibrationPpt ||
         s.gimbalDecay.fullToCenterMs != kDefaults.gimbalDecay.fullToCenterMs ||
-        s.gearbox.numGears != kDefaults.gearbox.numGears) {
+        s.gearbox.numGears != kDefaults.gearbox.numGears ||
+        s.sound.profile != kDefaults.sound.profile ||
+        s.sound.volume != kDefaults.sound.volume) {
         return false;
     }
     for (uint8_t i = 0; i < kDefaults.gearbox.numGears; ++i) {
@@ -51,6 +54,8 @@ void test_roundtrip() {
     s.battery.calibrationPpt = 1015;
     s.gearbox.gears[0].maxOutput = 450;
     s.gimbalDecay.fullToCenterMs = 5000;
+    s.sound.profile = link2::kSoundProfileV6Hybrid;
+    s.sound.volume = 25; // quiet-indoor level, well off the default
 
     uint8_t blob[kBlobLen];
     TEST_ASSERT_EQUAL_UINT32(kBlobLen, serialize(s, blob));
@@ -61,6 +66,67 @@ void test_roundtrip() {
     TEST_ASSERT_EQUAL_UINT16(1015, out.battery.calibrationPpt);
     TEST_ASSERT_EQUAL_INT16(450, out.gearbox.gears[0].maxOutput);
     TEST_ASSERT_EQUAL_UINT16(5000, out.gimbalDecay.fullToCenterMs);
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV6Hybrid, out.sound.profile);
+    TEST_ASSERT_EQUAL_UINT8(25, out.sound.volume);
+}
+
+// v2 sound fields obey the same guard chain as every other tunable: a
+// CRC-valid blob carrying a reserved profile or an over-max volume fails
+// Settings::valid() and must never be applied (the receiver-side fallback
+// rules exist for WIRE robustness; persisted settings are held to the
+// stricter sender bar).
+void test_crc_valid_but_bad_sound_values_rejected() {
+    Settings s = kDefaults;
+    s.sound.profile = link2::kSoundProfileCount; // first reserved value
+    uint8_t blob[kBlobLen];
+    serialize(s, blob);
+    TEST_ASSERT_FALSE(s.valid()); // precondition
+    Settings out;
+    TEST_ASSERT_FALSE(deserialize(blob, kBlobLen, out));
+
+    Settings v = kDefaults;
+    v.sound.volume = static_cast<uint8_t>(link2::kVolumeMax + 1);
+    serialize(v, blob);
+    TEST_ASSERT_FALSE(v.valid()); // precondition
+    TEST_ASSERT_FALSE(deserialize(blob, kBlobLen, out));
+}
+
+// Migration pin for the 2026-08-17 v1 -> unified-v2 transition: a v1-SHAPED
+// blob -- the old three-sub-config struct was SHORTER than the unified v2
+// layout, and its version byte said 1 -- must reject to complete compiled
+// defaults through both trap doors of the guard chain: the length gate (a
+// stored v1 blob is not kBlobLen bytes) and, even if a hypothetical
+// same-length v1 existed, the version gate. Exercised through deserialize()
+// AND the boot loader so the delivery path is what's proven.
+void test_v1_shaped_blob_rejected_to_defaults() {
+    // Undersized "v1" blob: version byte 1, plausible old payload, valid CRC
+    // over its own bytes. Rejected on length before anything else is read.
+    uint8_t v1Blob[kBlobLen - 8]; // any length != kBlobLen models the v1 size
+    for (size_t i = 0; i < sizeof(v1Blob); ++i) v1Blob[i] = static_cast<uint8_t>(i);
+    v1Blob[0] = 1; // v1 version byte
+    v1Blob[sizeof(v1Blob) - 1] = settings::computeCrc8(v1Blob, sizeof(v1Blob) - 1);
+    Settings out = kDefaults;
+    out.steering.trimMicros = 999; // sentinel
+    TEST_ASSERT_FALSE(deserialize(v1Blob, sizeof(v1Blob), out));
+    TEST_ASSERT_EQUAL_INT16(999, out.steering.trimMicros); // untouched
+
+    // Same-length blob claiming version 1 with a CORRECT CRC: version gate.
+    uint8_t blob[kBlobLen];
+    serialize(kDefaults, blob);
+    blob[0] = 1;
+    blob[kBlobLen - 1] = settings::computeCrc8(blob, 1 + sizeof(Settings));
+    TEST_ASSERT_FALSE(deserialize(blob, kBlobLen, out));
+
+    // Boot-loader view of both: complete defaults, never a partial object.
+    test_mocks::MockSettingsStore store;
+    store.setStored(v1Blob, sizeof(v1Blob));
+    settings::LoadResult r = loadOrDefault(store);
+    TEST_ASSERT_TRUE(r.status == LoadStatus::DefaultsInvalid);
+    TEST_ASSERT_TRUE(isWhollyDefault(r.settings));
+    store.setStored(blob, kBlobLen);
+    r = loadOrDefault(store);
+    TEST_ASSERT_TRUE(r.status == LoadStatus::DefaultsInvalid);
+    TEST_ASSERT_TRUE(isWhollyDefault(r.settings));
 }
 
 void test_corrupt_blob_rejected() {
@@ -122,6 +188,8 @@ void test_loader_valid_store_loads_whole_object() {
     saved.steering.trimMicros = 42;
     saved.battery.calibrationPpt = 1015;
     saved.gearbox.gears[0].maxOutput = 450;
+    saved.sound.profile = link2::kSoundProfileV6Hybrid;
+    saved.sound.volume = 25;
     uint8_t blob[kBlobLen];
     test_mocks::MockSettingsStore store;
     store.setStored(blob, serialize(saved, blob));
@@ -133,6 +201,8 @@ void test_loader_valid_store_loads_whole_object() {
     TEST_ASSERT_EQUAL_INT16(42, r.settings.steering.trimMicros);
     TEST_ASSERT_EQUAL_UINT16(1015, r.settings.battery.calibrationPpt);
     TEST_ASSERT_EQUAL_INT16(450, r.settings.gearbox.gears[0].maxOutput);
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV6Hybrid, r.settings.sound.profile);
+    TEST_ASSERT_EQUAL_UINT8(25, r.settings.sound.volume);
 }
 
 void test_loader_empty_store_returns_defaults() {
@@ -281,6 +351,8 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_defaults_are_valid);
     RUN_TEST(test_roundtrip);
+    RUN_TEST(test_crc_valid_but_bad_sound_values_rejected);
+    RUN_TEST(test_v1_shaped_blob_rejected_to_defaults);
     RUN_TEST(test_corrupt_blob_rejected);
     RUN_TEST(test_wrong_version_rejected);
     RUN_TEST(test_empty_and_truncated_rejected);

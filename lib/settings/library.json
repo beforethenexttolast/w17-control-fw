@@ -9,6 +9,7 @@
     "gearbox": "*",
     "telemetry": "*",
     "failsafe": "*",
+    "link2": "*",
     "hal": "*"
   }
 }

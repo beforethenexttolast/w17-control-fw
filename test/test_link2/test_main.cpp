@@ -351,6 +351,45 @@ void test_sender_writes_one_frame() {
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedFrame, sink.lastWrite, link2::kFrameLen);
 }
 
+// setSoundConfig() closes the settings -> wire loop: with the golden frame's
+// sound pair applied (V6, volume 80), the same snapshot as
+// test_sender_writes_one_frame now produces the golden bytes EXACTLY.
+void test_sender_sound_config_stamped() {
+    MockByteSink sink;
+    Link2Sender sender(sink);
+
+    link2::SoundConfig sound;
+    sound.profile = link2::kSoundProfileV6Hybrid;
+    sound.volume = 80;
+    TEST_ASSERT_TRUE(sound.valid());
+    sender.setSoundConfig(sound);
+
+    ControlSnapshot snapshot;
+    snapshot.commandedThrottle = 420;
+    snapshot.steering = -250;
+    snapshot.drsOpen = true;
+    snapshot.armed = true;
+    snapshot.failsafe = false;
+    snapshot.ersDeploying = true;
+    snapshot.displayGear = 3;
+    snapshot.rpm = 1500;
+    snapshot.batteryMv = 7900;
+    snapshot.ersPercent = 60;
+    snapshot.driveMode = 2;
+    sender.send(snapshot);
+
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(kGoldenFrame, sink.lastWrite, link2::kFrameLen);
+
+    // Configuration, not state: the same sound pair rides a FAILSAFE frame
+    // unchanged (board #2's own failsafe silencing wins over volume there).
+    snapshot.failsafe = true;
+    snapshot.armed = false;
+    snapshot.commandedThrottle = 0;
+    sender.send(snapshot);
+    TEST_ASSERT_EQUAL_HEX8(0x01, sink.lastWrite[13]); // soundProfile still V6
+    TEST_ASSERT_EQUAL_HEX8(0x50, sink.lastWrite[14]); // volume still 80
+}
+
 void test_sender_braking_hysteresis() {
     MockByteSink sink;
     Link2Sender sender(sink);
@@ -393,6 +432,7 @@ int main(int, char**) {
     RUN_TEST(test_assembler_hard_rejects_bad_length_byte_immediately);
     RUN_TEST(test_assembler_resyncs_after_corruption_with_start_byte_in_payload);
     RUN_TEST(test_sender_writes_one_frame);
+    RUN_TEST(test_sender_sound_config_stamped);
     RUN_TEST(test_sender_braking_hysteresis);
     return UNITY_END();
 }

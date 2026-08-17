@@ -274,16 +274,19 @@ static_assert(settings::kDefaults.valid(), "default tunable Settings are invalid
 settings_hal_esp32::Esp32NvsStore nvsStore; // read-only load here; save only via the console
 
 // Copy a validated Settings object into the live modules (pure config-copies;
-// no state reset -- ESC arm anchor + gearbox current gear are preserved). ESC
-// endpoints, failsafe, channel map are deliberately NOT tunable. The argument is
-// always a whole, validated object (loader output or the console's RAM copy),
-// never a partial merge.
+// no state reset -- ESC arm anchor, gearbox current gear and the link2 brake
+// hysteresis state are preserved). ESC endpoints, failsafe, channel map are
+// deliberately NOT tunable. The argument is always a whole, validated object
+// (loader output or the console's RAM copy), never a partial merge.
 void applySettings(const settings::Settings& s) {
     steering.setConfig(s.steering);
     virtualGearbox.setConfig(s.gearbox);
     batteryMonitor.setConfig(s.battery);
     panDecay.setConfig(s.gimbalDecay); // same rate for both axes by design
     tiltDecay.setConfig(s.gimbalDecay);
+    // Engine voice + volume ride the next 20 Hz link2 frame to board #2
+    // (v2 payload bytes; the sender stamps them into every frame).
+    link2Sender.setSoundConfig(s.sound);
 }
 
 #ifdef W17_TUNING_CONSOLE

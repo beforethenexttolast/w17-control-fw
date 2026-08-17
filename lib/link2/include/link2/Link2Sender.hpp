@@ -33,17 +33,45 @@ struct Link2SenderConfig {
     constexpr bool valid() const { return brakeOnBelow < brakeOffAbove; }
 };
 
+// The NVS-tunable sound pair (tuning-console keys `sound.profile` /
+// `sound.volume`) -- the values the v2 soundProfile/volume payload bytes
+// carry. Lives HERE, in the control-side sender header, not in the shared
+// codec headers: only the sender owns a persisted copy, board #2 just
+// consumes the wire bytes. Defaults equal the VehicleState wire defaults in
+// Link2Frame.hpp, so an unconfigured sender and a default-constructed frame
+// say the same thing.
+struct SoundConfig {
+    uint8_t profile = kSoundProfileV10; // 0 V10 / 1 V6 turbo-hybrid
+    uint8_t volume = kDefaultVolume;    // 0..100; 0 = true silence on board #2
+
+    // Stricter than the wire, which passes reserved values through raw: the
+    // sender must never PERSIST or TRANSMIT a value the receiver would have
+    // to fall back on / clamp.
+    constexpr bool valid() const {
+        return profile < kSoundProfileCount && volume <= kVolumeMax;
+    }
+};
+
 // Builds VehicleState from a ControlSnapshot (scaling ±1000 -> ±100, brake
-// hysteresis) and writes one encoded frame to the sink.
+// hysteresis), stamps the quasi-static sound config, and writes one encoded
+// frame to the sink.
 class Link2Sender {
 public:
     explicit Link2Sender(hal::IByteSink& sink, Link2SenderConfig config = Link2SenderConfig{});
+
+    // Pure config-copy in the same applySettings() pattern as the other
+    // modules' setConfig(): the validated NVS sound values to stamp into
+    // every outgoing frame from now on. No state reset (brake-light
+    // hysteresis state is preserved). Callers pass an already-validated
+    // object (Settings::valid() composes SoundConfig::valid()).
+    void setSoundConfig(const SoundConfig& sound) { sound_ = sound; }
 
     void send(const ControlSnapshot& snapshot);
 
 private:
     hal::IByteSink& sink_;
     Link2SenderConfig config_;
+    SoundConfig sound_{}; // defaults V10 / volume 80 until settings arrive
     bool brakingActive_ = false;
 };
 

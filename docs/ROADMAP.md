@@ -243,6 +243,21 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
    char-IO moved to its own `console_hal_esp32` lib so the delivery binary never compiles/links
    it (ELF-verified: 0 console symbols/strings in `esp32dev`). Canonical delivery runbook:
    `docs/D8_BENCH_BRINGUP.md` Phase 11a.
+   **Settings blob v2 — the 2026-08 reconciliation, two-thirds done (2026-08-17):** three
+   branches had independently bumped `kBlobVersion` 1 → 2, each for its own field.
+   Resolution so far, per the second-to-merge-renumbers rule: `feat/gimbal-decay-center`
+   (`failsafe::GimbalDecayConfig`, vision decision 11) **merged first** and defined main's
+   v2; `feat/link2-v2-voice-volume` (`sound.profile` / `sound.volume`,
+   `link2::SoundConfig` — the values every link2 v2 frame carries to board #2, vision
+   decision 15) **unified onto that v2 at its 2026-08-17 rebase** — no physical blob of
+   any interim v2 was ever flashed or saved, so ONE shared v2 (steering + gearbox +
+   battery + gimbalDecay + sound) is correct and no v3 was needed; the v1 → v2 migration
+   is test-pinned (`test_v1_shaped_blob_rejected_to_defaults`). STILL PENDING:
+   `proto/bt-showoff-flagged` (`btpad::BtPadConfig`) carries the third independent bump
+   and renumbers onto the unified layout when it lands (v3 if a v2 blob has been saved on
+   a bench board by then). All cross-loads stay guard-chain-safe (reject → complete
+   defaults). The full note lives at `kBlobVersion` in
+   `lib/settings/include/settings/Settings.hpp`.
 
 ## B3. Phase 3 — post-Phase-2 extras
 

@@ -43,6 +43,11 @@ void Link2Sender::send(const ControlSnapshot& snapshot) {
     state.batteryMv = snapshot.batteryMv;
     state.ersPercent = snapshot.ersPercent;
     state.driveMode = snapshot.driveMode;
+    // Configuration, not state: the persisted sound values ride every frame
+    // regardless of failsafe/arm condition (board #2's own failsafe rules
+    // silence the engine; volume never participates in that decision).
+    state.soundProfile = sound_.profile;
+    state.volume = sound_.volume;
 
     uint8_t frame[kFrameLen];
     encodeFrame(state, frame);

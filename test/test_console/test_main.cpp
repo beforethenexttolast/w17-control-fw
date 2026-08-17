@@ -4,6 +4,7 @@
 
 #include "console/Console.hpp"
 #include "console/ConsoleRunner.hpp"
+#include "link2/Link2Frame.hpp" // sound profile wire constants
 #include "settings/Settings.hpp"
 
 // Module setConfig behaviors are part of this feature, tested here.
@@ -56,6 +57,15 @@ static bool settingsEqual(const Settings& a, const Settings& b) {
         a.battery.warnMv != b.battery.warnMv ||
         a.battery.warnDelayMs != b.battery.warnDelayMs ||
         a.battery.warnClearHysteresisMv != b.battery.warnClearHysteresisMv) {
+        return false;
+    }
+    // Unified blob v2 (2026-08-17): BOTH new sub-configs compared, keeping
+    // this function's compare-EVERY-field contract true for the
+    // rejected-leaves-settings-unchanged proofs.
+    if (a.gimbalDecay.fullToCenterMs != b.gimbalDecay.fullToCenterMs) {
+        return false;
+    }
+    if (a.sound.profile != b.sound.profile || a.sound.volume != b.sound.volume) {
         return false;
     }
     return true;
@@ -138,6 +148,101 @@ void test_reset_reverts_ram_only() {
     TEST_ASSERT_TRUE(r.settingsChanged);
     TEST_ASSERT_FALSE(r.saveRequested); // RAM only
     TEST_ASSERT_EQUAL_INT16(0, s.steering.trimMicros);
+}
+
+// --- sound.profile / sound.volume (link2 v2, vision decision 15) ---
+
+void test_sound_get_set_roundtrip() {
+    Console c;
+    Settings s = kDefaults;
+
+    // Documented defaults first: V10, volume 80 (loud-but-not-max).
+    Result g = c.handleLine("get sound.profile", s, false);
+    TEST_ASSERT_TRUE(std::strstr(g.text, "sound.profile=0") != nullptr);
+    g = c.handleLine("get sound.volume", s, false);
+    TEST_ASSERT_TRUE(std::strstr(g.text, "sound.volume=80") != nullptr);
+
+    Result r = c.handleLine("set sound.profile 1", s, false);
+    TEST_ASSERT_TRUE(r.settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV6Hybrid, s.sound.profile);
+
+    // Both documented volume extremes are settable: 0 (true silence on
+    // board #2) and 100 (full output).
+    r = c.handleLine("set sound.volume 0", s, false);
+    TEST_ASSERT_TRUE(r.settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(0, s.sound.volume);
+    r = c.handleLine("set sound.volume 100", s, false);
+    TEST_ASSERT_TRUE(r.settingsChanged);
+    TEST_ASSERT_EQUAL_UINT8(100, s.sound.volume);
+
+    g = c.handleLine("get sound.profile", s, false);
+    TEST_ASSERT_TRUE(std::strstr(g.text, "sound.profile=1") != nullptr);
+    g = c.handleLine("get sound.volume", s, false);
+    TEST_ASSERT_TRUE(std::strstr(g.text, "sound.volume=100") != nullptr);
+}
+
+// The sender-side bar is stricter than the wire: reserved profile values and
+// volumes past kVolumeMax are console-rejected (SoundConfig::valid() via the
+// usual trial-copy path), never persisted, never transmitted.
+void test_sound_reserved_profile_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    const Settings before = s;
+    Result r = c.handleLine("set sound.profile 2", s, false); // first reserved value
+    TEST_ASSERT_FALSE(r.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "rejected") != nullptr);
+    TEST_ASSERT_TRUE(settingsEqual(before, s));
+}
+
+void test_sound_volume_out_of_range_rejected() {
+    Console c;
+    Settings s = kDefaults;
+    const Settings before = s;
+
+    // 101: representable in u8 but past kVolumeMax -> config-invariant reject.
+    Result r = c.handleLine("set sound.volume 101", s, false);
+    TEST_ASSERT_FALSE(r.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "rejected") != nullptr);
+
+    // 256: doesn't fit the u8 field -> type-range reject (would otherwise
+    // wrap to 0 and read as a silent car nobody asked for).
+    r = c.handleLine("set sound.volume 256", s, false);
+    TEST_ASSERT_FALSE(r.settingsChanged);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "not representable") != nullptr);
+
+    TEST_ASSERT_TRUE(settingsEqual(before, s));
+}
+
+void test_sound_in_status() {
+    Console c;
+    Settings s = kDefaults;
+    Result r = c.handleLine("status", s, false);
+    TEST_ASSERT_TRUE(std::strstr(r.text, "sound.profile=0 sound.volume=80") != nullptr);
+}
+
+void test_runner_sound_survives_save_and_load() {
+    test_mocks::MockCharIO io;
+    test_mocks::MockSettingsStore store;
+    ConsoleRunner runner(io, store);
+    runner.loadAtBoot();
+
+    io.feed("set sound.profile 1\nset sound.volume 25\nsave\n");
+    TEST_ASSERT_TRUE(runner.poll(/*armed=*/false));
+    TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
+
+    // The persisted blob carries the sound pair.
+    Settings back;
+    TEST_ASSERT_TRUE(settings::deserialize(store.stored, store.storedLen, back));
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV6Hybrid, back.sound.profile);
+    TEST_ASSERT_EQUAL_UINT8(25, back.sound.volume);
+
+    // A fresh boot from the same store restores them -- the values the 20 Hz
+    // link2 tick will stamp into every v2 frame.
+    test_mocks::MockCharIO io2;
+    ConsoleRunner runner2(io2, store);
+    runner2.loadAtBoot();
+    TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV6Hybrid, runner2.settings().sound.profile);
+    TEST_ASSERT_EQUAL_UINT8(25, runner2.settings().sound.volume);
 }
 
 // --- steer.min / steer.max endpoint commands (CF-2) ---
@@ -867,6 +972,11 @@ int main(int, char**) {
     RUN_TEST(test_gear_index_out_of_range);
     RUN_TEST(test_unknown_command_and_key);
     RUN_TEST(test_reset_reverts_ram_only);
+    RUN_TEST(test_sound_get_set_roundtrip);
+    RUN_TEST(test_sound_reserved_profile_rejected);
+    RUN_TEST(test_sound_volume_out_of_range_rejected);
+    RUN_TEST(test_sound_in_status);
+    RUN_TEST(test_runner_sound_survives_save_and_load);
     RUN_TEST(test_steer_min_valid_accepted);
     RUN_TEST(test_steer_max_valid_accepted);
     RUN_TEST(test_steer_min_equal_or_above_max_rejected);

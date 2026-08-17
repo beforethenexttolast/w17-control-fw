@@ -121,6 +121,7 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
         say(r,
             "commands: help | status | get <key> | set <key> <val> | save | load | reset\r\n"
             "keys: steer.min steer.max steer.center steer.trim batt.ppt gimbal.decay\r\n"
+            "      sound.profile (0=V10 1=V6) sound.volume (0..100, 0=silent)\r\n"
             "      gear.<N>.max gear.<N>.expo\r\n"
             "note: set/save/load/reset only while DISARMED; channels are read-only");
         return r;
@@ -129,11 +130,14 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
     if (tokEq(c0, c0e, "status")) {
         std::snprintf(r.text, kMaxOutput,
                       "armed=%d\r\nsteer.center=%u steer.trim=%d [%u..%u]\r\n"
-                      "batt.ppt=%u gimbal.decay=%u\r\ngears=%u  g1.max=%d g1.expo=%u ...\r\n"
+                      "batt.ppt=%u gimbal.decay=%u\r\n"
+                      "sound.profile=%u sound.volume=%u\r\n"
+                      "gears=%u  g1.max=%d g1.expo=%u ...\r\n"
                       "channels(read-only): steer=%u thr=%u arm=%u drs=%u",
                       armed ? 1 : 0, s.steering.centerMicros, s.steering.trimMicros,
                       s.steering.minMicros, s.steering.maxMicros, s.battery.calibrationPpt,
                       s.gimbalDecay.fullToCenterMs,
+                      s.sound.profile, s.sound.volume,
                       s.gearbox.numGears, s.gearbox.gears[0].maxOutput, s.gearbox.gears[0].expoPercent,
                       0u, 2u, 4u, 5u);
         return r;
@@ -252,6 +256,26 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
             }
             next.gimbalDecay.fullToCenterMs = static_cast<uint16_t>(v);
         } else std::snprintf(r.text, kMaxOutput, "gimbal.decay=%u", s.gimbalDecay.fullToCenterMs);
+    } else if (tokEq(k, ke, "sound.profile")) {
+        // Range rule (profile < kSoundProfileCount) lives in
+        // SoundConfig::valid() via next.valid() below, like every other key.
+        matched = true;
+        if (isSet) {
+            if (!fitsU8(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.sound.profile = static_cast<uint8_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "sound.profile=%u", s.sound.profile);
+    } else if (tokEq(k, ke, "sound.volume")) {
+        matched = true;
+        if (isSet) {
+            if (!fitsU8(v)) {
+                say(r, kUnrepresentableMsg);
+                return r;
+            }
+            next.sound.volume = static_cast<uint8_t>(v);
+        } else std::snprintf(r.text, kMaxOutput, "sound.volume=%u", s.sound.volume);
     } else {
         const char* suffix = nullptr;
         const int gear = parseGearIndex(k, ke, &suffix);
