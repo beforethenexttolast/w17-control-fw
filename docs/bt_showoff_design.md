@@ -1,19 +1,23 @@
-# BT show-off mode — design (canonical; owner review required)
+# BT show-off mode — design (canonical; decisions ratified, merge pending)
 
-**Status: canonical design document, prototype implemented on this branch, NOTHING
-approved.** This is the canonical location for the BT show-off design (it originated as a
-scratchpad draft dated 2026-08-16, committed here the same day, content unchanged apart
-from this header and the `OWNER-PENDING` tags in §8). Commissioned by the owner 2026-08-16
-as the design half of the approved "design + default-off compile-flagged branch prototype
-in one pass" (`../W17_PRODUCT_VISION.md`, backlog item *BT show-off mode*, decision 12).
+**Status: canonical design document; all eleven §8 decisions RATIFIED by the owner
+2026-08-17; prototype implemented on this branch; not yet merged.** This is the canonical
+location for the BT show-off design (it originated as a scratchpad draft dated 2026-08-16,
+committed here the same day; content unchanged apart from this header, the §8 decision
+outcomes, and the dated amendment notes marked "Owner 2026-08-17"). Commissioned by the
+owner 2026-08-16 as the design half of the approved "design + default-off compile-flagged
+branch prototype in one pass" (`../W17_PRODUCT_VISION.md`, backlog item *BT show-off
+mode*, decision 12).
 
-The prototype half lives on this branch (`proto/bt-showoff-flagged`, based on `main` =
-`94b3615`): `W17_BT_SHOWOFF` is absent from every existing environment, nothing is merged,
-nothing is flashed, nothing has run on hardware, and nothing is pushed before the owner
-reads this document. The eleven §8 decisions are all still OPEN — the prototype implements
-each row's RECOMMENDED option as the default and marks every such point in code and docs
-with a grep-able `OWNER-PENDING(BT-n)` tag (n = the §8 row number), so reversing any
-decision is a targeted edit, not a hunt.
+The prototype lives on this branch (`proto/bt-showoff-flagged`, originally based on
+`main` = `94b3615`, rebased 2026-08-17 onto `main` = `2d146dc` — the unified settings
+blob v2 and link2 protocol v2): `W17_BT_SHOWOFF` is absent from every existing
+environment, nothing is flashed, nothing has run on hardware, nothing is pushed. The
+owner ratified every §8 recommendation on 2026-08-17 (one scope simplification on BT-9;
+BT-7 resolved onto the link2 v2 `modeFlags` byte) — each decision point in code and docs
+now carries a grep-able `OWNER-DECIDED(BT-n)` tag (n = the §8 row number), so the full
+consequence set of any decision remains a grep away. Bench execution stays gated on BT1
+(§9) regardless of ratification.
 
 Repo state studied for the draft: `w17-control-fw` at `3f4f9b7` (read via an isolated
 audit worktree — the repo's own tree was not touched). Every firmware claim below cites
@@ -44,7 +48,11 @@ engine noise and lights.
   pan/tilt is stick-driven **CRSF ch9/10 only**, source-agnostic" (`../CLAUDE.md`). A pad
   stick is not CRSF ch9/10, so in BT mode the gimbal is held at center. Changing this
   requires the owner to amend the boundary wording first — it is listed as an open
-  decision, not assumed.
+  decision, not assumed. **[Owner 2026-08-17, OWNER-DECIDED(BT-9), scope superseded:
+  BT mode is car-control only — the camera SYSTEM is OFF in this mode ("a simple mode
+  for quick showing off"). Gimbal-fixed-center remains the implementation, but the
+  rationale is now camera-off scope, not merely boundary-4 wording; the boundary text
+  itself stays untouched.]**
 - **No telemetry uplink.** In BT mode the CRSF UART is never opened, so no battery/GPS/
   flightmode frames are emitted (there is no ground station in this scenario to read them).
 - **No new hardware outputs.** Firmware remains the only producer of final hardware
@@ -379,16 +387,28 @@ Today's frame already conveys most of it for free: no pad ⇒ failsafe=1 ⇒ boa
 existing hazard behavior. What it cannot express is "BT mode, pairing window open /
 awaiting controller" as distinct from "link lost".
 
-- **Proposal:** assign payload `flags` **bit 7** — currently "reserved (sender writes 0,
-  receivers must mask, never reject)" (`docs/link2_protocol.md`) — as
-  `awaitingController` (BT mode, no pad bonded-or-connected). Old board-#2 firmware
-  masks it (documented receiver rule), so the change is backward-compatible and needs no
-  version bump; new board-#2 firmware may render a distinct light pattern (pattern choice
-  is board-2/owner territory).
-- **Process cost, honored:** this repo owns the protocol — the change lands in
-  `docs/link2_protocol.md` + `lib/link2` first, then the soundlight copy re-syncs, and
-  `tools/link2_copy_check.sh` + the golden-frame native test
-  (`test_golden_frame_bytes`) are updated in the same commit.
+- **Proposal (as drafted 2026-08-16):** assign payload `flags` **bit 7** — then "reserved
+  (sender writes 0, receivers must mask, never reject)" — as `awaitingController` (BT
+  mode, no pad bonded-or-connected). Old board-#2 firmware masks it (documented receiver
+  rule), so the change is backward-compatible and needs no version bump; new board-#2
+  firmware may render a distinct light pattern (pattern choice is board-2/owner
+  territory).
+- **[Owner 2026-08-17, OWNER-DECIDED(BT-7) — RESOLVED onto link2 v2 `modeFlags` bit 1.]**
+  Showcase mode (a separate accepted feature) and this proposal both wanted `flags`
+  bit 7; the owner resolved the collision with a dedicated **`modeFlags` payload byte**
+  in link2 protocol v2, already landed on `main` (`lib/link2/include/link2/Link2Frame.hpp`
+  at `2d146dc`): **bit 0 = `showcase`** (belongs to showcase mode — BT mode must NEVER
+  set it), **bit 1 = `awaitingController`** — the pairing-state surface this section
+  designed, now an already-reserved wire bit that current firmware always transmits
+  as 0. The doc-first adoption this section demanded is therefore DONE on the protocol
+  side (protocol doc + codec + golden-frame tests + soundlight re-sync all landed with
+  link2 v2); **emitting** bit 1 from the BT head (wiring "BT mode, pairing window open /
+  awaiting controller" into `VehicleState::awaitingController`) is a deliberately
+  separate future slice, not part of this prototype. `flags` bit 7 stays reserved.
+- **Process cost, honored (original wording, satisfied by the link2-v2 landing):** this
+  repo owns the protocol — the change lands in `docs/link2_protocol.md` + `lib/link2`
+  first, then the soundlight copy re-syncs, and `tools/link2_copy_check.sh` + the
+  golden-frame native tests are updated in the same commit.
 - Optional output-only garnish (owner decision): DS4 lightbar mirrors car state (e.g.
   solid = connected-disarmed, distinct color = armed, blink = low battery), rumble blip on
   failsafe. Pure output to the pad; touches no safety path.
@@ -421,26 +441,28 @@ car on stand, wheels off the ground, motor-power rules per the existing gate reg
 
 ---
 
-## 8. Open decisions for the owner
+## 8. Decisions — RATIFIED by the owner 2026-08-17
 
-All eleven remain **OPEN**. The prototype implements each row's **Recommendation** as the
-default; every implementation point carrying one of these decisions is tagged
-`OWNER-PENDING(BT-n)` in the code/docs (grep for the tag to find every consequence of a
-decision before flipping it).
+All eleven were decided by the owner on **2026-08-17**: every row's **Recommendation**
+was accepted as-is, with two clarifications — **BT-7** resolved onto the link2 v2
+`modeFlags` byte (bit 1, see §6.3), and **BT-9** superseded by a scope simplification
+(BT mode is car-control only; the camera system is OFF). Every implementation point is
+tagged `OWNER-DECIDED(BT-n)` in the code/docs (grep for the tag to find every
+consequence of a decision). Bench execution of anything here remains gated on BT1 (§9).
 
-| # (tag) | Decision | Options | Recommendation |
+| # (tag) | Decision | Options considered | Outcome (owner 2026-08-17) |
 |---|---|---|---|
-| 1 `OWNER-PENDING(BT-1)` | Boot-mode selector | A strap switch / B console NVS / C double-key-cycle NVS toggle | **A** now; C recorded as v2 candidate (needs its own pass — relaxes delivery NVS read-only invariant); B rejected as selector |
-| 2 `OWNER-PENDING(BT-2)` | Strap pin | GPIO27 / 32 / 33 | **GPIO27**, pending PinMap + atlas reconciliation and the A2/F20 matrix note |
-| 3 `OWNER-PENDING(BT-3)` | Arm ritual + failsafe interaction | (a) L1+R1 1 s hold + OPTIONS disarm, ritual cleared by failsafe (stricter than CRSF); (b) exact CRSF mirror (ritual survives outage, neutral re-seen re-arms); (c) dead-man variant (L1 held continuously = armed) | **(a)** — deliberate re-arm suits an untrained operator; (c) noted for consideration, rejected as fatiguing for a demo |
-| 4 `OWNER-PENDING(BT-4)` | Demo envelope | v0: driveMode pinned TRAINING with `btpad.maxOutput`=400 / expo 50 tunables; v1 option: gear paddles drive the gearbox for the sound show, output clamped to `btpad.maxOutput` | **v0 for the prototype**; paddles-for-sound as a follow-up once the mode is bench-proven |
-| 5 `OWNER-PENDING(BT-5)` | DRS on the pad | include (Square toggle) / omit | **Include** — pure showpiece value, cosmetic channel, no safety surface |
-| 6 `OWNER-PENDING(BT-6)` | Pad feedback outputs | lightbar state colors / + rumble cues / none | **Lightbar only** in the prototype |
-| 7 `OWNER-PENDING(BT-7)` | link2 `awaitingController` (flags bit 7) + board-2 light pattern | adopt (doc-first + copy re-sync) / defer (hazard-only display) | **Adopt** — it is the designed extension point, and "listening for the pad" is real giftee information. **Prototype status: DOC-ONLY.** The bit assignment stays a §6.3 proposal; no `lib/link2` code, no `docs/link2_protocol.md` edit, and no soundlight re-sync until the owner adopts it (the protocol-change process in §6.3 then applies) |
-| 8 `OWNER-PENDING(BT-8)` | BT stack integration | pin Bluepad32 3.10.x (IDF 4.4-era core) / custom Bluedroid lib-build + esp_hidh (fallback) / migrate repo to core 3.x for Bluepad32 4.x (rejected: LEDC rewrite + re-audit) | **Pin 3.10.x**, fallback documented; revisit 4.x only if the repo ever migrates cores for its own reasons |
-| 9 `OWNER-PENDING(BT-9)` | Gimbal in BT mode | fixed center (boundary-4 wording compliant) / pad right stick (requires owner amendment of boundary 4's "CRSF ch9/10 only" parenthetical) | **Fixed center**; do not touch the boundary text for a demo mode |
-| 10 `OWNER-PENDING(BT-10)` | Pairing window policy | 30 s-after-boot window when unbonded, locked after / always-open until first bond, then locked until console reset | **First option** (tunable window), lockout bench-verified |
-| 11 `OWNER-PENDING(BT-11)` | BTstack license notice at publication | add notice when repos go public / n/a | **Add** — free for open source, note it in the repo license file at publication time |
+| 1 `OWNER-DECIDED(BT-1)` | Boot-mode selector | A strap switch / B console NVS / C double-key-cycle NVS toggle | **A accepted** as recommended; C stays recorded as a v2 candidate (needs its own pass — relaxes delivery NVS read-only invariant); B rejected as selector |
+| 2 `OWNER-DECIDED(BT-2)` | Strap pin | GPIO27 / 32 / 33 | **GPIO27 accepted** as recommended; atlas reconciliation and the A2/F20 continuity-matrix note remain wiring-time tasks (decided pin, still bench-verified) |
+| 3 `OWNER-DECIDED(BT-3)` | Arm ritual + failsafe interaction | (a) L1+R1 1 s hold + OPTIONS disarm, ritual cleared by failsafe (stricter than CRSF); (b) exact CRSF mirror; (c) dead-man variant | **(a) accepted** as recommended — deliberate re-arm suits an untrained operator; implementation additionally requires release-before-rearm after every latch-clear (strictly more conservative, never weaker) |
+| 4 `OWNER-DECIDED(BT-4)` | Demo envelope | v0: driveMode pinned TRAINING with `btpad.maxOutput`=400 / expo 50 tunables; v1 option: paddles drive the gearbox for the sound show | **v0 accepted** as recommended; paddles-for-sound stays a possible follow-up once the mode is bench-proven |
+| 5 `OWNER-DECIDED(BT-5)` | DRS on the pad | include (Square toggle) / omit | **Include accepted** as recommended — pure showpiece value, cosmetic channel, no safety surface |
+| 6 `OWNER-DECIDED(BT-6)` | Pad feedback outputs | lightbar state colors / + rumble cues / none | **Lightbar only accepted** as recommended for the prototype |
+| 7 `OWNER-DECIDED(BT-7)` | link2 pairing-state surface + board-2 light pattern | adopt flags bit 7 (drafted) / defer | **Adopted, RESOLVED onto link2 v2 `modeFlags` bit 1 `awaitingController`** (§6.3) — the dedicated byte the owner added when showcase mode and this proposal both wanted flags bit 7. The reserved bit is on the wire today (always 0); EMITTING it from the BT head is a future slice. BT mode must never set `modeFlags` bit 0 (`showcase` — that bit belongs to showcase mode, built on a parallel branch) |
+| 8 `OWNER-DECIDED(BT-8)` | BT stack integration | pin Bluepad32 3.10.x (IDF 4.4-era core) / custom Bluedroid lib-build + esp_hidh (fallback) / migrate repo to core 3.x (rejected) | **3.10.x pin accepted**, concretely **3.10.2** — the last 3.10.x custom-core artifact that exists (3.10.3 was source-only) — and PROVEN by the branch build: `esp32dev_btshowoff` links the real BTstack on this pin (verification commit evidence). Fallback stays documented |
+| 9 `OWNER-DECIDED(BT-9)` | Gimbal in BT mode | fixed center (boundary-4 wording compliant) / pad right stick (would need a boundary-4 amendment) | **Superseded by scope simplification: BT mode is car-control only — the camera system is OFF** ("a simple mode for quick showing off"). Gimbal-fixed-center stays as the implementation; the rationale is now camera-off scope, not just boundary-4 wording. Boundary text untouched |
+| 10 `OWNER-DECIDED(BT-10)` | Pairing window policy | 30 s-after-boot window, locked after / always-open until first bond | **First option accepted** as recommended (tunable window `btpad.pairwin`); lockout effectiveness stays a BT1 bench item |
+| 11 `OWNER-DECIDED(BT-11)` | BTstack license notice at publication | add notice when repos go public / n/a | **Add accepted** as recommended — free for open source; note it in the repo license file at publication time |
 
 ---
 

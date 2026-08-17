@@ -61,7 +61,7 @@ channels::Controls PadDecoder::decode(const PadFrame& frame, uint32_t nowMs) {
     c.throttle = static_cast<int16_t>(normalizeTrigger(frame.throttle) -
                                       normalizeTrigger(frame.brake));
 
-    // --- Arm ritual (design §3.2, OWNER-PENDING(BT-3)). ---
+    // --- Arm ritual (design §3.2, OWNER-DECIDED(BT-3)). ---
     const bool bothHeld =
         (frame.buttons & kButtonL1) != 0 && (frame.buttons & kButtonR1) != 0;
     if (requireReleaseBeforeRearm_) {
@@ -92,7 +92,7 @@ channels::Controls PadDecoder::decode(const PadFrame& frame, uint32_t nowMs) {
     }
     c.armSwitch = armLatched_;
 
-    // --- DRS: Square press-edge toggle (cosmetic; OWNER-PENDING(BT-5)). ---
+    // --- DRS: Square press-edge toggle (cosmetic; OWNER-DECIDED(BT-5)). ---
     const bool squarePressed = (frame.buttons & kButtonSquare) != 0;
     if (squarePressed && !squareWasPressed_) {
         drsToggleState_ = !drsToggleState_;
@@ -101,9 +101,10 @@ channels::Controls PadDecoder::decode(const PadFrame& frame, uint32_t nowMs) {
     c.drsSwitch = drsToggleState_;
 
     // --- Demo-envelope pins (design §3.3). ---
-    c.driveMode = 0; // TRAINING pinned; ERS (driveMode 2) unreachable. OWNER-PENDING(BT-4)
-    // c.pan / c.tilt stay 0: gimbal fixed at center in BT mode. OWNER-PENDING(BT-9)
-    // c.gearUpEdge / c.gearDownEdge stay false: paddles inert in v0. OWNER-PENDING(BT-4)
+    c.driveMode = 0; // TRAINING pinned; ERS (driveMode 2) unreachable. OWNER-DECIDED(BT-4)
+    // c.pan / c.tilt stay 0: camera system OFF in BT mode (owner scope
+    // 2026-08-17), gimbal held at center. OWNER-DECIDED(BT-9)
+    // c.gearUpEdge / c.gearDownEdge stay false: paddles inert in v0. OWNER-DECIDED(BT-4)
     // c.boostHeld / c.overtakeHeld stay false: no ERS controls on the pad.
 
     return c;

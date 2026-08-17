@@ -33,12 +33,13 @@ inline constexpr uint8_t kGimbalPanPin = 19;
 inline constexpr uint8_t kGimbalTiltPin = 23;
 
 // BT show-off boot-mode strap (docs/bt_showoff_design.md §2.2 mechanism A).
-// OWNER-PENDING(BT-2): pin choice GPIO27 (alternatives 32/33), pending wiring-
-// atlas reconciliation and the A2/F20 continuity-matrix scope note. 2-pos
-// switch to GND, internal pull-up, read ONCE at boot: open/high = CRSF
-// (normal mode), low = BT pad mode -- fails toward CRSF on any wiring fault.
-// Wired ONLY by the W17_BT_SHOWOFF prototype env; delivery/tuning/sim builds
-// never touch this pin. Not a strapping pin (0/2/12/15 avoided per CLAUDE.md).
+// OWNER-DECIDED(BT-2): GPIO27 accepted 2026-08-17 (alternatives 32/33 not
+// taken); wiring-atlas reconciliation and the A2/F20 continuity-matrix scope
+// note remain wiring-time tasks. 2-pos switch to GND, internal pull-up, read
+// ONCE at boot: open/high = CRSF (normal mode), low = BT pad mode -- fails
+// toward CRSF on any wiring fault. Wired ONLY by the W17_BT_SHOWOFF prototype
+// env; delivery/tuning/sim builds never touch this pin. Not a strapping pin
+// (0/2/12/15 avoided per CLAUDE.md).
 inline constexpr uint8_t kBtModeStrapPin = 27;
 
 // Battery sense (27k/10k divider). ADC1_CH6, input-only, 11dB attenuation.

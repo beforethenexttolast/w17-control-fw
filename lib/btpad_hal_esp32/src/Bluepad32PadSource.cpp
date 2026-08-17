@@ -45,7 +45,7 @@ void Bluepad32PadSource::begin(uint16_t pairWindowMs) {
     // the single-controller policy wants exactly one device per pad.
     BP32.enableVirtualDevice(false);
 
-    // Pairing window [OWNER-PENDING(BT-10)]: discovery open from boot, locked
+    // Pairing window [OWNER-DECIDED(BT-10)]: discovery open from boot, locked
     // by servicePairingWindow() once the window elapses (pairWindowMs == 0
     // locks at the first poll). Bonds persist across reboots; a bonded pad's
     // reconnect is not a new pairing and stays allowed after the lock.

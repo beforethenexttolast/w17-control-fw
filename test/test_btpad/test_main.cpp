@@ -104,7 +104,7 @@ void test_out_of_range_raw_values_clamp() {
     TEST_ASSERT_EQUAL_INT16(0, dec.decode(frameTriggers(0, -5), 0).throttle);
 }
 
-// --- arm ritual (design §3.2, OWNER-PENDING(BT-3) recommended variant (a)) ----
+// --- arm ritual (design §3.2, OWNER-DECIDED(BT-3) recommended variant (a)) ----
 
 void test_arm_ritual_hold_duration_boundary() {
     PadDecoder dec; // armHoldMs = 1000
@@ -205,7 +205,7 @@ void test_ritual_with_real_arm_gate_keeps_neutral_precondition() {
     TEST_ASSERT_FALSE(gate.update(c.armSwitch, c.throttle, false));
 }
 
-// --- DRS toggle (OWNER-PENDING(BT-5)) -----------------------------------------
+// --- DRS toggle (OWNER-DECIDED(BT-5)) -----------------------------------------
 
 void test_square_press_edges_toggle_drs() {
     PadDecoder dec;
@@ -222,7 +222,7 @@ void test_square_press_edges_toggle_drs() {
 
 void test_drive_mode_pinned_to_training() {
     PadDecoder dec;
-    // OWNER-PENDING(BT-4): driveMode 0 in EVERY decode -- ERS (driveMode 2)
+    // OWNER-DECIDED(BT-4): driveMode 0 in EVERY decode -- ERS (driveMode 2)
     // is structurally unreachable from the pad.
     TEST_ASSERT_EQUAL_UINT8(0, dec.decode(PadFrame{}, 0).driveMode);
     PadFrame mashed;
@@ -237,7 +237,7 @@ void test_drive_mode_pinned_to_training() {
 void test_pan_tilt_fixed_center_regardless_of_right_stick() {
     PadDecoder dec;
     PadFrame f;
-    f.rightStickX = 511; // OWNER-PENDING(BT-9): pad sticks are not CRSF ch9/10
+    f.rightStickX = 511; // OWNER-DECIDED(BT-9): pad sticks are not CRSF ch9/10
     f.rightStickY = -512;
     const Controls c = dec.decode(f, 0);
     TEST_ASSERT_EQUAL_INT16(0, c.pan);

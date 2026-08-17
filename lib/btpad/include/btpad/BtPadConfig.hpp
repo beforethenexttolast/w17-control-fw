@@ -16,7 +16,7 @@ struct BtPadConfig {
     // Demo envelope: driveMode is pinned to TRAINING in the decoder, and the
     // BT control tick shapes throttle with THESE GearParams instead of the
     // compiled kTrainingGearParams. Defaults mirror training's {400, 50}.
-    // OWNER-PENDING(BT-4): proposed demo-cap values, owner-tunable at the bench.
+    // OWNER-DECIDED(BT-4): defaults accepted 2026-08-17, still bench-tunable.
     int16_t maxOutput = 400;  // 1..1000, same rule as gearbox::GearParams
     uint8_t expoPercent = 50; // 0..100, same rule as gearbox::GearParams
 
@@ -28,15 +28,16 @@ struct BtPadConfig {
     uint8_t invertSteering = 0; // 0/1 (u8, not bool: deterministic blob bytes)
 
     // Arm ritual: L1+R1 held simultaneously this long -> ritual latch ON
-    // (design §3.2). OWNER-PENDING(BT-3): proposed 1000 ms default.
+    // (design §3.2). OWNER-DECIDED(BT-3): 1000 ms default accepted 2026-08-17.
     // Floor 100 ms so a config typo cannot create a near-instant accidental
     // arm; ceiling 10 s keeps the ritual physically performable.
     uint16_t armHoldMs = 1000; // 100..10000
 
     // Pairing lockdown: new-pairing window after a BT-mode boot; afterwards
     // the wrapper calls enableNewBluetoothConnections(false) (design §6.1).
-    // OWNER-PENDING(BT-10): proposed 30 s default; 0 = never accept new
-    // pairings while a bond exists. Lockout effectiveness is a bench gate item.
+    // OWNER-DECIDED(BT-10): 30 s default accepted 2026-08-17; 0 = never accept
+    // new pairings while a bond exists. Lockout effectiveness is a bench gate
+    // item.
     uint16_t pairWindowMs = 30000; // 0..60000
 
     // static_assert'd via settings::kDefaults.valid() at the aggregation site;

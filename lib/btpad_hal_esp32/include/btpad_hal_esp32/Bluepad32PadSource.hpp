@@ -15,7 +15,7 @@ namespace btpad_hal_esp32 {
 // The real btpad::IPadSource over Bluepad32 (docs/bt_showoff_design.md §4.2).
 // Referenced ONLY from src/main.cpp under W17_BT_SHOWOFF, exactly the pattern
 // of the other *_hal_esp32 libs. Also owns the pairing policy
-// [OWNER-PENDING(BT-10)] and the lightbar output garnish [OWNER-PENDING(BT-6)].
+// [OWNER-DECIDED(BT-10)] and the lightbar output garnish [OWNER-DECIDED(BT-6)].
 //
 // Freshness contract note (the honest wrinkle, verified against the pinned
 // 3.10.2 sources -- ArduinoBluepad32.h and uni_platform_arduino.c): the 3.10.x
@@ -50,7 +50,7 @@ class Bluepad32PadSource : public btpad::IPadSource {
 public:
     // Call once, in BT-mode setup() only (CRSF mode must never call this --
     // that is what keeps the BT stack ABSENT at runtime, design §2.1).
-    // pairWindowMs: new-pairing window after boot [OWNER-PENDING(BT-10)];
+    // pairWindowMs: new-pairing window after boot [OWNER-DECIDED(BT-10)];
     // once elapsed, enableNewBluetoothConnections(false) -- already-bonded
     // pads still reconnect (that is a reconnect, not a new pairing). The
     // lockout's real-world effectiveness is a BT1 bench item (bluepad32 #130).
@@ -66,7 +66,7 @@ public:
     // PadLinkMonitor depends on).
     bool connected() const override { return connectedForCycle_; }
 
-    // Output-only garnish [OWNER-PENDING(BT-6): lightbar only in the
+    // Output-only garnish [OWNER-DECIDED(BT-6): lightbar only in the
     // prototype]. No safety surface; silently ignored when no pad is up.
     void setLightbar(uint8_t red, uint8_t green, uint8_t blue);
 

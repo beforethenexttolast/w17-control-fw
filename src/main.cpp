@@ -326,8 +326,8 @@ btpad::PadLinkMonitor btPadLinkMonitor;
 bool padFrameSinceTick = false;
 
 // btpad.* consumption cache, refreshed by applySettings(): the BT head's
-// demo-envelope shape [OWNER-PENDING(BT-4)] and the pairing window handed to
-// the HAL at BT-mode boot [OWNER-PENDING(BT-10)].
+// demo-envelope shape [OWNER-DECIDED(BT-4)] and the pairing window handed to
+// the HAL at BT-mode boot [OWNER-DECIDED(BT-10)].
 gearbox::GearParams g_btpadGearParams{settings::kDefaults.btpad.maxOutput,
                                       settings::kDefaults.btpad.expoPercent};
 uint16_t g_btpadPairWindowMs = settings::kDefaults.btpad.pairWindowMs;
@@ -478,7 +478,7 @@ void controlTick(uint32_t nowMs, bool& frameSinceTick, bool sourceSignalsFailsaf
     // outage (no decode) -- harmless, since the decay modules ignore the
     // commanded value while engaged. (In BT mode the decoder pins pan/tilt
     // to 0, so decay-to-center and slew-to-command both land on center: the
-    // camera system is OFF in that mode -- OWNER-PENDING(BT-9).)
+    // camera system is OFF in that mode -- OWNER-DECIDED(BT-9).)
     const bool gimbalFailsafe = state == failsafe::State::Safe;
     panServo.setPosition(panDecay.update(nowMs, gimbalFailsafe, controls.pan));
     tiltServo.setPosition(tiltDecay.update(nowMs, gimbalFailsafe, controls.tilt));
@@ -510,7 +510,7 @@ void controlTick(uint32_t nowMs, bool& frameSinceTick, bool sourceSignalsFailsaf
 // replace the CRSF drain + decode, the CRSF telemetry emitters do not exist
 // here (the CRSF UART was never opened in this mode, so there is nothing to
 // write to and no ground station in this scenario to read it), and the strict
-// ritual-disarm wiring applies [OWNER-PENDING(BT-3)]. Battery sampling, the
+// ritual-disarm wiring applies [OWNER-DECIDED(BT-3)]. Battery sampling, the
 // SHARED controlTick, and the link2 frame to board #2 run identically --
 // sound and light keep working (design §1).
 void loopBtPad(uint32_t nowMs) {
@@ -525,7 +525,7 @@ void loopBtPad(uint32_t nowMs) {
         controls = btPadDecoder.decode(padFrame, nowMs);
     }
 
-    // Disconnect clears the arm ritual immediately [OWNER-PENDING(BT-3)];
+    // Disconnect clears the arm ritual immediately [OWNER-DECIDED(BT-3)];
     // the failsafe-episode clear runs after the tick, off the fresh state.
     if (!btPadSource.connected()) {
         btPadDecoder.forceDisarmRitual();
@@ -557,7 +557,7 @@ void loopBtPad(uint32_t nowMs) {
         controlTick(nowMs, padFrameSinceTick, btPadLinkMonitor.padSignalsFailsafe(),
                     g_btpadGearParams);
 
-        // Strict ritual semantics [OWNER-PENDING(BT-3), recommended variant
+        // Strict ritual semantics [OWNER-DECIDED(BT-3), recommended variant
         // (a)]: ANY failsafe episode clears the ritual latch, so recovery
         // always demands the full deliberate L1+R1 hold again. Strictly more
         // conservative than the CRSF path (where the physical arm switch
@@ -568,11 +568,16 @@ void loopBtPad(uint32_t nowMs) {
         }
     }
 
-    // --- 20 Hz: vehicle-state frame to the sound/light board -- unchanged
-    // payload, unchanged semantics ("no pad" surfaces as failsafe=1, board
-    // #2's existing hazard behavior). The proposed flags-bit-7
-    // "awaitingController" stays DOC-ONLY [OWNER-PENDING(BT-7)]: nothing here
-    // touches lib/link2 or the protocol doc until the owner adopts it.
+    // --- 20 Hz: vehicle-state frame to the sound/light board -- same payload
+    // build as the CRSF loop ("no pad" surfaces as failsafe=1, board #2's
+    // existing hazard behavior). Pairing-state surface [OWNER-DECIDED(BT-7),
+    // 2026-08-17]: link2 v2 reserves modeFlags bit1 "awaitingController" for
+    // exactly this mode (lib/link2/include/link2/Link2Frame.hpp; the sender
+    // transmits it as 0 today) -- EMITTING it (pairing window open / no pad
+    // bonded) is a deliberate future slice, not this prototype. modeFlags
+    // bit0 ("showcase") belongs to showcase mode, a separate feature on a
+    // parallel branch: the BT head must NEVER set it. When BT emission
+    // lands, it sets bit1 only.
     if (nowMs - lastLink2TickMs >= kLink2PeriodMs) {
         lastLink2TickMs = nowMs;
 
@@ -586,7 +591,7 @@ void loopBtPad(uint32_t nowMs) {
         link2Sender.send(controlSnapshot);
     }
 
-    // --- Lightbar garnish [OWNER-PENDING(BT-6): lightbar only, no rumble].
+    // --- Lightbar garnish [OWNER-DECIDED(BT-6): lightbar only, no rumble].
     // Output-only, no safety surface; written on state CHANGE, never per-tick
     // (each write is a BT output report). Dim blue = connected-disarmed,
     // dim red = armed. Colors are cosmetic placeholders for the owner.
@@ -733,7 +738,7 @@ void setup() {
 #ifdef W17_BT_SHOWOFF
     // --- BT mode only: bring the pad stack up (design §2.1) ------------------
     // Placed AFTER the settings load/apply so the pairing window uses the
-    // APPLIED btpad.pairwin value [OWNER-PENDING(BT-10)], and before the TWDT
+    // APPLIED btpad.pairwin value [OWNER-DECIDED(BT-10)], and before the TWDT
     // subscription below (long boot steps must precede the first watched
     // tick). In CRSF mode this call never happens: no BP32.setup(), no
     // BTstack run loop, no radio-on -- BT is ABSENT at runtime, not ignored.

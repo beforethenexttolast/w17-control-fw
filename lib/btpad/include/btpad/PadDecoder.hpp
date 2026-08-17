@@ -16,12 +16,14 @@ namespace btpad {
 //
 // Envelope pins, unconditional in every decode (design §3.3):
 //  - driveMode = 0 (TRAINING): one gentle shape, ERS can never activate
-//    (needs driveMode 2), gear paddles inert. OWNER-PENDING(BT-4).
-//  - pan/tilt = 0: the gimbal holds center in BT mode; a pad stick is not
-//    CRSF ch9/10 (workspace boundary 4). OWNER-PENDING(BT-9).
+//    (needs driveMode 2), gear paddles inert. OWNER-DECIDED(BT-4).
+//  - pan/tilt = 0: the camera system is OFF in BT mode (owner scope
+//    simplification 2026-08-17 -- car-control only, "a simple mode for
+//    quick showing off"), so the gimbal holds center; a pad stick was never
+//    CRSF ch9/10 anyway (workspace boundary 4, untouched). OWNER-DECIDED(BT-9).
 //  - gearUpEdge/gearDownEdge never fire; boostHeld/overtakeHeld never set.
 //
-// Arm ritual (design §3.2, OWNER-PENDING(BT-3), recommended variant (a)):
+// Arm ritual (design §3.2, OWNER-DECIDED(BT-3), recommended variant (a)):
 //  - hold L1+R1 simultaneously for armHoldMs -> ritual latch ON (feeds
 //    Controls::armSwitch; channels::ArmGate still requires throttle seen at
 //    neutral before the motor may run -- that precondition is NOT relaxed).
@@ -73,7 +75,7 @@ private:
     bool holdActive_ = false;
     uint32_t holdStartMs_ = 0;
     bool requireReleaseBeforeRearm_ = false;
-    bool drsToggleState_ = false;   // Square toggle, OWNER-PENDING(BT-5)
+    bool drsToggleState_ = false;   // Square toggle, OWNER-DECIDED(BT-5)
     bool squareWasPressed_ = false; // edge memory for the toggle
 };
 

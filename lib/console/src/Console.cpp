@@ -282,7 +282,7 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
         } else std::snprintf(r.text, kMaxOutput, "sound.volume=%u", s.sound.volume);
     } else if (tokEq(k, ke, "btpad.max")) {
         // BT show-off demo-envelope tunables (docs/bt_showoff_design.md §3.3;
-        // OWNER-PENDING(BT-4)/(BT-3)/(BT-10) defaults). Editable in every
+        // OWNER-DECIDED(BT-4)/(BT-3)/(BT-10) defaults). Editable in every
         // tuning build; CONSUMED only by W17_BT_SHOWOFF firmware.
         matched = true;
         if (isSet) {
