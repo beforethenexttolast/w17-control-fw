@@ -1,0 +1,7 @@
+{
+  "name": "bootmode",
+  "version": "0.1.0",
+  "description": "Boot-selected operating mode (DRIVE vs SHOWCASE): strap resolver + the pure mode policies. Pure logic, no hardware dependency.",
+  "frameworks": "*",
+  "platforms": "*"
+}

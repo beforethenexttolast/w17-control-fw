@@ -57,6 +57,15 @@ public:
 
     State state() const { return state_; }
 
+    // True once ANY valid RC frame has been seen this boot; latches, never
+    // resets (the same internal latch that keeps the machine from inferring
+    // link health before a first frame). Read-only observer -- exposed for
+    // the SHOWCASE link2 failsafe-flag policy (bootmode::link2FailsafeFlag,
+    // owner decision D4: a shelf demo that NEVER had a link must not hazard,
+    // a link that existed and died must still be told). Drive-mode behavior
+    // keys off state() exactly as before and never reads this.
+    bool hasEverReceivedFrame() const { return everReceivedFrame_; }
+
 private:
     Config config_;
     State state_ = State::Safe;      // boot-safe default
