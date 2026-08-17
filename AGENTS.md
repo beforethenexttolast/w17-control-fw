@@ -38,7 +38,9 @@ hardware outputs**, and only from already-arbitrated inputs.
   outputThrottle`.
 - `failsafe` — SAFETY-CRITICAL pure state machine over (linkUp, lastFrameMicros, now) →
   safe/active. Link loss or RX failsafe → throttle neutral, steering center, DRS closed;
-  latch until link returns and a re-arm condition is met.
+  latch until link returns and a re-arm condition is met. Also home of `GimbalDecay`
+  (vision decision 11, 2026-08-16): during failsafe the two gimbal axes decay to center
+  instead of holding, rate = NVS tunable `gimbal.decay`; recovery slews back, no snap.
 - `outputs` — LEDC 50 Hz PWM for steering, ESC (neutral 1500 µs, boot arm sequence), DRS,
   pan/tilt. Real `ledcWrite` sits behind an interface so logic tests assert commanded µs.
 - `telemetry` — battery ADC (divider + calibration → volts, monitoring only) and Hall
