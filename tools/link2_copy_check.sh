@@ -11,9 +11,9 @@
 # Scope -- what this does and does not prove:
 #   DOES     catch the two checked-out copies diverging, byte for byte.
 #   DOES NOT prove the wire format itself is correct: that is pinned hermetically
-#            by `pio test -e native` (test_golden_frame_bytes fixes the exact 16
-#            bytes; test_crc_matches_crsf_implementation pins the CRC against
-#            lib/crsf). Both layers are needed; neither substitutes.
+#            by `pio test -e native` (test_golden_frame_bytes fixes the exact
+#            golden-frame bytes; test_crc_matches_crsf_implementation pins the
+#            CRC against lib/crsf). Both layers are needed; neither substitutes.
 #
 # Two tiers, on purpose:
 #   FATAL     the 4 shared CODE files. These are compiled on both boards, so

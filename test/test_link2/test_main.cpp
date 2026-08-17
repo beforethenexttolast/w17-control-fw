@@ -45,7 +45,7 @@ VehicleState makeGoldenState() {
 // changed and the doc + board #2 must change with it.
 const uint8_t kGoldenFrame[link2::kFrameLen] = {
     0xA5,             // start
-    0x0D,             // length 13
+    0x0E,             // length 14
     0x02,             // version
     0x2A,             // throttlePercent = +42
     0xE7,             // steeringPercent = -25
@@ -57,7 +57,8 @@ const uint8_t kGoldenFrame[link2::kFrameLen] = {
     0x02,             // driveMode = Gearbox+ERS
     0x01,             // soundProfile = V6 turbo-hybrid
     0x50,             // volume = 80
-    0xCC,             // crc8 over [length + payload]
+    0x00,             // modeFlags: both reserved bits 0 (always, today)
+    0x5A,             // crc8 over [length + payload]
 };
 
 } // namespace
@@ -74,8 +75,8 @@ void test_golden_frame_bytes() {
 }
 
 void test_crc_matches_crsf_implementation() {
-    const uint8_t data[] = {0x0D, 0x02, 0x2A, 0xE7, 0x4C, 0x03, 0xDC,
-                            0x05, 0xDC, 0x1E, 0x3C, 0x02, 0x01, 0x50};
+    const uint8_t data[] = {0x0E, 0x02, 0x2A, 0xE7, 0x4C, 0x03, 0xDC, 0x05,
+                            0xDC, 0x1E, 0x3C, 0x02, 0x01, 0x50, 0x00};
     TEST_ASSERT_EQUAL_HEX8(crsf::computeCrc8(data, sizeof(data)),
                            link2::computeCrc8(data, sizeof(data)));
 }
@@ -97,6 +98,8 @@ void test_encode_decode_roundtrip() {
     in.driveMode = 0;
     in.soundProfile = link2::kSoundProfileV6Hybrid;
     in.volume = 0; // the true-silence extreme must survive the round trip
+    in.showcase = true;           // reserved bits must still round-trip so the
+    in.awaitingController = true; // future modes inherit a proven wire path
 
     uint8_t frame[link2::kFrameLen];
     link2::encodeFrame(in, frame);
@@ -118,6 +121,8 @@ void test_encode_decode_roundtrip() {
     TEST_ASSERT_EQUAL_UINT8(in.driveMode, out.driveMode);
     TEST_ASSERT_EQUAL_UINT8(in.soundProfile, out.soundProfile);
     TEST_ASSERT_EQUAL_UINT8(in.volume, out.volume);
+    TEST_ASSERT_EQUAL(in.showcase, out.showcase);
+    TEST_ASSERT_EQUAL(in.awaitingController, out.awaitingController);
 }
 
 // A default-constructed VehicleState must put the DOCUMENTED defaults on the
@@ -132,6 +137,7 @@ void test_default_sound_fields_on_wire() {
     TEST_ASSERT_EQUAL_HEX8(link2::kSoundProfileV10, frame[13]);
     TEST_ASSERT_EQUAL_HEX8(link2::kDefaultVolume, frame[14]);
     TEST_ASSERT_EQUAL_HEX8(0x50, frame[14]); // 80, spelled as the wire byte
+    TEST_ASSERT_EQUAL_HEX8(0x00, frame[15]); // modeFlags: all-zero by default
 
     VehicleState out;
     out.soundProfile = 0xEE; // sentinels: decode must overwrite both
@@ -139,6 +145,56 @@ void test_default_sound_fields_on_wire() {
     TEST_ASSERT_EQUAL(DecodeResult::Ok, link2::decodeFrame(frame, sizeof(frame), out));
     TEST_ASSERT_EQUAL_UINT8(link2::kSoundProfileV10, out.soundProfile);
     TEST_ASSERT_EQUAL_UINT8(link2::kDefaultVolume, out.volume);
+}
+
+// modeFlags today: BOTH named bits are reserved for accepted future modes
+// (showcase; BT pairing surface) and current firmware must ALWAYS transmit
+// zero -- through the raw encoder and through the sender alike. Bit
+// positions are pinned so the future modes light the documented bits.
+void test_mode_flags_bits_pinned_and_always_zero_today() {
+    TEST_ASSERT_EQUAL_HEX8(0x01, link2::kModeFlagShowcase);
+    TEST_ASSERT_EQUAL_HEX8(0x02, link2::kModeFlagAwaitingController);
+
+    uint8_t frame[link2::kFrameLen];
+    VehicleState s = makeGoldenState(); // showcase/awaitingController untouched
+    link2::encodeFrame(s, frame);
+    TEST_ASSERT_EQUAL_HEX8(0x00, frame[15]);
+
+    s.showcase = true;
+    link2::encodeFrame(s, frame);
+    TEST_ASSERT_EQUAL_HEX8(0x01, frame[15]);
+    s.awaitingController = true;
+    link2::encodeFrame(s, frame);
+    TEST_ASSERT_EQUAL_HEX8(0x03, frame[15]);
+
+    // The PRODUCTION path: Link2Sender never sets either field, so every
+    // frame the current firmware can emit carries modeFlags 0x00.
+    MockByteSink sink;
+    Link2Sender sender(sink);
+    sender.send(ControlSnapshot{});
+    TEST_ASSERT_EQUAL_HEX8(0x00, sink.lastWrite[15]);
+}
+
+// Receiver rule for the spare bits 2-7: mask and IGNORE, never reject -- a
+// frame from a future sender that uses a spare bit still decodes cleanly on
+// this firmware, and the unknown bits simply vanish (exactly the flags-byte
+// bit7 discipline).
+void test_mode_flags_spare_bits_ignored_never_rejected() {
+    uint8_t frame[link2::kFrameLen];
+    link2::encodeFrame(makeGoldenState(), frame);
+
+    frame[15] = 0xFC; // ONLY spare bits set
+    frame[link2::kFrameLen - 1] = link2::computeCrc8(frame + 1, 1 + link2::kPayloadLen);
+    VehicleState out;
+    TEST_ASSERT_EQUAL(DecodeResult::Ok, link2::decodeFrame(frame, sizeof(frame), out));
+    TEST_ASSERT_FALSE(out.showcase);
+    TEST_ASSERT_FALSE(out.awaitingController);
+
+    frame[15] = 0xFF; // spares AND both named bits
+    frame[link2::kFrameLen - 1] = link2::computeCrc8(frame + 1, 1 + link2::kPayloadLen);
+    TEST_ASSERT_EQUAL(DecodeResult::Ok, link2::decodeFrame(frame, sizeof(frame), out));
+    TEST_ASSERT_TRUE(out.showcase);
+    TEST_ASSERT_TRUE(out.awaitingController);
 }
 
 // The decoder is a RAW pass-through for soundProfile/volume (like driveMode):
@@ -266,6 +322,12 @@ void test_v1_frame_hard_rejected() {
     // Rejected AT the length byte -- no v1 body byte is ever buffered.
     TEST_ASSERT_EQUAL(Link2FrameAssembler::FeedResult::FrameInvalid,
                       assembler.feedByte(v1Frame[1]));
+
+    // The 13-byte-payload v2 DRAFT (pre-modeFlags, never flashed) dies the
+    // same way: the shipped v2 is the 14-byte-payload form and nothing else.
+    TEST_ASSERT_EQUAL(Link2FrameAssembler::FeedResult::Incomplete,
+                      assembler.feedByte(link2::kStartByte));
+    TEST_ASSERT_EQUAL(Link2FrameAssembler::FeedResult::FrameInvalid, assembler.feedByte(0x0D));
 }
 
 void test_assembler_hard_rejects_bad_length_byte_immediately() {
@@ -421,6 +483,8 @@ int main(int, char**) {
     RUN_TEST(test_crc_matches_crsf_implementation);
     RUN_TEST(test_encode_decode_roundtrip);
     RUN_TEST(test_default_sound_fields_on_wire);
+    RUN_TEST(test_mode_flags_bits_pinned_and_always_zero_today);
+    RUN_TEST(test_mode_flags_spare_bits_ignored_never_rejected);
     RUN_TEST(test_reserved_sound_values_pass_through_raw);
     RUN_TEST(test_each_flag_bit_pinned);
     RUN_TEST(test_decode_rejects_bad_start);
