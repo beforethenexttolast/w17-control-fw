@@ -196,6 +196,15 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
    round-trips from NVS.
 7. **Flash plain delivery firmware:** `pio run -e esp32dev -t upload`. (No `-D` flags; no
    console; UART0 stays closed.)
+   - **ELF spot-check — console-free AND BT-free (turns the invariant from asserted into
+     verified):** on the freshly built delivery ELF, run
+     `xtensa-esp32-elf-nm -C .pio/build/esp32dev/firmware.elf | grep -c -E "console::|btpad|luepad|btstack"`
+     — it must print `0`. `console::` proves no tuning-command surface shipped; the
+     `btpad`/`luepad`/`btstack` patterns prove no BT show-off code shipped (that prototype
+     exists only in `env:esp32dev_btshowoff` and its custom core — never in a delivery flash;
+     `docs/bt_showoff_design.md` §2.1). Positive control if the check ever looks too quiet:
+     the same command against the `esp32dev_tuning` ELF must report a non-zero `console::`
+     count.
 8. **Verify the tuning is still live on the plain build** — the delivery firmware loaded the
    NVS blob at boot: steering sits at the trimmed center, the battery reading matches the
    calibrated `batt.ppt`, and the gears feel as tuned (low gear gentle, top gear full). If the
