@@ -15,6 +15,7 @@
 #include "esp_attr.h"
 #include "esp_system.h"
 
+#include "bootmode/BootMode.hpp"
 #include "channels/ArmGate.hpp"
 #include "channels/ChannelDecoder.hpp"
 #include "config/PinMap.hpp"
@@ -94,6 +95,31 @@ static_assert(kErsConfig.valid(), "ers: bad rate/bonus/threshold values");
 ers::ErsSystem ersSystem(kErsConfig);
 
 failsafe::FailsafeStateMachine failsafeStateMachine;
+
+// --- Boot mode: DRIVE vs SHOWCASE (showcase design, owner-accepted 2026-08-17) ---
+// Resolved from the strap reading EXACTLY ONCE, at compile time today, and
+// never at runtime: changing mode = key cycle (the BT-doctrine rule; runtime
+// switching is a rejected non-goal). In SHOWCASE the ONLY three effects are
+// the three bootmode policies wired below: the arm-gate switch input is
+// structurally false (ESC pinned neutral through the untouched gate ->
+// baseCommanded -> applyBoost(0) chain), the link2 failsafe flag follows the
+// D4 rule, and the link2 showcase bit is set. Steering, gimbal, telemetry,
+// failsafe timing, ESC boot-arm and the link2 cadence are byte-identical
+// code paths in both modes (steering/gimbal deliberately stay live while a
+// CRSF link exists -- D9; they already work disarmed).
+//
+// THE STRAP IS NOT WIRED YET. The physical selector is shared with the BT
+// show-off mode (D3); its pin is OWNER-PENDING (BT-2 candidates GPIO27/32/33,
+// to be reconciled against PinMap.hpp + the wiring atlas; the strap joins the
+// A2 continuity-matrix scope question, F20). The NVS override belongs to the
+// BT-branch settings-blob reconciliation -- NO settings-blob change ships in
+// this wave (docs/ROADMAP.md, showcase item). Until the strap lands, this
+// constexpr Floating reading resolves to Drive, so every shipped build
+// behaves exactly as before; flipping a bench build to SHOWCASE is a
+// one-line change here (ShowPosition), which is also how the native tests
+// and the soundlight sim exercise the mode without hardware.
+constexpr bootmode::StrapReading kBootStrapReading = bootmode::StrapReading::Floating;
+constexpr bootmode::BootMode kBootMode = bootmode::resolve(kBootStrapReading);
 
 // Gimbal link-loss decay, one per axis (vision decision 11, 2026-08-16):
 // during failsafe the camera glides to center instead of holding its last
@@ -316,6 +342,12 @@ void setup() {
     drs.setOpen(false);
     panServo.setPosition(0); // camera centered
     tiltServo.setPosition(0);
+
+    // Boot state onto the wire, once: the link2 showcase bit is the resolved
+    // boot mode and nothing else -- constant for the session, riding every
+    // 20 Hz frame (failsafe frames included). Board #2 keys ignition on
+    // armed || showcase and owns the curated presentation.
+    controlSnapshot.showcase = bootmode::link2ShowcaseFlag(kBootMode);
 
     // --- R5-b reset diagnostics: capture + retained-session update -----------
     // Capture the reset reason EXACTLY ONCE and update the RTC-retained session
@@ -541,8 +573,15 @@ void loop() {
         // The arm gate runs every control tick so a failsafe episode clears
         // its neutral-seen latch: after recovery, throttle must be observed
         // at neutral again before the motor may run (CLAUDE.md 6.2).
-        const bool armed = armGate.update(controls.armSwitch, controls.throttle,
-                                          /*forceDisarm=*/state == failsafe::State::Safe);
+        // The switch input goes through the bootmode policy: in SHOWCASE it
+        // is STRUCTURALLY false (the gate can never see the switch, so armed
+        // can never assert and baseCommanded below stays 0 -- drive authority
+        // off by construction, not by restraint); in DRIVE it is a
+        // transparent pass-through (test_bootmode pins both).
+        const bool armed =
+            armGate.update(bootmode::armSwitchInput(kBootMode, controls.armSwitch),
+                           controls.throttle,
+                           /*forceDisarm=*/state == failsafe::State::Safe);
 
         // Mode-shaped, post-arm-gate, pre-boost throttle. Training uses one
         // fixed gentle shape (gear shifts inert); other modes use the gearbox.
@@ -571,7 +610,13 @@ void loop() {
             controlSnapshot.steering = 0;
             controlSnapshot.drsOpen = false;
             controlSnapshot.armed = false;
-            controlSnapshot.failsafe = true;
+            // D4 (showcase-scoped, DRIVE byte-unchanged): in SHOWCASE the
+            // wire flag asserts only if a CRSF link EXISTED this boot -- a
+            // shelf demo with no radio must not hazard-blink, a table radio
+            // that died must still be told. In DRIVE this returns true
+            // unconditionally here (fsmSafe == true on this branch).
+            controlSnapshot.failsafe = bootmode::link2FailsafeFlag(
+                kBootMode, /*fsmSafe=*/true, failsafeStateMachine.hasEverReceivedFrame());
         } else {
             // Steering stays live while disarmed: CLAUDE.md 6.2 gates
             // throttle only, and bench setup needs steering without arming.

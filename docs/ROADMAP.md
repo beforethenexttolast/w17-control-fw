@@ -285,6 +285,26 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
    when live. Verified: 147 control native tests (+3 frame-builder golden vectors), esp32dev +
    esp32dev_tuning clean; ground 20 vitest (+2). Same bench gate as item 5 (FT232 COM access).
 
+9. **Showcase mode — board-1 half (boot-selected stationary demo)** — ✅ software DONE
+   2026-08-17 (mechanism A2 of the accepted design draft; vision decision 2, core-if-cheap,
+   NOT on the v1.0 done bar). `lib/bootmode` (pure): strap-reading → `BootMode` resolver
+   (Floating/garbage ⇒ Drive — fail-toward-drive) + the three mode policies. In SHOWCASE:
+   the arm-gate switch input is **structurally false** (armed can never assert ⇒
+   `baseCommanded` 0 ⇒ ESC never leaves neutral — no new gate, no parallel path), the link2
+   `modeFlags` bit0 rides every frame, and the link2 `failsafe` flag follows **D4**:
+   `Safe && everLinkedThisBoot` (shelf with no radio never hazards; a table radio that died
+   is still told). DRIVE boots byte-unchanged (test-pinned, incl. the untouched golden
+   frame). Steering/gimbal stay live over a real CRSF link (D9 — existing disarmed-safe
+   paths, untouched). Board #2's half (ignition on `armed || showcase`, curated idle
+   script, showcase halo) lives in `w17-soundlight-fw`. **Deliberately NOT in this wave**
+   (deferred to the BT-branch settings-blob reconciliation, which owns the third
+   `kBlobVersion` bump): the **strap pin choice + wiring** (OWNER-PENDING, D3 — shared
+   with the BT selector; BT-2 candidates GPIO27/32/33; joins the A2 continuity-matrix
+   scope, F20) and any **NVS boot-mode override** — `src/main.cpp` today injects a
+   constexpr `Floating` reading, so every shipped build resolves to Drive and a bench
+   SHOWCASE build is a one-line flip. No settings-blob change of any kind rides this
+   wave. First powered showcase run is a normal Phase B bench item, after A2.
+
 ### Still deferable / optional
 Code-signing the ground-station .exe (plumbing + docs ready — `electron-builder.yml` +
 docs/CODESIGNING.md; actual signing opt-in, removes the one-time SmartScreen prompt), BX100
