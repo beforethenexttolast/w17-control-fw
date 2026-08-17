@@ -124,8 +124,11 @@ Do not power the ESC until every box here passes.
 - [ ] Fit the two MG90S to the camera pod; power up disarmed — they center. Move the right
       stick: pan (GPIO19) and tilt (GPIO23) follow. Flip `invertPan`/`invertTilt` in
       `ChannelMapConfig` + reflash if an axis is backwards.
-- [ ] Camera holds its last aim on a link drop (not safety-gated; `controls` freezes on
-      failsafe). Confirm the pod doesn't bind at the travel extremes.
+- [ ] On a link drop (TX off) the camera **glides to center over ~2 s** — a smooth ramp,
+      not a snap and not a hold (vision decision 11; rate is the `gimbal.decay` tunable,
+      default 2000 ms full-deflection-to-center). On link recovery it glides back to
+      wherever the right stick is aiming now, again without a snap. Aiming stays allowed
+      while disarmed. Confirm the pod doesn't bind at the travel extremes.
 
 ## Phase 8 — Telemetry sensors
 

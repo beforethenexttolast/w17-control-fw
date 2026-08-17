@@ -249,7 +249,9 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
 7. **Camera gimbal pan/tilt** — ✅ DONE 2026-07-03. Two MG90S servos (GPIO19 pan / GPIO23 tilt,
    LEDC ch3/ch4) driven each control tick from the already-decoded `controls.pan`/`.tilt`
    (ch9/ch10), with `invertPan`/`invertTilt` bench flags. Not safety-gated (aiming a camera is
-   harmless armed or disarmed); holds last position on failsafe (`controls` frozen).
+   harmless armed or disarmed); held last position on failsafe as built (superseded
+   2026-08-16: now decays to center per vision decision 11 — `failsafe::GimbalDecay`,
+   NVS tunable `gimbal.decay`, recovery slews back without a snap).
    **Input:** map the right DualShock stick X/Y → ch9/ch10 in elrs-joystick-control (the right
    stick is otherwise unused). 144 native tests (+1), both esp32 builds clean.
 8. **Real speed + gear + drive-mode + ERS to the HUD (standard CRSF frames, no MSP)** —

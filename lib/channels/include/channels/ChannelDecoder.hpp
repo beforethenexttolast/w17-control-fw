@@ -55,11 +55,15 @@ struct ChannelMapConfig {
 struct Controls {
     int16_t steering = 0; // -1000..+1000, exact at the CRSF anchors 172/992/1811
     int16_t throttle = 0; // -1000..+1000
-    // Camera gimbal -- WIRED: src/main.cpp drives panServo/tiltServo from these
-    // on every 50 Hz control tick. Deliberately not failsafe-gated; `controls`
-    // is frozen during a failsafe, so the camera holds its last look direction
-    // instead of snapping to center. Stick-driven CRSF ch9/ch10 only, so the
-    // source is irrelevant here -- this is NOT the head-tracking path.
+    // Camera gimbal -- WIRED: src/main.cpp drives panServo/tiltServo from
+    // these on every 50 Hz control tick, routed through failsafe::GimbalDecay
+    // (vision decision 11, 2026-08-16): during failsafe the camera DECAYS TO
+    // CENTER, and the decay ignores these values while engaged -- so the fact
+    // that `controls` freezes during an outage is a non-dependency, not the
+    // mechanism. On recovery the output slews to the live values here (no
+    // snap). Aiming remains allowed while disarmed (no arm gate on these).
+    // Stick-driven CRSF ch9/ch10 only, so the source is irrelevant here --
+    // this is NOT the head-tracking path.
     int16_t pan = 0;  // -1000..+1000
     int16_t tilt = 0; // -1000..+1000
     bool armSwitch = false;
