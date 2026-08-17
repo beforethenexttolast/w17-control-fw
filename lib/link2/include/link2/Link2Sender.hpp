@@ -19,6 +19,13 @@ struct ControlSnapshot {
     uint16_t batteryMv = 0;
     uint8_t ersPercent = 100;
     uint8_t driveMode = 1; // 0 TRAINING / 1 RACE (gearbox) / 2 ERS (gearbox+ERS)
+    // Boot state, not drive state: set ONCE at boot from the resolved
+    // bootmode (bootmode::link2ShowcaseFlag) and constant for the whole
+    // session -- true in a SHOWCASE boot, false in every DRIVE boot. Rides
+    // every frame including failsafe frames. There is deliberately NO
+    // awaitingController field here: the sender structurally cannot set the
+    // BT bit until that mode ships.
+    bool showcase = false;
 };
 
 struct Link2SenderConfig {

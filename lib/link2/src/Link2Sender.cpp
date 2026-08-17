@@ -43,6 +43,9 @@ void Link2Sender::send(const ControlSnapshot& snapshot) {
     state.batteryMv = snapshot.batteryMv;
     state.ersPercent = snapshot.ersPercent;
     state.driveMode = snapshot.driveMode;
+    // Boot state: constant all session (modeFlags bit0). awaitingController
+    // stays false structurally -- ControlSnapshot has no such field.
+    state.showcase = snapshot.showcase;
     // Configuration, not state: the persisted sound values ride every frame
     // regardless of failsafe/arm condition (board #2's own failsafe rules
     // silence the engine; volume never participates in that decision).

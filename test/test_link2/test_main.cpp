@@ -147,11 +147,14 @@ void test_default_sound_fields_on_wire() {
     TEST_ASSERT_EQUAL_UINT8(link2::kDefaultVolume, out.volume);
 }
 
-// modeFlags today: BOTH named bits are reserved for accepted future modes
-// (showcase; BT pairing surface) and current firmware must ALWAYS transmit
-// zero -- through the raw encoder and through the sender alike. Bit
-// positions are pinned so the future modes light the documented bits.
-void test_mode_flags_bits_pinned_and_always_zero_today() {
+// modeFlags bit positions pinned, and the NORMAL-MODE invariant that must
+// outlive the showcase wave: a DRIVE-boot sender (snapshot.showcase false,
+// which is the field's default) transmits modeFlags 0x00 in EVERY frame --
+// disarmed, driving, or failsafe. Showcase lights bit0 through the sender
+// (its own test below); awaitingController still has NO production path at
+// all (ControlSnapshot carries no such field), so bit1 cannot be emitted by
+// this firmware until the BT mode ships.
+void test_mode_flags_bits_pinned_and_normal_mode_always_zero() {
     TEST_ASSERT_EQUAL_HEX8(0x01, link2::kModeFlagShowcase);
     TEST_ASSERT_EQUAL_HEX8(0x02, link2::kModeFlagAwaitingController);
 
@@ -167,12 +170,80 @@ void test_mode_flags_bits_pinned_and_always_zero_today() {
     link2::encodeFrame(s, frame);
     TEST_ASSERT_EQUAL_HEX8(0x03, frame[15]);
 
-    // The PRODUCTION path: Link2Sender never sets either field, so every
-    // frame the current firmware can emit carries modeFlags 0x00.
+    // The PRODUCTION normal-mode path: a default (DRIVE) snapshot emits
+    // modeFlags 0x00 -- this pin predates showcase and MUST hold forever.
     MockByteSink sink;
     Link2Sender sender(sink);
     sender.send(ControlSnapshot{});
     TEST_ASSERT_EQUAL_HEX8(0x00, sink.lastWrite[15]);
+
+    // Same in a DRIVE failsafe frame (the Safe-branch snapshot shape).
+    ControlSnapshot safe;
+    safe.failsafe = true;
+    safe.armed = false;
+    safe.commandedThrottle = 0;
+    sender.send(safe);
+    TEST_ASSERT_EQUAL_HEX8(0x00, sink.lastWrite[15]);
+
+    // And across a full DRIVE drive cycle: disarmed -> armed+throttle ->
+    // failsafe -> recovery. No normal-mode snapshot can light any mode bit.
+    ControlSnapshot drive;
+    drive.failsafe = false;
+    for (int step = 0; step < 4; ++step) {
+        drive.armed = (step == 1);
+        drive.commandedThrottle = (step == 1) ? 700 : 0;
+        drive.failsafe = (step == 2);
+        sender.send(drive);
+        TEST_ASSERT_EQUAL_HEX8(0x00, sink.lastWrite[15]);
+    }
+}
+
+// ADDITIONAL golden pin for the showcase wave (the normal-mode golden frame
+// above is deliberately untouched): the same golden state in a SHOWCASE
+// boot differs in EXACTLY two bytes -- modeFlags 0x01 and the CRC. Mirrored
+// in docs/link2_protocol.md's worked-example note.
+const uint8_t kShowcaseGoldenFrame[link2::kFrameLen] = {
+    0xA5, 0x0E, 0x02, 0x2A, 0xE7, 0x4C, 0x03, 0xDC, 0x05,
+    0xDC, 0x1E, 0x3C, 0x02, 0x01, 0x50, 0x01, 0x8F,
+};
+
+void test_showcase_golden_frame_bytes() {
+    VehicleState s = makeGoldenState();
+    s.showcase = true;
+    uint8_t frame[link2::kFrameLen];
+    TEST_ASSERT_EQUAL_UINT32(link2::kFrameLen, link2::encodeFrame(s, frame));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(kShowcaseGoldenFrame, frame, link2::kFrameLen);
+
+    // Two-byte delta, pinned byte-for-byte against the normal golden frame.
+    for (size_t i = 0; i < link2::kFrameLen; ++i) {
+        if (i == 15 || i == 16) continue;
+        TEST_ASSERT_EQUAL_HEX8(kGoldenFrame[i], kShowcaseGoldenFrame[i]);
+    }
+}
+
+// The production SHOWCASE path: snapshot.showcase (set once at boot from
+// the resolved mode) lights bit0 -- and ONLY bit0 -- in every frame,
+// including failsafe frames (boot state rides the wire under all
+// conditions), while armed/throttle stay truthful (a showcase frame can
+// never read as an armed car).
+void test_sender_stamps_showcase_bit() {
+    MockByteSink sink;
+    Link2Sender sender(sink);
+
+    ControlSnapshot snapshot; // disarmed idle, showcase boot
+    snapshot.showcase = true;
+    snapshot.failsafe = false;
+    sender.send(snapshot);
+    TEST_ASSERT_EQUAL_HEX8(0x01, sink.lastWrite[15]); // bit0 only, exactly
+    TEST_ASSERT_EQUAL_HEX8(0x00, sink.lastWrite[3]);  // throttle truthfully 0
+    TEST_ASSERT_FALSE((sink.lastWrite[5] & link2::kFlagArmed) != 0);
+
+    // Failsafe frame in a showcase boot: bit0 still set (D4 decides the
+    // failsafe FLAG upstream in main.cpp; the sender just reports both).
+    snapshot.failsafe = true;
+    sender.send(snapshot);
+    TEST_ASSERT_EQUAL_HEX8(0x01, sink.lastWrite[15]);
+    TEST_ASSERT_TRUE((sink.lastWrite[5] & link2::kFlagFailsafe) != 0);
 }
 
 // Receiver rule for the spare bits 2-7: mask and IGNORE, never reject -- a
@@ -483,7 +554,9 @@ int main(int, char**) {
     RUN_TEST(test_crc_matches_crsf_implementation);
     RUN_TEST(test_encode_decode_roundtrip);
     RUN_TEST(test_default_sound_fields_on_wire);
-    RUN_TEST(test_mode_flags_bits_pinned_and_always_zero_today);
+    RUN_TEST(test_mode_flags_bits_pinned_and_normal_mode_always_zero);
+    RUN_TEST(test_showcase_golden_frame_bytes);
+    RUN_TEST(test_sender_stamps_showcase_bit);
     RUN_TEST(test_mode_flags_spare_bits_ignored_never_rejected);
     RUN_TEST(test_reserved_sound_values_pass_through_raw);
     RUN_TEST(test_each_flag_bit_pinned);
