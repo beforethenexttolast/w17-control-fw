@@ -339,6 +339,88 @@ void test_gimbal_decay_survives_millis_rollover() {
     TEST_ASSERT_EQUAL_INT16(490, decay.update(nearWrap + 20u, true, 500));
 }
 
+// Regression pin (review finding F2): failsafe re-engaging WHILE the
+// post-recovery slew is still converging skips the engage-time carry reset
+// (update() only initializes on the not-slewing -> slewing edge). Traced
+// correct -- the carry is always sub-count (< divider), so the worst it can
+// add to the next tick is a fraction of one count's timing -- but the
+// re-entry path deserves its own pin: continuation from the CURRENT
+// position, per-tick travel never above the configured rate, straight decay
+// to center. Two phases: the exact-rate default config, then a non-divisible
+// rate so a nonzero carry is genuinely live across the re-engage edge.
+void test_gimbal_reengage_mid_recovery_continues_decay_without_step() {
+    // --- Phase A: default 2000 ms (exactly 10 counts per 20 ms tick). ---
+    GimbalDecay decay;
+    uint32_t t = 0;
+    decay.update(t, false, 1000); // passthrough at full deflection
+    for (int tick = 1; tick <= 50; ++tick) { // decay 1000 -> 500 over 1 s
+        t += 20;
+        decay.update(t, true, 1000);
+    }
+    // Link back, stick still at +1000: recovery slew climbs a few ticks...
+    t += 20;
+    TEST_ASSERT_EQUAL_INT16(510, decay.update(t, false, 1000));
+    t += 20;
+    TEST_ASSERT_EQUAL_INT16(520, decay.update(t, false, 1000));
+    t += 20;
+    TEST_ASSERT_EQUAL_INT16(530, decay.update(t, false, 1000));
+    TEST_ASSERT_TRUE(decay.slewing()); // ...and is still mid-convergence.
+
+    // ...when the link drops AGAIN. First re-engaged tick: continues from
+    // 530, moves exactly one tick's rate toward center -- no restart, no
+    // snap, no burst.
+    t += 20;
+    TEST_ASSERT_EQUAL_INT16(520, decay.update(t, true, 1000));
+    int16_t prev = 520;
+    for (int tick = 1; tick <= 52; ++tick) { // 520 counts / 10 per tick
+        t += 20;
+        const int16_t out = decay.update(t, true, 1000);
+        TEST_ASSERT_EQUAL_INT16(prev - 10 > 0 ? prev - 10 : 0, out);
+        prev = out;
+    }
+    TEST_ASSERT_EQUAL_INT16(0, prev);
+
+    // --- Phase B: 3000 ms (6.67 counts/tick -> allowances 6,7,7), so the
+    // sub-count carry is NONZERO at the re-engage edge -- the exact state
+    // the skipped reset leaves behind. ---
+    GimbalDecayConfig config;
+    config.fullToCenterMs = 3000;
+    GimbalDecay decay2(config);
+    uint32_t t2 = 0;
+    decay2.update(t2, false, 1000);
+    int16_t out2 = 1000;
+    for (int tick = 1; tick <= 74; ++tick) { // 24 cycles (480) + 6 + 7 = 493
+        t2 += 20;
+        out2 = decay2.update(t2, true, 1000);
+    }
+    TEST_ASSERT_EQUAL_INT16(507, out2); // carry now 1000 count*ms
+    t2 += 20;
+    TEST_ASSERT_EQUAL_INT16(514, decay2.update(t2, false, 1000)); // +7 (carry 0)
+    t2 += 20;
+    TEST_ASSERT_EQUAL_INT16(520, decay2.update(t2, false, 1000)); // +6 (carry 2000)
+    t2 += 20;
+    TEST_ASSERT_EQUAL_INT16(527, decay2.update(t2, false, 1000)); // +7 (carry 1000)
+    TEST_ASSERT_TRUE(decay2.slewing());
+
+    // Re-engage with carry 1000 live: next tick is (20000+1000)/3000 = 7 --
+    // continuation from 527 within the rate ceiling, the carry stays
+    // sub-count, and the decay runs monotonically home with every per-tick
+    // delta in [1, 7].
+    t2 += 20;
+    TEST_ASSERT_EQUAL_INT16(520, decay2.update(t2, true, 1000));
+    prev = 520;
+    int guard = 0;
+    while (prev != 0 && ++guard <= 120) { // 520 counts at >= 6/tick: < 90 ticks
+        t2 += 20;
+        const int16_t out = decay2.update(t2, true, 1000);
+        TEST_ASSERT_TRUE(out < prev);            // monotonic toward center
+        TEST_ASSERT_TRUE(prev - out <= 7);       // never above the rate ceiling
+        TEST_ASSERT_TRUE(out >= 0);              // no overshoot
+        prev = out;
+    }
+    TEST_ASSERT_EQUAL_INT16(0, prev);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_boots_safe_before_any_frame_ever_seen);
@@ -365,5 +447,6 @@ int main(int, char**) {
     RUN_TEST(test_gimbal_setconfig_mid_slew_keeps_position_and_state);
     RUN_TEST(test_gimbal_out_of_range_command_is_clamped);
     RUN_TEST(test_gimbal_decay_survives_millis_rollover);
+    RUN_TEST(test_gimbal_reengage_mid_recovery_continues_decay_without_step);
     return UNITY_END();
 }
