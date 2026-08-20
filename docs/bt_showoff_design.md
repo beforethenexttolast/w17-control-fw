@@ -117,6 +117,24 @@ pull-up. Final say per repo rule: reconcile against `PinMap.hpp` + the wiring at
 implementation, and note the A2 interaction — a new wired pin joins the continuity-matrix
 scope question already tracked as F20 (`../CURRENT_STATUS.md` 2026-08-04 entry).
 
+**[2026-08-17 three-mode reconciliation — ONE selector seam.]** The showcase-mode merge
+brought `lib/bootmode` (Drive/Showcase) to `main`; this branch folded its own
+`btpad::BootModeResolver` INTO that seam rather than shipping a second boot-mode concept:
+`bootmode::BootMode` now carries all three modes (**Drive** = LAPTOP, **Showcase** =
+SHOW, **BtSolo** = SOLO, this design's mode), `bootmode::classifyStrapLevels()` is this
+section's majority-vote sampling recast as levels → position, and the three mode policies
+(arm input, D4 failsafe flag, showcase bit) are total over all three modes with showcase
+behavior untouched (`test_bootmode`). Composition rule in `src/main.cpp`: the constexpr
+`StrapReading` injection is a bench override; `Floating` (default) means the
+`W17_BT_SHOWOFF` envs read the physical GPIO27 strap once at boot, and every other build
+constant-folds to Drive. **The one open selector corner — how SHOWCASE gets a physical
+position when the decided GPIO27 strap is a two-position LAPTOP/SOLO part — is
+`OWNER-PENDING(D3-SHOW-SELECT)`:** proposal in `lib/bootmode/include/bootmode/BootMode.hpp`
+(SP3T slide switch, common to GND, throws on GPIO27 = SOLO and GPIO32 = SHOW, center =
+LAPTOP; any ambiguous read classifies Floating → Drive). Until decided, SHOWCASE remains
+selectable via the compile-time injection only, exactly as the showcase branch shipped it.
+The NVS-override idea (mechanism B/C territory) stays deferred per this table.
+
 ---
 
 ## 3. Safety invariants — mapped 1:1 from the CRSF path
