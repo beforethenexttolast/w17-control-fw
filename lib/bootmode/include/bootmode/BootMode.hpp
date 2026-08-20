@@ -145,8 +145,13 @@ constexpr bool armSwitchInput(BootMode mode, bool decodedArmSwitch) {
 //
 // This is the exact NeverConnected-vs-Lost distinction board #2 already
 // applies to the link2 stream itself, applied one level up to the CRSF
-// link. `everLinkedThisBoot` is FailsafeStateMachine::hasEverReceivedFrame()
-// -- latched on the first valid RC frame, never reset until reboot.
+// link. `everLinkedThisBoot` is FailsafeStateMachine::hasEverLinked() --
+// latched on the first PROVEN link this boot (the first completed
+// Safe -> Active link proof), never reset until reboot. Proof completion,
+// not first raw frame, is the latch point (2026-08-20 hardening): a lone
+// CRC-colliding garbage frame is not "a link that existed", and must not
+// leave a shelf demo hazard-blinking forever; any real radio that connects
+// completes the ~150 ms proof and is still "told" when it dies.
 //
 // In Drive mode the flag is fsmSafe, UNCHANGED -- this exception is
 // deliberately showcase-scoped and the normal-mode wire stays byte-identical

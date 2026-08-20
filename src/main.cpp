@@ -454,14 +454,17 @@ void controlTick(uint32_t nowMs, bool& frameSinceTick, bool sourceSignalsFailsaf
         controlSnapshot.drsOpen = false;
         controlSnapshot.armed = false;
         // D4 (showcase-scoped; DRIVE and BT_SOLO byte-unchanged): in SHOWCASE
-        // the wire flag asserts only if an input link EXISTED this boot -- a
-        // shelf demo with no radio must not hazard-blink, a table radio that
-        // died must still be told. Everywhere else this returns true
+        // the wire flag asserts only if an input link was PROVEN this boot
+        // (hasEverLinked latches on the first completed link proof, not on
+        // the first raw frame -- a lone CRC-colliding noise frame must not
+        // make a shelf demo hazard-blink forever) -- a shelf demo with no
+        // radio must not hazard-blink, a table radio that died must still
+        // be told. Everywhere else this returns true
         // unconditionally here (fsmSafe == true on this branch); in BT_SOLO
         // "awaiting controller" deliberately reads as failsafe until the
         // modeFlags-bit1 surface is emitted (OWNER-DECIDED(BT-7) slice).
         controlSnapshot.failsafe = bootmode::link2FailsafeFlag(
-            g_bootMode, /*fsmSafe=*/true, failsafeStateMachine.hasEverReceivedFrame());
+            g_bootMode, /*fsmSafe=*/true, failsafeStateMachine.hasEverLinked());
     } else {
         // Steering stays live while disarmed: CLAUDE.md 6.2 gates
         // throttle only, and bench setup needs steering without arming.

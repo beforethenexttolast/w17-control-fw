@@ -203,9 +203,10 @@ void test_d4_failsafe_flag_truth_table() {
 }
 
 // D4 against the REAL failsafe FSM, whole-boot storyline: never-linked ->
-// first link -> lost mid-session -> re-linked. Uses the machine's actual
-// timeout (500 ms) and re-arm confirm (150 ms) and the hasEverReceivedFrame()
-// latch main.cpp feeds the policy from.
+// noise frame -> first PROVEN link -> lost mid-session -> re-linked. Uses
+// the machine's actual timeout (500 ms), re-arm confirm (150 ms link proof),
+// and the hasEverLinked() latch main.cpp feeds the policy from (latched at
+// proof completion, NOT at first raw frame -- 2026-08-20 hardening).
 void test_d4_with_real_fsm_never_linked_then_lost_then_relinked() {
     FailsafeStateMachine fsm;
 
@@ -217,25 +218,41 @@ void test_d4_with_real_fsm_never_linked_then_lost_then_relinked() {
         TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, false, false));
     }
     TEST_ASSERT_FALSE(fsm.hasEverReceivedFrame());
+    TEST_ASSERT_FALSE(fsm.hasEverLinked());
     TEST_ASSERT_FALSE(bootmode::link2FailsafeFlag(BootMode::Showcase,
                                                   fsm.state() == State::Safe,
-                                                  fsm.hasEverReceivedFrame()));
+                                                  fsm.hasEverLinked()));
     TEST_ASSERT_TRUE(bootmode::link2FailsafeFlag(BootMode::Drive,
                                                  fsm.state() == State::Safe,
-                                                 fsm.hasEverReceivedFrame()));
+                                                 fsm.hasEverLinked()));
 
-    // Phase 2 -- the table demo begins: frames arrive, the latch sets
-    // IMMEDIATELY (first frame), Active after the 150 ms confirm window.
+    // Phase 1b -- a lone CRC-colliding noise frame on the shelf: bytes were
+    // seen, but no link was PROVEN, so the showcase wire flag must STAY
+    // clear (with the first-frame latch this hazard-blinked forever).
     fsm.update(t, true, false);
+    for (uint32_t end = t + 1000; t < end;) {
+        t += 20;
+        TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, false, false));
+    }
     TEST_ASSERT_TRUE(fsm.hasEverReceivedFrame());
+    TEST_ASSERT_FALSE(fsm.hasEverLinked());
+    TEST_ASSERT_FALSE(bootmode::link2FailsafeFlag(BootMode::Showcase,
+                                                  fsm.state() == State::Safe,
+                                                  fsm.hasEverLinked()));
+
+    // Phase 2 -- the table demo begins: frames at the real 20 ms cadence,
+    // Active once the 150 ms link proof lands; the latch sets exactly THEN,
+    // so the flag never blips during the very first confirm window.
     for (uint32_t end = t + 200; t < end;) {
         t += 20;
         fsm.update(t, true, false);
+        TEST_ASSERT_EQUAL(fsm.state() == State::Active, fsm.hasEverLinked());
     }
     TEST_ASSERT_EQUAL(State::Active, fsm.state());
+    TEST_ASSERT_TRUE(fsm.hasEverLinked());
     TEST_ASSERT_FALSE(bootmode::link2FailsafeFlag(BootMode::Showcase,
                                                   fsm.state() == State::Safe,
-                                                  fsm.hasEverReceivedFrame()));
+                                                  fsm.hasEverLinked()));
 
     // Phase 3 -- radio dies mid-showcase: frames stop, Safe after 500 ms,
     // and NOW the showcase flag asserts (everLinked latched) -- a dead table
@@ -246,13 +263,14 @@ void test_d4_with_real_fsm_never_linked_then_lost_then_relinked() {
         fsm.update(t, false, false);
     }
     TEST_ASSERT_EQUAL(State::Safe, fsm.state());
-    TEST_ASSERT_TRUE(fsm.hasEverReceivedFrame()); // latch survives the loss
+    TEST_ASSERT_TRUE(fsm.hasEverLinked()); // latch survives the loss
     TEST_ASSERT_TRUE(bootmode::link2FailsafeFlag(BootMode::Showcase,
                                                  fsm.state() == State::Safe,
-                                                 fsm.hasEverReceivedFrame()));
+                                                 fsm.hasEverLinked()));
 
-    // Phase 4 -- radio returns: continuous validity for the confirm window
-    // re-arms the FSM and the flag clears again (recovery is automatic).
+    // Phase 4 -- radio returns: a full link proof (continuous validity +
+    // frame count) re-arms the FSM and the flag clears again (recovery is
+    // automatic).
     for (uint32_t end = t + 200; t < end;) {
         t += 20;
         fsm.update(t, true, false);
@@ -260,7 +278,7 @@ void test_d4_with_real_fsm_never_linked_then_lost_then_relinked() {
     TEST_ASSERT_EQUAL(State::Active, fsm.state());
     TEST_ASSERT_FALSE(bootmode::link2FailsafeFlag(BootMode::Showcase,
                                                   fsm.state() == State::Safe,
-                                                  fsm.hasEverReceivedFrame()));
+                                                  fsm.hasEverLinked()));
 }
 
 // --- Policy 3: the showcase wire flag ----------------------------------------
