@@ -127,13 +127,21 @@ section's majority-vote sampling recast as levels → position, and the three mo
 behavior untouched (`test_bootmode`). Composition rule in `src/main.cpp`: the constexpr
 `StrapReading` injection is a bench override; `Floating` (default) means the
 `W17_BT_SHOWOFF` envs read the physical GPIO27 strap once at boot, and every other build
-constant-folds to Drive. **The one open selector corner — how SHOWCASE gets a physical
-position when the decided GPIO27 strap is a two-position LAPTOP/SOLO part — is
-`OWNER-PENDING(D3-SHOW-SELECT)`:** proposal in `lib/bootmode/include/bootmode/BootMode.hpp`
-(SP3T slide switch, common to GND, throws on GPIO27 = SOLO and GPIO32 = SHOW, center =
-LAPTOP; any ambiguous read classifies Floating → Drive). Until decided, SHOWCASE remains
-selectable via the compile-time injection only, exactly as the showcase branch shipped it.
-The NVS-override idea (mechanism B/C territory) stays deferred per this table.
+constant-folds to Drive. **`OWNER-RATIFIED(D3-SHOW-SELECT)` 2026-08-20 — the selector is
+one SP3T three-position slide switch:** common to GND, throws on GPIO27 = SOLO (the BT-2
+pin, semantics unchanged) and GPIO32 = SHOW (`config/PinMap.hpp kShowModeStrapPin`; free,
+RTC-capable I/O with internal pull-up, not a strapping pin), center = LAPTOP (both pins
+open on their pull-ups) = Drive, the default. Both pins are majority-sampled once at boot
+(`bootmode::classifyStrapPin` per pin + `bootmode::combineStrapPins`,
+`classifyStrapLevels` end to end); any ambiguous reading — a tied pin, missing samples, or
+both pins low (electrically impossible from the part, so a harness fault) — classifies
+Floating → Drive, the unweakened fail-toward-drive rule (full truth table + fault
+injections pinned in `test/test_bootmode`). The strap pins stay wired only by the
+`W17_BT_SHOWOFF` envs; every delivery-lineage build keeps the compile-time `Floating`
+injection (bit-for-bit today's Drive behavior, test-pinned). **The physical switch itself
+is bench-gated (A2)** — D3 here is the firmware side only; wiring-atlas reconciliation and
+the A2/F20 continuity-matrix note remain wiring-time tasks. The NVS-override idea
+(mechanism B/C territory) stays deferred per this table.
 
 ---
 
