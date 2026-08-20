@@ -38,7 +38,12 @@ hardware outputs**, and only from already-arbitrated inputs.
   outputThrottle`.
 - `failsafe` — SAFETY-CRITICAL pure state machine over (linkUp, lastFrameMicros, now) →
   safe/active. Link loss or RX failsafe → throttle neutral, steering center, DRS closed;
-  latch until link returns and a re-arm condition is met. Also home of `GimbalDecay`
+  latch until link returns and a re-arm condition is met. Leaving Safe requires a LINK
+  PROOF (2026-08-20 hardening): ≥5 frame-bearing ticks inside the 150 ms confirm window
+  with no intra-proof gap >60 ms — a single CRC-valid frame (or any frame trickle below
+  the assumed 50–250 Hz cadence) can never reach Active; loss detection is unchanged.
+  `hasEverLinked()` (the SHOWCASE D4 `everLinkedThisBoot`) latches at proof completion,
+  not at first raw frame. Also home of `GimbalDecay`
   (vision decision 11, 2026-08-16): during failsafe the two gimbal axes decay to center
   instead of holding, rate = NVS tunable `gimbal.decay`; recovery slews back, no snap.
 - `outputs` — LEDC 50 Hz PWM for steering, ESC (neutral 1500 µs, boot arm sequence), DRS,
