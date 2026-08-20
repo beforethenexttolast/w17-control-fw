@@ -91,13 +91,16 @@ public:
     //
     // Dropping into Safe is immediate (timeout exceeded OR flag set) -- no
     // debounce on the way in, since that is the safety-critical direction.
-    // Returning to Active requires a LINK PROOF: starting from a tick that
-    // actually carried a frame, the link must stay continuously valid for
-    // Config::rearmConfirmMs, at least Config::rearmMinFrameTicks of the
-    // ticks inside that window must carry a frame, and no two frames inside
-    // it may be more than Config::rearmMaxFrameGapMs apart. Any bad tick, or
-    // any over-gap silence, discards the whole proof (continuous-duration
-    // check, not cumulative). A healthy-cadence link (frames every control
+    // Returning to Active requires a LINK PROOF, anchored on a tick that
+    // actually carried a frame: at least Config::rearmConfirmMs must have
+    // elapsed since that anchor AND at least Config::rearmMinFrameTicks
+    // frame-bearing ticks must have accumulated since it (the proof persists
+    // past the confirm duration until BOTH hold), with the link continuously
+    // valid throughout and no two consecutive frames more than
+    // Config::rearmMaxFrameGapMs apart. Any bad tick, or any over-gap
+    // silence, discards the whole proof -- it restarts from the next
+    // frame-bearing tick, never accumulating across a break. A
+    // healthy-cadence link (frames every control
     // tick) re-arms at exactly the same instant as before the proof existed;
     // only frame-starved "links" are slowed -- all the way to never.
     //

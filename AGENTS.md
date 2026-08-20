@@ -39,9 +39,10 @@ hardware outputs**, and only from already-arbitrated inputs.
 - `failsafe` — SAFETY-CRITICAL pure state machine over (linkUp, lastFrameMicros, now) →
   safe/active. Link loss or RX failsafe → throttle neutral, steering center, DRS closed;
   latch until link returns and a re-arm condition is met. Leaving Safe requires a LINK
-  PROOF (2026-08-20 hardening): ≥5 frame-bearing ticks inside the 150 ms confirm window
-  with no intra-proof gap >60 ms — a single CRC-valid frame (or any frame trickle below
-  the assumed 50–250 Hz cadence) can never reach Active; loss detection is unchanged.
+  PROOF (2026-08-20 hardening): ≥150 ms elapsed since the proof anchor (a frame-bearing
+  tick) AND ≥5 frame-bearing ticks since that anchor, with no intra-proof frame gap
+  >60 ms (a gap discards the proof) — a single CRC-valid frame (or any frame trickle
+  below the assumed 50–250 Hz cadence) can never reach Active; loss detection is unchanged.
   `hasEverLinked()` (the SHOWCASE D4 `everLinkedThisBoot`) latches at proof completion,
   not at first raw frame. Also home of `GimbalDecay`
   (vision decision 11, 2026-08-16): during failsafe the two gimbal axes decay to center
