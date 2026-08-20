@@ -1,0 +1,10 @@
+{
+  "name": "btpad",
+  "version": "0.1.0",
+  "description": "BT show-off mode pure logic (docs/bt_showoff_design.md): raw pad frame -> channels::Controls decode with arm ritual, pad-link failsafe latch, boot-mode strap resolver. No hardware dependency; consumed only under W17_BT_SHOWOFF.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "channels": "*"
+  }
+}
