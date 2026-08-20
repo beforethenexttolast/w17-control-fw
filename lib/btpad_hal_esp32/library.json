@@ -1,0 +1,10 @@
+{
+  "name": "btpad_hal_esp32",
+  "version": "0.1.0",
+  "description": "Bluepad32 (BTstack custom core, pinned 3.10.x line) implementation of btpad::IPadSource, plus pairing policy and lightbar output. ESP32-only; referenced ONLY from src/main.cpp under W17_BT_SHOWOFF -- builds solely in env:esp32dev_btshowoff.",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "btpad": "*"
+  }
+}
