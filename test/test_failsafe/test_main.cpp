@@ -235,6 +235,91 @@ void test_ever_linked_latches_only_on_proven_link() {
     TEST_ASSERT_TRUE(fsm.hasEverLinked());
 }
 
+// THE 2026-08-20 owner-ratified drive-mode hardening, end to end: real FSM +
+// real ArmGate wired exactly as main.cpp's controlTick (Safe => forceDisarm).
+// An RF-loss episode latches the disarm -- when the link re-PROVES (150 ms /
+// 5 frame ticks) with the switch still on and the stick at neutral, the car
+// NEVER re-arms by itself. Re-arm demands the switch seen OFF then ON on the
+// proven link, plus the fresh-neutral rule.
+void test_rf_loss_with_switch_on_never_rearms_without_toggle() {
+    FailsafeStateMachine fsm;
+    channels::ArmGate gate;
+
+    auto tick = [&](uint32_t t, bool frame, bool rxFlag, bool switchOn,
+                    int16_t throttle) {
+        const State s = fsm.update(t, frame, rxFlag);
+        return gate.update(switchOn, throttle, /*forceDisarm=*/s == State::Safe);
+    };
+
+    // Boot with the switch OFF (normal case), link proves, arm normally.
+    for (uint32_t t = 0; t < 150; t += 20) {
+        TEST_ASSERT_FALSE(tick(t, true, false, false, 0));
+    }
+    TEST_ASSERT_TRUE(tick(150, true, false, true, 0)); // Active + on + neutral
+
+    // Driving, then RF loss: Safe at the 500 ms timeout, disarmed.
+    TEST_ASSERT_TRUE(tick(170, true, false, true, 800));
+    TEST_ASSERT_FALSE(tick(670, false, false, true, 800)); // timeout -> Safe
+
+    // Frames resume with the switch still on. An episode DURING the proof
+    // (rx failsafe flag mid-window) resets the confirmation; the gate stays
+    // latched throughout.
+    for (uint32_t t = 700; t <= 780; t += 20) {
+        TEST_ASSERT_FALSE(tick(t, true, false, true, 0));
+    }
+    TEST_ASSERT_FALSE(tick(800, true, true, true, 0)); // chatter mid-proof
+    // Full uninterrupted proof from t=820: Active at t=970...
+    for (uint32_t t = 820; t <= 960; t += 20) {
+        TEST_ASSERT_FALSE(tick(t, true, false, true, 0));
+    }
+    TEST_ASSERT_EQUAL(State::Safe, fsm.state());
+    // ...and from proof completion on: switch on + neutral, many ticks --
+    // NEVER arms (the pre-2026-08-20 gate armed on the first of these).
+    for (uint32_t t = 980; t <= 2000; t += 20) {
+        TEST_ASSERT_FALSE(tick(t, true, false, true, 0));
+        TEST_ASSERT_EQUAL(State::Active, fsm.state());
+    }
+
+    // The deliberate restart: OFF, then ON + neutral.
+    TEST_ASSERT_FALSE(tick(2020, true, false, false, 0));
+    TEST_ASSERT_TRUE(tick(2040, true, false, true, 0));
+}
+
+// Repeated episodes: every RF loss latches anew -- the toggle spent on the
+// first recovery buys nothing for the second.
+void test_repeated_rf_losses_each_demand_their_own_toggle() {
+    FailsafeStateMachine fsm;
+    channels::ArmGate gate;
+
+    auto tick = [&](uint32_t t, bool frame, bool switchOn) {
+        const State s = fsm.update(t, frame, false);
+        return gate.update(switchOn, 0, /*forceDisarm=*/s == State::Safe);
+    };
+
+    uint32_t t = 0;
+    for (; t < 150; t += 20) {
+        tick(t, true, false);
+    }
+    TEST_ASSERT_TRUE(tick(t, true, true)); // armed at proof + on + neutral
+
+    for (int episode = 0; episode < 2; ++episode) {
+        // Loss: silence past the 500 ms timeout.
+        t += 500;
+        TEST_ASSERT_FALSE(tick(t, false, true));
+        // Recovery: full proof with the switch taped on -- never arms.
+        t += 20;
+        for (uint32_t end = t + 800; t <= end; t += 20) {
+            TEST_ASSERT_FALSE(tick(t, true, true));
+        }
+        TEST_ASSERT_EQUAL(State::Active, fsm.state());
+        // Toggle re-arms.
+        t += 20;
+        TEST_ASSERT_FALSE(tick(t, true, false));
+        t += 20;
+        TEST_ASSERT_TRUE(tick(t, true, true));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // GimbalDecay -- vision decision 11 (2026-08-16): on link-loss failsafe the
 // gimbal axes DECAY TO CENTER instead of holding the last look direction, and
@@ -563,6 +648,8 @@ int main(int, char**) {
     RUN_TEST(test_latches_safe_despite_a_single_good_tick);
     RUN_TEST(test_rearm_window_chatter_resets_confirmation);
     RUN_TEST(test_ever_linked_latches_only_on_proven_link);
+    RUN_TEST(test_rf_loss_with_switch_on_never_rearms_without_toggle);
+    RUN_TEST(test_repeated_rf_losses_each_demand_their_own_toggle);
     RUN_TEST(test_gimbal_decay_default_matches_spec_and_bounds);
     RUN_TEST(test_gimbal_passthrough_is_transparent_while_link_ok);
     RUN_TEST(test_gimbal_decay_full_deflection_reaches_center_in_configured_time);

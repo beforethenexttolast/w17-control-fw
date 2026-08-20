@@ -413,9 +413,12 @@ void controlTick(uint32_t nowMs, bool& frameSinceTick, bool sourceSignalsFailsaf
         failsafeStateMachine.update(nowMs, frameSinceTick, sourceSignalsFailsafe);
     frameSinceTick = false;
 
-    // The arm gate runs every control tick so a failsafe episode clears
-    // its neutral-seen latch: after recovery, throttle must be observed
-    // at neutral again before the motor may run (CLAUDE.md 6.2).
+    // The arm gate runs every control tick so a failsafe episode both
+    // clears its neutral-seen latch AND (OWNER-RATIFIED 2026-08-20, episode
+    // seen with the switch on) latches the require-toggle rule: after
+    // recovery the car stays disarmed until the arm switch is seen OFF then
+    // ON again, plus throttle observed at neutral (CLAUDE.md 6.2) -- a
+    // radio dropout can never be followed by a silent self re-arm.
     // The switch input goes through the bootmode policy: in SHOWCASE it
     // is STRUCTURALLY false (the gate can never see the switch, so armed
     // can never assert and baseCommanded below stays 0 -- drive authority
@@ -915,7 +918,8 @@ void loop() {
         // loop passes, so shifts MUST happen here, exactly once per edge.
         // A gear shift is state, not actuation, so it is not gated on
         // failsafe (gear deliberately survives failsafe/disarm: ArmGate
-        // already forces a fresh throttle-neutral after every episode).
+        // already forces a fresh throttle-neutral -- and, since 2026-08-20,
+        // a full arm-switch OFF->ON toggle -- after every episode).
         if (controls.gearUpEdge) {
             virtualGearbox.shiftUp();
         }

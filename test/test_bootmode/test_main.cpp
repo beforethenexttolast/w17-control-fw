@@ -221,8 +221,9 @@ namespace {
 //
 // Returns true if the gate EVER armed (or any throttle would have been
 // commanded) at any step. The scenario includes every trick that arms the
-// gate in normal operation: switch on with the stick neutral, neutral-then-
-// displaced, a failsafe episode with the switch held on through recovery.
+// gate in normal operation: switch on with the stick neutral, a full
+// OFF->ON toggle after a failsafe episode (2026-08-20 rule: the episode
+// latches, recovery-with-switch-held-on alone no longer re-arms anything).
 bool scenarioEverArms(BootMode mode) {
     ArmGate gate;
     bool everArmed = false;
@@ -238,10 +239,10 @@ bool scenarioEverArms(BootMode mode) {
         {true, 800, false},   // full throttle, still switch ON
         {true, 800, true},    // failsafe episode begins (forceDisarm)
         {true, 0, true},      // stick back to neutral during the episode
-        {true, 0, false},     // recovery, switch STILL on, neutral seen -> Drive re-arms
-        {true, 1000, false},  // and full throttle again
-        {false, 0, false},    // switch off
-        {true, -60, false},   // switch on inside the neutral window (|t| <= 60)
+        {true, 0, false},     // recovery, switch STILL on: latched, Drive stays DISARMED
+        {true, 1000, false},  // (2026-08-20 rule) still disarmed under full stick
+        {false, 0, false},    // switch off -- clears the episode latch
+        {true, -60, false},   // switch back on inside the neutral window -> Drive re-arms
         {true, 1000, false},  // slam the stick
     };
 

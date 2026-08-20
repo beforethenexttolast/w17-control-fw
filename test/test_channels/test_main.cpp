@@ -384,17 +384,98 @@ void test_armgate_force_disarm_polarity() {
     TEST_ASSERT_FALSE(gate.isArmed());
 }
 
-void test_armgate_failsafe_recovery_requires_fresh_neutral() {
+// OWNER-RATIFIED 2026-08-20: a failsafe episode latches a disarm. Link
+// recovery with the switch still on can NEVER re-arm by itself -- not with
+// the stick pinned (review finding A3, unchanged) and not at neutral either
+// (the pre-2026-08-20 behavior this test used to pin). Re-arming needs the
+// switch seen OFF, then ON, then the fresh-neutral rule as always.
+void test_armgate_failsafe_episode_latches_until_switch_toggle() {
     ArmGate gate;
-    gate.update(true, 0, false); // armed
+    gate.update(true, 0, false);   // armed
     gate.update(true, 900, false); // driving at high throttle
 
     TEST_ASSERT_FALSE(gate.update(true, 900, true)); // failsafe episode: disarm
 
-    // Link recovers while the stick is still pinned (review finding A3):
-    // throttle must NOT snap on.
+    // Link recovers, switch still on: stick pinned OR neutral, many ticks --
+    // the car stays dead.
     TEST_ASSERT_FALSE(gate.update(true, 900, false));
-    TEST_ASSERT_TRUE(gate.update(true, 0, false)); // neutral again: re-armed
+    for (int i = 0; i < 50; ++i) {
+        TEST_ASSERT_FALSE(gate.update(true, 0, false));
+    }
+
+    TEST_ASSERT_FALSE(gate.update(false, 0, false)); // switch OFF: toggle half 1
+    TEST_ASSERT_FALSE(gate.update(true, 500, false)); // ON, stick displaced: neutral rule holds
+    TEST_ASSERT_TRUE(gate.update(true, 0, false));    // ON + neutral: re-armed
+}
+
+// Boot with the switch already ON (FSM boots Safe => forceDisarm true on
+// every pre-proof tick): equivalent to a latched episode -- the first arm
+// demands a deliberate OFF->ON toggle. Strictly more conservative than the
+// pre-2026-08-20 gate, which armed at proof completion + neutral.
+void test_armgate_boot_with_switch_on_requires_toggle() {
+    ArmGate gate;
+    for (int i = 0; i < 10; ++i) {
+        TEST_ASSERT_FALSE(gate.update(true, 0, true)); // boot Safe, switch on
+    }
+    // Link proof completes (forceDisarm drops): still latched, never arms.
+    for (int i = 0; i < 10; ++i) {
+        TEST_ASSERT_FALSE(gate.update(true, 0, false));
+    }
+    gate.update(false, 0, false);                  // deliberate OFF
+    TEST_ASSERT_TRUE(gate.update(true, 0, false)); // ON + neutral: first arm
+}
+
+// Boot with the switch OFF (the normal case) is unaffected: the latch never
+// sets, and the first switch-on + neutral arms exactly as before.
+void test_armgate_boot_with_switch_off_first_arm_unchanged() {
+    ArmGate gate;
+    for (int i = 0; i < 10; ++i) {
+        TEST_ASSERT_FALSE(gate.update(false, 0, true)); // boot Safe, switch off
+    }
+    TEST_ASSERT_FALSE(gate.update(false, 0, false)); // proof done, still off
+    TEST_ASSERT_TRUE(gate.update(true, 0, false));   // switch on + neutral: arms
+}
+
+// The latch is level-driven: an OFF->ON toggle completed entirely inside the
+// outage does not count -- the ON tick, still Safe, re-latches. The arming
+// ON must be observed on a proven link (fail-closed direction).
+void test_armgate_toggle_during_outage_does_not_count() {
+    ArmGate gate;
+    gate.update(true, 0, false);          // armed
+    gate.update(true, 0, true);           // episode with switch on: latched
+    gate.update(false, 0, true);          // OFF during the outage (clears)...
+    TEST_ASSERT_FALSE(gate.update(true, 0, true)); // ...ON still Safe: re-latches
+    // Recovery: switch on + neutral, still dead.
+    TEST_ASSERT_FALSE(gate.update(true, 0, false));
+    // Toggle on the proven link works.
+    gate.update(false, 0, false);
+    TEST_ASSERT_TRUE(gate.update(true, 0, false));
+}
+
+// An episode with the switch OFF does not latch: flipping the switch on
+// after recovery is already a fresh, deliberate arm action.
+void test_armgate_episode_with_switch_off_does_not_latch() {
+    ArmGate gate;
+    for (int i = 0; i < 10; ++i) {
+        TEST_ASSERT_FALSE(gate.update(false, 0, true)); // outage, switch off
+    }
+    TEST_ASSERT_TRUE(gate.update(true, 0, false)); // recovery, then switch on: arms
+}
+
+// The latch is reusable: after a full re-arm, a second episode latches again
+// and demands its own toggle.
+void test_armgate_repeated_episodes_each_require_a_toggle() {
+    ArmGate gate;
+    gate.update(true, 0, false); // armed
+
+    gate.update(true, 0, true); // episode 1
+    gate.update(false, 0, false);
+    TEST_ASSERT_TRUE(gate.update(true, 0, false)); // toggled: re-armed
+
+    TEST_ASSERT_FALSE(gate.update(true, 0, true));  // episode 2: latches again
+    TEST_ASSERT_FALSE(gate.update(true, 0, false)); // recovery alone: dead
+    gate.update(false, 0, false);
+    TEST_ASSERT_TRUE(gate.update(true, 0, false)); // toggle 2: re-armed
 }
 
 void test_armgate_neutral_while_switch_off_does_not_prearm() {
@@ -444,7 +525,12 @@ int main(int, char**) {
     RUN_TEST(test_armgate_switch_on_with_neutral_arms_same_tick);
     RUN_TEST(test_armgate_disarms_on_switch_off_and_requires_neutral_again);
     RUN_TEST(test_armgate_force_disarm_polarity);
-    RUN_TEST(test_armgate_failsafe_recovery_requires_fresh_neutral);
+    RUN_TEST(test_armgate_failsafe_episode_latches_until_switch_toggle);
+    RUN_TEST(test_armgate_boot_with_switch_on_requires_toggle);
+    RUN_TEST(test_armgate_boot_with_switch_off_first_arm_unchanged);
+    RUN_TEST(test_armgate_toggle_during_outage_does_not_count);
+    RUN_TEST(test_armgate_episode_with_switch_off_does_not_latch);
+    RUN_TEST(test_armgate_repeated_episodes_each_require_a_toggle);
     RUN_TEST(test_armgate_neutral_window_boundary);
     return UNITY_END();
 }
