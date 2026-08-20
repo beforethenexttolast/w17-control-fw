@@ -115,12 +115,19 @@ PhaseOutput computePhase(uint32_t t) {
         out.name = "TIMEOUT_OUTAGE";
         out.sendRc = false;
         out.sendStats = false;
-    } else if (t < 19000) {
+    } else if (t < 18300) {
         // Recovery: stats (LQ=100) are written before RC in tick() -- the
         // LQ latch clears ONLY on good stats, RC frames alone can never
-        // clear it. Re-arm after the 150ms confirm window.
-        out.name = "RECOVERY_1";
+        // clear it. Link proves after the 150ms window, but the arm switch
+        // was ON through the episode, so the 2026-08-20 episode latch holds:
+        // failsafe=0 yet armed stays 0 -- NO self re-arm.
+        out.name = "RECOVERY_1_LATCHED";
         out.ch[kArmIdx] = kOn;
+    } else if (t < 19000) {
+        // The deliberate restart: switch seen OFF (clears the latch), then
+        // ON + neutral -> re-arms (~18.6s).
+        out.name = "RECOVERY_1_TOGGLE";
+        out.ch[kArmIdx] = (t < 18600) ? kOff : kOn;
     } else if (t < 21000) {
         // Hold-position failsafe: LQ=0 stats while RC frames KEEP FLOWING at
         // 50% throttle -- the firmware must drop instantly despite fresh
@@ -130,10 +137,12 @@ PhaseOutput computePhase(uint32_t t) {
         out.ch[kArmIdx] = kOn;
         out.ch[kThrottleIdx] = analogRaw(500);
     } else if (t < 23000) {
-        // Recovery with the stick still pulled: blocked until neutral is
-        // re-observed (fresh-neutral rule), then arms at t=22s.
+        // Recovery from the second episode: the switch toggles OFF->ON at
+        // 21.5s (episode latch cleared) but the stick is STILL pulled --
+        // blocked until neutral is re-observed (fresh-neutral rule), then
+        // arms at t=22s. Both re-arm conditions shown back to back.
         out.name = "RECOVERY_2";
-        out.ch[kArmIdx] = kOn;
+        out.ch[kArmIdx] = (t < 21500) ? kOff : kOn;
         out.ch[kThrottleIdx] = (t < 22000) ? analogRaw(500) : kMid;
     } else {
         // Two gear-down pulses so every demo cycle restarts from gear 1

@@ -58,12 +58,19 @@ The `esp32dev_sim` env is the real firmware plus `-DW17_SIM_CRSF_FEEDER`, which 
 | 6.5–8 | ARM_NEUTRAL | Throttle centered → arms. |
 | 8–15 | DRIVING | Throttle sweeps move the ESC needle; gear-up pulses at 9 s and 12 s visibly raise the cap; DRS servo opens 10–14 s. At 13–14.5 s the mode switch flips to Gearbox+ERS with boost held: the needle jumps past the gear cap and the `[state]` line shows the store draining `(DEPLOY)` at ~26 %/s. |
 | 15–17.5 | TIMEOUT_OUTAGE | Pure silence, **no** LQ=0 — watch the ~0.5 s **delayed** drop to safe: the frame-timeout path. |
-| 17.5–19 | RECOVERY_1 | Stats (LQ=100) lead the recovery — the LQ latch clears **only** on good stats, never on RC frames. ~150 ms link-proof window (the 20 ms RC cadence satisfies the frame-count/gap proof as it elapses), then Active. |
+| 17.5–18.3 | RECOVERY_1_LATCHED | Stats (LQ=100) lead the recovery — the LQ latch clears **only** on good stats, never on RC frames. ~150 ms link-proof window, then Active (`failsafe=0`) — but the arm switch was ON through the episode, so the 2026-08-20 episode latch holds: `armed` stays 0. **No self re-arm after a dropout.** |
+| 18.3–19 | RECOVERY_1_TOGGLE | The deliberate restart: switch OFF at 18.3 s (clears the latch), back ON at 18.6 s with the stick neutral → re-arms. |
 | 19–21 | HOLD_POSITION_FAILSAFE | LQ=0 stats **while RC frames keep flowing at 50% throttle** — instant drop despite fresh frames. This is the misconfigured-receiver (hold-position) mitigation and the most valuable thing this sim demonstrates. |
-| 21–23 | RECOVERY_2 | Link good again but the stick is still at 50% — blocked until it centers at 22 s (fresh-neutral rule after every failsafe). |
+| 21–23 | RECOVERY_2 | Second episode: switch toggles OFF→ON at 21.5 s (latch cleared) but the stick is still at 50% — blocked until it centers at 22 s (fresh-neutral rule). Both re-arm conditions shown back to back. |
 | 23–25 | COOLDOWN | Two gear-down pulses so every cycle restarts from gear 1 (gear deliberately survives failsafe). |
 
 ## Observed run — 2026-08-04 (owner, Wokwi VS Code extension)
+
+> **Historical capture — predates the 2026-08-20 re-arm hardening.** This run shows the
+> old script (single RECOVERY_1 phase, and a recovery re-arming with the switch held on
+> — behavior since removed: an episode now latches until the switch is toggled OFF→ON).
+> Kept verbatim as the record of what was observed that day; the phase table above
+> describes the current script.
 
 The first ever load of this sim. Raw serial (115200), whitespace-normalised — the Wokwi
 monitor pads lines with CR runs; no line content is edited, and nothing is omitted from
