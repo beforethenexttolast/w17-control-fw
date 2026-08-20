@@ -24,10 +24,11 @@ void test_resolver_truth_table_floats_to_drive() {
     TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(StrapReading::Floating));
     TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(StrapReading::DrivePosition));
     TEST_ASSERT_EQUAL(BootMode::Showcase, bootmode::resolve(StrapReading::ShowPosition));
+    TEST_ASSERT_EQUAL(BootMode::BtSolo, bootmode::resolve(StrapReading::SoloPosition));
 
     // Out-of-range readings (defensive: a broken classifier or bit flip) are
     // Drive too -- resolve() is total over the underlying byte.
-    for (int raw = 3; raw <= 255; ++raw) {
+    for (int raw = 4; raw <= 255; ++raw) {
         TEST_ASSERT_EQUAL(BootMode::Drive,
                           bootmode::resolve(static_cast<StrapReading>(raw)));
     }
@@ -38,6 +39,45 @@ void test_resolver_truth_table_floats_to_drive() {
                   "floating strap must resolve to Drive at compile time");
     static_assert(bootmode::resolve(StrapReading::ShowPosition) == BootMode::Showcase,
                   "SHOW strap must resolve to Showcase at compile time");
+    static_assert(bootmode::resolve(StrapReading::SoloPosition) == BootMode::BtSolo,
+                  "SOLO strap must resolve to BtSolo at compile time");
+}
+
+// --- Strap classification (the LAPTOP/SOLO pin the BT envs sample) -----------
+// Recast of the former btpad::resolveBootMode suite (2026-08-17 three-mode
+// unification): the majority vote now classifies LEVELS -> POSITION here, and
+// resolve() maps position -> mode, so the electrical layer and the mode layer
+// are separately testable. Fail directions unchanged: no data / tie ->
+// Floating -> Drive.
+
+void test_classify_high_floating_or_empty_is_drive() {
+    const bool allHigh[9] = {true, true, true, true, true, true, true, true, true};
+    TEST_ASSERT_EQUAL(StrapReading::DrivePosition, bootmode::classifyStrapLevels(allHigh, 9));
+    TEST_ASSERT_EQUAL(StrapReading::Floating, bootmode::classifyStrapLevels(nullptr, 9));
+    TEST_ASSERT_EQUAL(StrapReading::Floating, bootmode::classifyStrapLevels(allHigh, 0));
+    // End to end: every one of those lands on Drive.
+    TEST_ASSERT_EQUAL(BootMode::Drive,
+                      bootmode::resolve(bootmode::classifyStrapLevels(allHigh, 9)));
+    TEST_ASSERT_EQUAL(BootMode::Drive,
+                      bootmode::resolve(bootmode::classifyStrapLevels(nullptr, 9)));
+}
+
+void test_classify_majority_low_is_solo() {
+    const bool allLow[9] = {};
+    TEST_ASSERT_EQUAL(StrapReading::SoloPosition, bootmode::classifyStrapLevels(allLow, 9));
+    // 5 lows of 9: strict majority despite bounce.
+    const bool bouncy[9] = {true, false, false, true, false, false, true, false, true};
+    TEST_ASSERT_EQUAL(StrapReading::SoloPosition, bootmode::classifyStrapLevels(bouncy, 9));
+    TEST_ASSERT_EQUAL(BootMode::BtSolo,
+                      bootmode::resolve(bootmode::classifyStrapLevels(allLow, 9)));
+}
+
+void test_classify_tie_or_minority_low_fails_toward_drive() {
+    const bool minority[9] = {false, true, true, false, true, false, true, false, true}; // 4 lows
+    TEST_ASSERT_EQUAL(StrapReading::DrivePosition, bootmode::classifyStrapLevels(minority, 9));
+    const bool tie[4] = {false, false, true, true};
+    TEST_ASSERT_EQUAL(StrapReading::Floating, bootmode::classifyStrapLevels(tie, 4));
+    TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(bootmode::classifyStrapLevels(tie, 4)));
 }
 
 // --- Policy 1: the arm input ------------------------------------------------
@@ -49,6 +89,10 @@ void test_arm_switch_input_pinned_false_in_showcase_passthrough_in_drive() {
     // Drive: transparent pass-through (byte-identical normal behavior).
     TEST_ASSERT_FALSE(bootmode::armSwitchInput(BootMode::Drive, false));
     TEST_ASSERT_TRUE(bootmode::armSwitchInput(BootMode::Drive, true));
+    // BtSolo: ALSO pass-through -- the decoded switch there is the pad arm
+    // ritual, which gates upstream (test_btpad); no double gate here.
+    TEST_ASSERT_FALSE(bootmode::armSwitchInput(BootMode::BtSolo, false));
+    TEST_ASSERT_TRUE(bootmode::armSwitchInput(BootMode::BtSolo, true));
 }
 
 namespace {
@@ -114,6 +158,10 @@ bool scenarioEverArms(BootMode mode) {
 void test_showcase_never_arms_where_drive_does() {
     TEST_ASSERT_TRUE(scenarioEverArms(BootMode::Drive));
     TEST_ASSERT_FALSE(scenarioEverArms(BootMode::Showcase));
+    // BtSolo arms exactly like Drive through this policy: arming discipline
+    // in that mode lives in the pad ritual upstream (strict clear-on-failsafe
+    // + release-before-rearm, pinned in test_btpad), not in a second gate.
+    TEST_ASSERT_TRUE(scenarioEverArms(BootMode::BtSolo));
 }
 
 // --- Policy 2: the D4 failsafe-flag truth table ------------------------------
@@ -140,6 +188,13 @@ void test_d4_failsafe_flag_truth_table() {
         {BootMode::Showcase, false, true, false},
         {BootMode::Showcase, true, false, false}, // shelf: no CRSF ever -> NO hazard
         {BootMode::Showcase, true, true, true},   // radio died mid-session -> told
+        // BtSolo: plain fsmSafe, like Drive -- the pad modes HAVE drive
+        // authority, and awaiting-a-controller SHOULD read as failsafe until
+        // the modeFlags-bit1 surface is emitted (OWNER-DECIDED(BT-7) slice).
+        {BootMode::BtSolo, false, false, false},
+        {BootMode::BtSolo, false, true, false},
+        {BootMode::BtSolo, true, false, true},
+        {BootMode::BtSolo, true, true, true},
     };
     for (const Row& r : rows) {
         TEST_ASSERT_EQUAL(r.expected,
@@ -213,11 +268,17 @@ void test_d4_with_real_fsm_never_linked_then_lost_then_relinked() {
 void test_showcase_flag_is_the_boot_mode_and_nothing_else() {
     TEST_ASSERT_FALSE(bootmode::link2ShowcaseFlag(BootMode::Drive));
     TEST_ASSERT_TRUE(bootmode::link2ShowcaseFlag(BootMode::Showcase));
+    // The ratified bit split: bit0 belongs to showcase; a BT boot NEVER sets
+    // it (bit1, reserved-unemitted, is that mode's own future surface).
+    TEST_ASSERT_FALSE(bootmode::link2ShowcaseFlag(BootMode::BtSolo));
 }
 
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_resolver_truth_table_floats_to_drive);
+    RUN_TEST(test_classify_high_floating_or_empty_is_drive);
+    RUN_TEST(test_classify_majority_low_is_solo);
+    RUN_TEST(test_classify_tie_or_minority_low_fails_toward_drive);
     RUN_TEST(test_arm_switch_input_pinned_false_in_showcase_passthrough_in_drive);
     RUN_TEST(test_showcase_never_arms_where_drive_does);
     RUN_TEST(test_d4_failsafe_flag_truth_table);
