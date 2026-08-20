@@ -154,7 +154,7 @@ parallel re-implementations** — the mapping is 1:1 because it is the same code
 | # | CRSF-path invariant (today) | BT-mode equivalent (this design) |
 |---|---|---|
 | 1 | **Failsafe first.** `FailsafeStateMachine` over (nowMs, frame-arrived, rx-failsafe-flag); no frame for 500 ms ⇒ Safe; Safe ⇒ throttle neutral (ESC 1500 µs), steering center, DRS closed; latched until the link PROVES itself: continuously good 150 ms **and** ≥5 frame-bearing ticks with no >60 ms intra-proof gap (2026-08-20 hardening — one CRC-valid frame can never reach Active; loss timing unchanged) (`lib/failsafe/include/failsafe/FailsafeStateMachine.hpp`, `src/main.cpp` Safe branch). | **Same machine, same instance, same Config.** Inputs become: frame-arrived = "a new report from the bonded pad was consumed this tick"; failsafe-flag = "stack reports the pad disconnected" (latched by `onDisconnectedController`, cleared only by reconnect + first report — mirror of the LQ==0 latch semantics in `lib/crsf/include/crsf/CrsfReceiver.hpp`). Staleness timeout: **same 500 ms**, same ~540 ms worst-case detection incl. tick quantization (`src/main.cpp` control-tick comment). Same Safe branch writes the same outputs. Failsafe timing stays **non-tunable** in both modes (deliberately outside `settings::Settings`, `lib/settings/include/settings/Settings.hpp`). |
-| 2 | **Arm gate.** Throttle passes only when arm control ON *and* throttle seen at neutral since last disarm (`lib/channels/include/channels/ArmGate.hpp`). | **Same `ArmGate` instance**, same `update(armSwitchOn, throttle, forceDisarm)` call in the same tick position. `armSwitchOn` comes from a pad **arm ritual** (below) instead of ch5. Neutral latch, forceDisarm-on-Safe, no-arm-into-full-throttle: unchanged code. |
+| 2 | **Arm gate.** Throttle passes only when arm control ON *and* throttle seen at neutral since last disarm (`lib/channels/include/channels/ArmGate.hpp`). | **Same `ArmGate` instance**, same `update(armSwitchOn, throttle, forceDisarm)` call in the same tick position. `armSwitchOn` comes from a pad **arm ritual** (below) instead of ch5. Neutral latch, forceDisarm-on-Safe, no-arm-into-full-throttle, and the 2026-08-20 failsafe-episode toggle latch (see §3.2): unchanged code, one gate for both heads. |
 | 3 | **ESC boot arm sequence.** Neutral held `bootArmHoldMs` = 2000 ms from the first `setThrottle()` (`lib/outputs/include/outputs/EscOutput.hpp`). | **Untouched.** `EscOutput` neither knows nor cares which mode feeds it. |
 | 4 | **Battery telemetry warn-only.** `BatteryMonitor` monitors, warns via link2 `lowBattery`; never auto-cuts (repo `CLAUDE.md` 6.4). | **Untouched.** Same sampling cadence, same link2 flag; board #2's pulsing lights remain the giftee-visible warning (there is no HUD in this scenario). Optional pad-side mirror (lightbar/rumble) is output-only garnish — §6. |
 
@@ -180,12 +180,19 @@ reason this design specifies DS4 only).
   Failsafe episode → OFF (see below). PS button is deliberately unmapped (it is the pad's
   own power/pairing button; long-press powers the pad off, which lands in the disconnect →
   failsafe path).
-- **Stricter-than-CRSF choice, flagged for the owner:** on the CRSF path a failsafe episode
-  does *not* clear the physical arm switch — recovery re-arms once neutral is re-seen. For
-  the giftee demo this design proposes the ritual latch **is** cleared by any failsafe
-  episode, so recovery requires the full deliberate hold again. This is strictly more
-  conservative than the CRSF semantics (never weaker); if the owner prefers exact-mirror
-  semantics instead, it is a one-line change. Open decision §8-3.
+- **Failsafe interaction (history + current state):** as originally written, this bullet
+  flagged a stricter-than-CRSF choice — back then a CRSF failsafe episode did *not* clear
+  the effect of the physical arm switch (recovery re-armed once neutral was re-seen),
+  while this design proposed the ritual latch **is** cleared by any failsafe episode.
+  The ritual variant was ratified as §8-3 (2026-08-17). Subsequently the owner ratified
+  the same principle for the CRSF drive path too (**2026-08-20**): a failsafe episode now
+  latches a disarm in `channels::ArmGate` itself — re-arming requires the arm switch seen
+  OFF then ON again (on the proven link), plus the neutral-stick rule as always; a boot
+  with the switch already ON demands the same toggle. The two paths are now aligned in
+  principle: after a dropout, *both* demand a deliberate operator action to re-arm. In
+  BT mode the gate's switch-toggle latch is inert-by-construction: the ritual clear drops
+  `armSwitch` to false, which is exactly the OFF observation the latch wants, and the
+  fresh L1+R1 hold is the ON — the ritual's own semantics are unchanged (test-pinned).
 
 ### 3.3 Reduced demo envelope
 

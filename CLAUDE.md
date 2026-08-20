@@ -101,7 +101,11 @@ pull-up); avoid GPIO 6–11 (flash) and be careful with strapping pins 0/2/12/15
 
 1. **Failsafe first** — link-loss → throttle neutral, proven before any feature.
 2. **Arm gate** — throttle stays neutral until the arm switch is ON *and* throttle has been
-   seen at neutral once (no arm-into-full-throttle).
+   seen at neutral once (no arm-into-full-throttle). A failsafe episode LATCHES a disarm
+   (OWNER-RATIFIED 2026-08-20): re-arming afterwards additionally requires the arm switch
+   seen OFF and then ON again on the proven link — link recovery with the switch still on
+   never re-arms by itself, and a boot with the switch already ON demands the same toggle
+   (`lib/channels/include/channels/ArmGate.hpp`).
 3. **ESC boot arm sequence** — neutral for N ms before accepting throttle.
 4. **Battery telemetry is monitoring only** — warn, never auto-cut.
 
