@@ -76,7 +76,17 @@ void Bluepad32PadSource::handleConnected(Controller* ctl) {
         return;
     }
     active_ = ctl;
-    haveBaselineSnapshot_ = false; // next report is "the first" for freshness
+    // Adversarial-review F1: seed the freshness baseline from the CONNECT-TIME
+    // state, so "new report" requires an actual post-connect state change. A
+    // bare stack (re)connect claim therefore yields ZERO frames -- it can
+    // neither clear the PadLinkMonitor disconnect latch nor grant the failsafe
+    // machine a phantom frame (the seam contract in btpad/IPadSource.hpp).
+    // Cost: at most one genuine report is deferred by one poll if it is
+    // byte-identical to the connect-time state (a streaming DS4's IMU noise
+    // makes that transient). Verified at the bench by the BT1
+    // reconnect-without-input probe (design §5).
+    lastSnapshot_ = captureSnapshot(*ctl);
+    haveBaselineSnapshot_ = true;
 }
 
 void Bluepad32PadSource::handleDisconnected(Controller* ctl) {
@@ -99,6 +109,27 @@ bool Bluepad32PadSource::snapshotsEqual(const Snapshot& a, const Snapshot& b) {
            a.battery == b.battery;
 }
 
+Bluepad32PadSource::Snapshot Bluepad32PadSource::captureSnapshot(const Controller& ctl) {
+    Snapshot s;
+    s.axisX = ctl.axisX();
+    s.axisY = ctl.axisY();
+    s.axisRX = ctl.axisRX();
+    s.axisRY = ctl.axisRY();
+    s.brake = ctl.brake();
+    s.throttle = ctl.throttle();
+    s.buttons = ctl.buttons();
+    s.miscButtons = ctl.miscButtons();
+    s.dpad = ctl.dpad();
+    s.gyro[0] = ctl.gyroX();
+    s.gyro[1] = ctl.gyroY();
+    s.gyro[2] = ctl.gyroZ();
+    s.accel[0] = ctl.accelX();
+    s.accel[1] = ctl.accelY();
+    s.accel[2] = ctl.accelZ();
+    s.battery = ctl.battery();
+    return s;
+}
+
 bool Bluepad32PadSource::poll(btpad::PadFrame& frame) {
     if (!began_) {
         connectedForCycle_ = false;
@@ -113,7 +144,9 @@ bool Bluepad32PadSource::poll(btpad::PadFrame& frame) {
     if (disconnectEventPending_) {
         disconnectEventPending_ = false;
         connectedForCycle_ = false;
-        haveBaselineSnapshot_ = false;
+        // Baseline bookkeeping deliberately untouched here: handleConnected
+        // re-seeds it on every (re)connect (review F1), so a stale baseline
+        // can never leak across an episode.
         return false;
     }
 
@@ -122,33 +155,18 @@ bool Bluepad32PadSource::poll(btpad::PadFrame& frame) {
         return false;
     }
 
-    // Freshness = the full snapshot changed since the last poll (see the
-    // header note: 3.10.x exposes no report counter, DS4 IMU noise makes
-    // every real report differ, and a frozen snapshot fails SAFE via the
-    // 500 ms staleness failsafe).
-    Snapshot now;
-    now.axisX = active_->axisX();
-    now.axisY = active_->axisY();
-    now.axisRX = active_->axisRX();
-    now.axisRY = active_->axisRY();
-    now.brake = active_->brake();
-    now.throttle = active_->throttle();
-    now.buttons = active_->buttons();
-    now.miscButtons = active_->miscButtons();
-    now.dpad = active_->dpad();
-    now.gyro[0] = active_->gyroX();
-    now.gyro[1] = active_->gyroY();
-    now.gyro[2] = active_->gyroZ();
-    now.accel[0] = active_->accelX();
-    now.accel[1] = active_->accelY();
-    now.accel[2] = active_->accelZ();
-    now.battery = active_->battery();
-
-    if (haveBaselineSnapshot_ && snapshotsEqual(now, lastSnapshot_)) {
-        return false; // nothing new delivered by the stack
+    // Freshness = the full snapshot changed since the connect-seeded baseline
+    // / last consumed report (see the header note: 3.10.x exposes no report
+    // counter, DS4 IMU noise makes every real report differ, and a frozen
+    // snapshot fails SAFE via the 500 ms staleness failsafe).
+    const Snapshot now = captureSnapshot(*active_);
+    if (!haveBaselineSnapshot_ || snapshotsEqual(now, lastSnapshot_)) {
+        // !haveBaselineSnapshot_ cannot happen after begin() + a connect
+        // (handleConnected always seeds); treat it as "nothing new" anyway --
+        // the fail-safe direction -- rather than fabricating a frame.
+        return false;
     }
     lastSnapshot_ = now;
-    haveBaselineSnapshot_ = true;
 
     // Explicit per-control mapping onto the btpad contract bits -- never a
     // raw bitmask copy (PadFrame.hpp rule). DS4 via Bluepad32: Square sits on

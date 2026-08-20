@@ -16,6 +16,11 @@ namespace btpad {
 //    into `frame`. "New report" means the stack delivered one -- NOT "the
 //    values changed": a DS4 streams reports continuously (design §3.1), and
 //    constant-input reports must still count, or staleness would nuisance-trip.
+//    A bare (re)connect claim must NEVER manufacture a report by itself
+//    (review F1): the first poll()==true after a connect requires a genuine
+//    post-connect report, because the failsafe chain treats poll()==true as
+//    "the pad is really talking" -- it clears the disconnect latch and feeds
+//    the frame-timeout clock.
 //  - connected() is true while exactly one controller is connected (the
 //    single-pad policy, design §6.1). A disconnect observed by the stack's
 //    callback must be visible as at least one poll cycle with

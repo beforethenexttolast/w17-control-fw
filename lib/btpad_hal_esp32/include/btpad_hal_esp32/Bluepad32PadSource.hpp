@@ -30,6 +30,22 @@ namespace btpad_hal_esp32 {
 // failsafe -- the car stops. The BT1 bench gate measures the real idle
 // snapshot-diff rate; if it ever shows gaps, the fix is a report-seqno patch
 // in the platform layer (custom-core rebuild), never a relaxation here.
+//
+// Review F1 (2026-08-17): handleConnected seeds the baseline from the
+// CONNECT-TIME controller state, so a bare stack (re)connect claim yields
+// zero frames -- "new" requires an actual post-connect state change. Without
+// the seed, the first poll after any reconnect counted as a phantom report,
+// clearing the PadLinkMonitor latch and allowing up to ~650 ms of
+// Active-with-neutral-controls before staleness re-tripped (fail-safe, but a
+// seam-contract violation). NATIVE-COVERAGE LIMITATION, stated honestly:
+// this fix lives inside the Bluepad32-specific freshness derivation, which
+// compiles only against the BTstack custom core; test/mocks/FakePadSource is
+// a PARALLEL implementation of the seam, so no native test can execute this
+// code path. The pure-side latch semantics ("a mere connected-again claim
+// must not clear it") are already pinned natively (test_link_monitor_* and
+// the harness recovery test in test_btpad); THIS wrapper's end of the
+// contract is verified by the BT1 reconnect-without-input bench probe
+// (design §5).
 class Bluepad32PadSource : public btpad::IPadSource {
 public:
     // Call once, in BT-mode setup() only (CRSF mode must never call this --
@@ -73,6 +89,8 @@ private:
         uint8_t battery = 0;
     };
     static bool snapshotsEqual(const Snapshot& a, const Snapshot& b);
+    // Reads the controller's full current state (all accessors are const).
+    static Snapshot captureSnapshot(const Controller& ctl);
 
     void handleConnected(Controller* ctl);
     void handleDisconnected(Controller* ctl);

@@ -330,6 +330,11 @@ margin on both cores; pairing/reconnect reliability; `enableNewBluetoothConnecti
 lockout actually holding (there is a filed report of it not functioning in at least one
 version — bluepad32 #130); real disconnect → outputs-safe latency (walk-away and
 pad-power-off cases); DS4 idle report-rate assumption (§3.1); DS4 auto-sleep behavior;
+**reconnect-without-input probe (review F1, 2026-08-17):** power the pad back on / walk
+back into range and touch NOTHING — the car must stay in failsafe until genuine
+post-connect reports flow (the wrapper seeds its freshness baseline at connect time, so a
+bare stack reconnect claim must yield zero frames; this probe is the hardware-side proof,
+since no native test can execute the custom-core wrapper path);
 3.3 V rail draw with BT active; ELRS-RX-powered coexistence; genuine-vs-clone DS4 behavior
 (clones are known-flaky — bluepad32 #127; spec genuine Sony).
 
