@@ -134,15 +134,16 @@ failsafe::FailsafeStateMachine failsafeStateMachine;
 //
 // Selector composition rule: kBootStrapReading is a compile-time BENCH
 // OVERRIDE. Floating (the default) means "no override": builds without a
-// wired strap resolve to Drive (byte-identical shipped behavior), and the
-// W17_BT_SHOWOFF envs then read the PHYSICAL GPIO27 strap once in setup()
-// (LAPTOP/SOLO, OWNER-DECIDED(BT-2); sampling policy + classification in
-// lib/bootmode). A non-Floating value here (e.g. ShowPosition on a bench
-// build) wins over the strap -- which is also how the native tests and the
-// soundlight sim exercise SHOWCASE without hardware, unchanged. How
-// SHOWCASE gets a physical selector position is the one open corner:
-// OWNER-PENDING(D3-SHOW-SELECT), proposal in bootmode/BootMode.hpp. The NVS
-// override stays deferred (no settings-blob change in this wave).
+// wired strap resolve to Drive (bit-for-bit today's shipped behavior), and
+// the W17_BT_SHOWOFF envs then read the PHYSICAL SP3T selector once in
+// setup() -- GPIO27 = SOLO (OWNER-DECIDED(BT-2)), GPIO32 = SHOW, center =
+// LAPTOP/Drive; OWNER-RATIFIED(D3-SHOW-SELECT) 2026-08-20, sampling policy
+// + classification in lib/bootmode. A non-Floating value here (e.g.
+// ShowPosition on a bench build) wins over the strap -- which is also how
+// the native tests and the soundlight sim exercise SHOWCASE without
+// hardware, unchanged. The physical switch itself is bench-gated (A2);
+// this build-time seam is the firmware side only. The NVS override stays
+// deferred (no settings-blob change in this wave).
 constexpr bootmode::StrapReading kBootStrapReading = bootmode::StrapReading::Floating;
 #ifdef W17_BT_SHOWOFF
 // Runtime in the BT envs ONLY: written exactly once more in setup() (from
@@ -691,16 +692,19 @@ void setup() {
 
 #ifdef W17_BT_SHOWOFF
     // --- Boot-mode strap read (docs/bt_showoff_design.md §2.2 mechanism A;
-    // OWNER-DECIDED(BT-1) mechanism, OWNER-DECIDED(BT-2) pin GPIO27).
-    // Resolved EXACTLY ONCE, before ANY input stack is initialized;
-    // g_bootMode is never written again. Pull-up + settle + majority-of-N
-    // sampling per the policy constants in bootmode/BootMode.hpp (the ONE
-    // boot-mode seam); every fault direction (open switch, broken wire,
-    // floating pin, tie) lands on Drive, the normal most-tested mode. Runs
-    // only when the compile-time kBootStrapReading is Floating -- a
-    // non-Floating value is a bench override and wins (composition rule at
-    // the definitions above). The delay()s are setup-time only, before the
-    // control loop exists and before the TWDT subscription below.
+    // OWNER-DECIDED(BT-1) mechanism, OWNER-RATIFIED(D3-SHOW-SELECT)
+    // 2026-08-20 SP3T layout: GPIO27 = SOLO (BT-2, unchanged), GPIO32 =
+    // SHOW, center = LAPTOP/Drive). Resolved EXACTLY ONCE, before ANY input
+    // stack is initialized; g_bootMode is never written again. Pull-ups +
+    // settle + majority-of-N sampling of BOTH pins per the policy constants
+    // in bootmode/BootMode.hpp (the ONE boot-mode seam); every fault
+    // direction (open switch, broken wire, floating pin, tie, both pins low
+    // -- a harness fault the SP3T cannot produce) lands on Drive, the
+    // normal most-tested mode. Runs only when the compile-time
+    // kBootStrapReading is Floating -- a non-Floating value is a bench
+    // override and wins (composition rule at the definitions above). The
+    // delay()s are setup-time only, before the control loop exists and
+    // before the TWDT subscription below.
 #ifdef W17_SIM_PAD_FEEDER
     // Sim harness (design §7): no strap switch exists in the sim, and the
     // feeder's whole purpose is to exercise the BT head -- force BT_SOLO.
@@ -709,14 +713,17 @@ void setup() {
 #else
     if (kBootStrapReading == bootmode::StrapReading::Floating) {
         pinMode(pinmap::kBtModeStrapPin, INPUT_PULLUP);
+        pinMode(pinmap::kShowModeStrapPin, INPUT_PULLUP);
         delay(bootmode::kStrapSettleMs);
-        bool levelsHigh[bootmode::kStrapSampleCount];
+        bool soloLevelsHigh[bootmode::kStrapSampleCount];
+        bool showLevelsHigh[bootmode::kStrapSampleCount];
         for (size_t i = 0; i < bootmode::kStrapSampleCount; ++i) {
-            levelsHigh[i] = (digitalRead(pinmap::kBtModeStrapPin) == HIGH);
+            soloLevelsHigh[i] = (digitalRead(pinmap::kBtModeStrapPin) == HIGH);
+            showLevelsHigh[i] = (digitalRead(pinmap::kShowModeStrapPin) == HIGH);
             delay(bootmode::kStrapSampleSpacingMs);
         }
-        g_bootMode = bootmode::resolve(
-            bootmode::classifyStrapLevels(levelsHigh, bootmode::kStrapSampleCount));
+        g_bootMode = bootmode::resolve(bootmode::classifyStrapLevels(
+            soloLevelsHigh, showLevelsHigh, bootmode::kStrapSampleCount));
     }
 #endif
     // Re-stamp the boot-state wire bit off the now-final mode (the early

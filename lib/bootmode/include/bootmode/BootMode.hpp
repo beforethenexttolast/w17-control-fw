@@ -16,28 +16,22 @@
 // asked, never MORE armed.
 //
 // Selector hardware status: ONE physical selector shared by all modes (D3 /
-// BT-1). The LAPTOP/SOLO strap pin is DECIDED -- GPIO27, OWNER-DECIDED(BT-2)
-// on the BT branch (config/PinMap.hpp kBtModeStrapPin; wiring-atlas
-// reconciliation + the A2/F20 continuity-matrix note remain wiring-time
-// tasks). It is WIRED only by the W17_BT_SHOWOFF prototype envs; every
-// delivery-lineage build keeps the compile-time StrapReading::Floating
-// injection in main.cpp, which resolves to Drive -- byte-identical behavior.
-// The NVS override, if any, stays deferred (no settings-blob change here).
-//
-// OWNER-PENDING(D3-SHOW-SELECT) -- how SHOWCASE is selected, the one open
-// selector corner: the decided GPIO27 strap is a TWO-position switch
-// (LAPTOP = open/pull-up, SOLO = closed to GND), which cannot express a
-// third position. Proposal: replace it with an SP3T slide switch, common to
-// GND, throws on GPIO27 (SOLO) and GPIO32 (SHOW), center = LAPTOP (both
-// open/pulled-up); both-low is electrically impossible from the part but a
-// harness fault -- classify it Floating -> Drive, same fail direction as
-// everything else. Alternatives: a second 2-pos switch on GPIO32, or an ADC
-// ladder on one pin (rejected: analog thresholds in the selector path).
-// Until the owner picks, SHOWCASE remains selectable only via the
-// compile-time injection (exactly how the native tests and any bench build
-// exercise it) -- classifyStrapLevels() below covers the wired
-// LAPTOP/SOLO pin only, and D3-SHOW-SELECT adds the second-pin
-// classification when decided.
+// BT-1) -- OWNER-RATIFIED(D3-SHOW-SELECT) 2026-08-20: an SP3T slide switch,
+// common to GND, throws on GPIO27 = SOLO (the OWNER-DECIDED(BT-2) pin,
+// semantics unchanged) and GPIO32 = SHOW (NEW, config/PinMap.hpp
+// kShowModeStrapPin), center = LAPTOP (both pins open on their internal
+// pull-ups) = Drive, the default. Both-low is electrically impossible from
+// the part, so it is a harness fault -- classified Floating -> Drive, the
+// same fail direction as everything else; ANY ambiguous reading fails to
+// Drive. classifyStrapPin()/combineStrapPins() below are that
+// classification. The strap pins are WIRED only by the W17_BT_SHOWOFF
+// prototype envs; every delivery-lineage build keeps the compile-time
+// StrapReading::Floating injection in main.cpp, which resolves to Drive --
+// bit-for-bit today's Drive behavior (test-pinned). The physical switch
+// itself is bench-gated (A2; wiring-atlas reconciliation + the A2/F20
+// continuity-matrix note remain wiring-time tasks) -- this is the firmware
+// side only. The NVS override, if any, stays deferred (no settings-blob
+// change here).
 //
 // Pure logic: no hardware headers; everything constexpr and natively tested
 // (test/test_bootmode).
@@ -55,9 +49,9 @@ enum class BootMode : uint8_t {
     BtSolo,   // BT pad drive: CRSF UART never opened, arm via pad ritual only
 };
 
-// What the strap read yields after debounce/classification. The electrical
-// mapping of levels to positions for the SHOW position is OWNER-PENDING
-// (D3-SHOW-SELECT above); LAPTOP/SOLO ride the decided GPIO27 strap.
+// What the strap read yields after debounce/classification. Electrical
+// mapping (D3-SHOW-SELECT, ratified 2026-08-20): SOLO = GPIO27 grounded,
+// SHOW = GPIO32 grounded, LAPTOP = neither; anything else is Floating.
 enum class StrapReading : uint8_t {
     Floating,      // unwired, broken, or ambiguous -- MUST resolve to Drive
     DrivePosition, // selector at LAPTOP
@@ -77,26 +71,34 @@ constexpr BootMode resolve(StrapReading reading) {
                : (reading == StrapReading::SoloPosition ? BootMode::BtSolo : BootMode::Drive);
 }
 
-// --- Strap sampling policy + classification (LAPTOP/SOLO pin, GPIO27) ------
+// --- Strap sampling policy + classification (SP3T, GPIO27 + GPIO32) --------
 //
 // The boot-time read the W17_BT_SHOWOFF envs perform (BT design §2.2
-// mechanism A, OWNER-DECIDED(BT-1)): enable the internal pull-up, wait
-// kStrapSettleMs, take kStrapSampleCount samples kStrapSampleSpacingMs
-// apart, classify by STRICT majority. Odd count -> no tie in practice; the
-// classifier still defines ties as Floating (-> Drive).
+// mechanism A, OWNER-DECIDED(BT-1); SP3T layout OWNER-RATIFIED
+// (D3-SHOW-SELECT) 2026-08-20): enable BOTH internal pull-ups, wait
+// kStrapSettleMs, take kStrapSampleCount samples of BOTH pins
+// kStrapSampleSpacingMs apart, classify each pin by STRICT majority, then
+// combine positions. Odd count -> no per-pin tie in practice; the
+// classifier still defines ties as Ambiguous (-> Drive). The mode is
+// resolved from these samples EXACTLY ONCE at boot -- never live-switched.
 inline constexpr uint32_t kStrapSettleMs = 10;
 inline constexpr size_t kStrapSampleCount = 9;
 inline constexpr uint32_t kStrapSampleSpacingMs = 1;
 
-// Sampled electrical levels (true = HIGH) -> position. Pull-up idle HIGH =
-// LAPTOP/Drive; switch closed to GND = SOLO. No samples, null, or a tie
-// classify as Floating -- every fault direction lands on Drive via
-// resolve(). (The SHOW position classifies on a second input once
-// D3-SHOW-SELECT is decided; it deliberately has no electrical mapping here
-// yet.)
-constexpr StrapReading classifyStrapLevels(const bool* levelsHigh, size_t sampleCount) {
+// One strap pin's majority-classified electrical state.
+enum class StrapPinRead : uint8_t {
+    Ambiguous, // no samples, null, or a tie -- a selector-path fault
+    Open,      // strict majority HIGH: throw not engaged (pull-up idle)
+    Grounded,  // strict majority LOW: throw closed to GND
+};
+
+// Sampled electrical levels of ONE pin (true = HIGH) -> pin state. Exactly
+// the pre-D3 single-pin majority vote, now per pin: no data or a tie is
+// Ambiguous, and every Ambiguous ultimately lands on Drive via
+// combineStrapPins() + resolve().
+constexpr StrapPinRead classifyStrapPin(const bool* levelsHigh, size_t sampleCount) {
     if (levelsHigh == nullptr || sampleCount == 0) {
-        return StrapReading::Floating;
+        return StrapPinRead::Ambiguous;
     }
     size_t lows = 0;
     for (size_t i = 0; i < sampleCount; ++i) {
@@ -105,12 +107,41 @@ constexpr StrapReading classifyStrapLevels(const bool* levelsHigh, size_t sample
         }
     }
     if (lows * 2 > sampleCount) {
-        return StrapReading::SoloPosition; // strict majority LOW: switch at SOLO
+        return StrapPinRead::Grounded; // strict majority LOW: throw engaged
     }
     if ((sampleCount - lows) * 2 > sampleCount) {
-        return StrapReading::DrivePosition; // strict majority HIGH: LAPTOP / open
+        return StrapPinRead::Open; // strict majority HIGH: idle on pull-up
     }
-    return StrapReading::Floating; // tie: ambiguous -> Drive via resolve()
+    return StrapPinRead::Ambiguous; // tie: fault -> Drive downstream
+}
+
+// The SP3T truth table (D3-SHOW-SELECT): SOLO pin = GPIO27, SHOW pin =
+// GPIO32, common to GND, center = LAPTOP (both pins Open on the pull-ups).
+// Total over uint8_t (a corrupted value can be cast straight in): ONLY the
+// two clean one-throw patterns select a non-Drive position. Both-Grounded
+// is electrically impossible from the part, so it is a harness fault; that,
+// any Ambiguous pin, and any out-of-range value classify Floating -> Drive
+// via resolve() -- the fail-toward-drive rule, unweakened.
+constexpr StrapReading combineStrapPins(StrapPinRead soloPin, StrapPinRead showPin) {
+    if (soloPin == StrapPinRead::Open && showPin == StrapPinRead::Open) {
+        return StrapReading::DrivePosition; // center: LAPTOP
+    }
+    if (soloPin == StrapPinRead::Grounded && showPin == StrapPinRead::Open) {
+        return StrapReading::SoloPosition; // GPIO27 throw: BT show-off
+    }
+    if (soloPin == StrapPinRead::Open && showPin == StrapPinRead::Grounded) {
+        return StrapReading::ShowPosition; // GPIO32 throw: showcase
+    }
+    return StrapReading::Floating; // both-low / any ambiguity / garbage -> Drive
+}
+
+// Both pins' sampled levels -> position, one call (what main.cpp feeds from
+// the boot-time sample arrays).
+constexpr StrapReading classifyStrapLevels(const bool* soloLevelsHigh,
+                                           const bool* showLevelsHigh,
+                                           size_t sampleCount) {
+    return combineStrapPins(classifyStrapPin(soloLevelsHigh, sampleCount),
+                            classifyStrapPin(showLevelsHigh, sampleCount));
 }
 
 // --- Policy 1: the arm input (the one line that de-fangs showcase) ---------

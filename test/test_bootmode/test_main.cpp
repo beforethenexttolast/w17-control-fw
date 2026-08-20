@@ -16,10 +16,10 @@ void tearDown() {}
 // --- Resolver truth table ---------------------------------------------------
 
 // Fail-toward-drive (BT design 2.2-A doctrine): ONLY an unambiguous SHOW
-// reading selects Showcase. Floating (the compile-time default while the
-// strap pin stays OWNER-PENDING), the LAPTOP position, and any garbage value
-// a corrupted read could cast in all resolve to Drive -- a selector fault
-// makes the car less entertaining, never more armed.
+// reading selects Showcase. Floating (the compile-time default every
+// delivery-lineage build injects), the LAPTOP position, and any garbage
+// value a corrupted read could cast in all resolve to Drive -- a selector
+// fault makes the car less entertaining, never more armed.
 void test_resolver_truth_table_floats_to_drive() {
     TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(StrapReading::Floating));
     TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(StrapReading::DrivePosition));
@@ -43,41 +43,157 @@ void test_resolver_truth_table_floats_to_drive() {
                   "SOLO strap must resolve to BtSolo at compile time");
 }
 
-// --- Strap classification (the LAPTOP/SOLO pin the BT envs sample) -----------
-// Recast of the former btpad::resolveBootMode suite (2026-08-17 three-mode
-// unification): the majority vote now classifies LEVELS -> POSITION here, and
-// resolve() maps position -> mode, so the electrical layer and the mode layer
-// are separately testable. Fail directions unchanged: no data / tie ->
-// Floating -> Drive.
+// --- Strap classification (the SP3T selector the BT envs sample) -------------
+// Recast twice: the former btpad::resolveBootMode suite (2026-08-17 three-mode
+// unification) became levels -> position; D3-SHOW-SELECT (owner-ratified
+// 2026-08-20) split it again into per-pin majority (classifyStrapPin) + SP3T
+// combination (combineStrapPins), so the electrical layer, the selector
+// truth table, and the mode layer are separately testable. Fail directions
+// unchanged: no data / tie / anything ambiguous -> Floating -> Drive.
 
-void test_classify_high_floating_or_empty_is_drive() {
-    const bool allHigh[9] = {true, true, true, true, true, true, true, true, true};
-    TEST_ASSERT_EQUAL(StrapReading::DrivePosition, bootmode::classifyStrapLevels(allHigh, 9));
-    TEST_ASSERT_EQUAL(StrapReading::Floating, bootmode::classifyStrapLevels(nullptr, 9));
-    TEST_ASSERT_EQUAL(StrapReading::Floating, bootmode::classifyStrapLevels(allHigh, 0));
-    // End to end: every one of those lands on Drive.
-    TEST_ASSERT_EQUAL(BootMode::Drive,
-                      bootmode::resolve(bootmode::classifyStrapLevels(allHigh, 9)));
-    TEST_ASSERT_EQUAL(BootMode::Drive,
-                      bootmode::resolve(bootmode::classifyStrapLevels(nullptr, 9)));
+namespace {
+// Canned per-pin sample arrays, shared by the classification tests below.
+const bool kAllHigh[9] = {true, true, true, true, true, true, true, true, true};
+const bool kAllLow[9] = {};
+// 5 lows of 9: strict majority despite bounce.
+const bool kBouncyLow[9] = {true, false, false, true, false, false, true, false, true};
+// 4 lows of 9: minority -- still Open.
+const bool kMinorityLow[9] = {false, true, true, false, true, false, true, false, true};
+const bool kTie[4] = {false, false, true, true};
+} // namespace
+
+void test_classify_pin_majority_and_faults() {
+    using bootmode::StrapPinRead;
+    TEST_ASSERT_EQUAL(StrapPinRead::Open, bootmode::classifyStrapPin(kAllHigh, 9));
+    TEST_ASSERT_EQUAL(StrapPinRead::Grounded, bootmode::classifyStrapPin(kAllLow, 9));
+    TEST_ASSERT_EQUAL(StrapPinRead::Grounded, bootmode::classifyStrapPin(kBouncyLow, 9));
+    TEST_ASSERT_EQUAL(StrapPinRead::Open, bootmode::classifyStrapPin(kMinorityLow, 9));
+    // Faults: null, empty, tie -> Ambiguous.
+    TEST_ASSERT_EQUAL(StrapPinRead::Ambiguous, bootmode::classifyStrapPin(nullptr, 9));
+    TEST_ASSERT_EQUAL(StrapPinRead::Ambiguous, bootmode::classifyStrapPin(kAllHigh, 0));
+    TEST_ASSERT_EQUAL(StrapPinRead::Ambiguous, bootmode::classifyStrapPin(kTie, 4));
 }
 
-void test_classify_majority_low_is_solo() {
-    const bool allLow[9] = {};
-    TEST_ASSERT_EQUAL(StrapReading::SoloPosition, bootmode::classifyStrapLevels(allLow, 9));
-    // 5 lows of 9: strict majority despite bounce.
-    const bool bouncy[9] = {true, false, false, true, false, false, true, false, true};
-    TEST_ASSERT_EQUAL(StrapReading::SoloPosition, bootmode::classifyStrapLevels(bouncy, 9));
+// The full SP3T position truth table, levels end to end: neither pin
+// grounded = LAPTOP/Drive, GPIO27 grounded = SOLO, GPIO32 grounded = SHOW,
+// both grounded = harness fault -> Floating -> Drive.
+void test_sp3t_position_truth_table() {
+    // Center: both pins idle HIGH on their pull-ups.
+    TEST_ASSERT_EQUAL(StrapReading::DrivePosition,
+                      bootmode::classifyStrapLevels(kAllHigh, kAllHigh, 9));
+    // SOLO throw: GPIO27 grounded, GPIO32 idle (bouncy majority still counts).
+    TEST_ASSERT_EQUAL(StrapReading::SoloPosition,
+                      bootmode::classifyStrapLevels(kAllLow, kAllHigh, 9));
+    TEST_ASSERT_EQUAL(StrapReading::SoloPosition,
+                      bootmode::classifyStrapLevels(kBouncyLow, kAllHigh, 9));
+    // SHOW throw: GPIO32 grounded, GPIO27 idle.
+    TEST_ASSERT_EQUAL(StrapReading::ShowPosition,
+                      bootmode::classifyStrapLevels(kAllHigh, kAllLow, 9));
+    TEST_ASSERT_EQUAL(StrapReading::ShowPosition,
+                      bootmode::classifyStrapLevels(kAllHigh, kBouncyLow, 9));
+    // BOTH grounded: the part cannot do this -- harness fault, ambiguous.
+    TEST_ASSERT_EQUAL(StrapReading::Floating,
+                      bootmode::classifyStrapLevels(kAllLow, kAllLow, 9));
+
+    // End to end through resolve(): the four positions land on the four
+    // outcomes, with both-grounded on Drive.
+    TEST_ASSERT_EQUAL(BootMode::Drive,
+                      bootmode::resolve(bootmode::classifyStrapLevels(kAllHigh, kAllHigh, 9)));
     TEST_ASSERT_EQUAL(BootMode::BtSolo,
-                      bootmode::resolve(bootmode::classifyStrapLevels(allLow, 9)));
+                      bootmode::resolve(bootmode::classifyStrapLevels(kAllLow, kAllHigh, 9)));
+    TEST_ASSERT_EQUAL(BootMode::Showcase,
+                      bootmode::resolve(bootmode::classifyStrapLevels(kAllHigh, kAllLow, 9)));
+    TEST_ASSERT_EQUAL(BootMode::Drive,
+                      bootmode::resolve(bootmode::classifyStrapLevels(kAllLow, kAllLow, 9)));
 }
 
-void test_classify_tie_or_minority_low_fails_toward_drive() {
-    const bool minority[9] = {false, true, true, false, true, false, true, false, true}; // 4 lows
-    TEST_ASSERT_EQUAL(StrapReading::DrivePosition, bootmode::classifyStrapLevels(minority, 9));
-    const bool tie[4] = {false, false, true, true};
-    TEST_ASSERT_EQUAL(StrapReading::Floating, bootmode::classifyStrapLevels(tie, 4));
-    TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(bootmode::classifyStrapLevels(tie, 4)));
+// Every fault injection lands on Drive: null/empty/tied samples on either
+// pin (or both), and out-of-range StrapPinRead values cast straight into the
+// combiner (it is total over the underlying byte, like resolve()).
+void test_sp3t_fault_injections_fail_toward_drive() {
+    using bootmode::StrapPinRead;
+    // Per-pin data faults, each side, both sides -- including the nasty
+    // asymmetric ones where the OTHER pin reads a clean throw.
+    const StrapReading faultReads[] = {
+        bootmode::classifyStrapLevels(nullptr, nullptr, 9),
+        bootmode::classifyStrapLevels(nullptr, kAllHigh, 9),
+        bootmode::classifyStrapLevels(kAllHigh, nullptr, 9),
+        bootmode::classifyStrapLevels(nullptr, kAllLow, 9), // SHOW looks thrown, SOLO unknown
+        bootmode::classifyStrapLevels(kAllLow, nullptr, 9), // SOLO looks thrown, SHOW unknown
+        bootmode::classifyStrapLevels(kAllHigh, kAllHigh, 0),
+        bootmode::classifyStrapLevels(kTie, kAllHigh, 4),
+        bootmode::classifyStrapLevels(kAllHigh, kTie, 4),
+        bootmode::classifyStrapLevels(kTie, kTie, 4),
+        bootmode::classifyStrapLevels(kTie, kAllLow, 4), // ambiguous + thrown: still no
+    };
+    for (const StrapReading r : faultReads) {
+        TEST_ASSERT_EQUAL(StrapReading::Floating, r);
+        TEST_ASSERT_EQUAL(BootMode::Drive, bootmode::resolve(r));
+    }
+    // Corrupted pin-read bytes: any value that is not exactly the two clean
+    // one-throw patterns (or clean center) combines to Floating.
+    for (int solo = 0; solo <= 255; ++solo) {
+        for (int show = 0; show <= 255; show += (show < 8 ? 1 : 37)) {
+            const auto s = static_cast<StrapPinRead>(solo);
+            const auto h = static_cast<StrapPinRead>(show);
+            const StrapReading combined = bootmode::combineStrapPins(s, h);
+            if (s == StrapPinRead::Open && h == StrapPinRead::Open) {
+                TEST_ASSERT_EQUAL(StrapReading::DrivePosition, combined);
+            } else if (s == StrapPinRead::Grounded && h == StrapPinRead::Open) {
+                TEST_ASSERT_EQUAL(StrapReading::SoloPosition, combined);
+            } else if (s == StrapPinRead::Open && h == StrapPinRead::Grounded) {
+                TEST_ASSERT_EQUAL(StrapReading::ShowPosition, combined);
+            } else {
+                TEST_ASSERT_EQUAL(StrapReading::Floating, combined);
+            }
+        }
+    }
+}
+
+// The no-strap delivery pin: with nothing wired (or the compile-time
+// Floating injection every delivery-lineage build keeps), the resolved mode
+// is Drive -- bit-for-bit today's shipped behavior. Compile-time provable,
+// so it is pinned with static_asserts as well as runtime checks.
+void test_no_straps_resolves_to_todays_drive() {
+    // The delivery seam: main.cpp's constexpr Floating injection.
+    static_assert(bootmode::resolve(bootmode::StrapReading::Floating) == BootMode::Drive,
+                  "delivery builds (Floating injection) must constant-fold to Drive");
+    // The runtime seam with an unwired/floating harness: ambiguous pins.
+    static_assert(bootmode::combineStrapPins(bootmode::StrapPinRead::Ambiguous,
+                                             bootmode::StrapPinRead::Ambiguous) ==
+                      bootmode::StrapReading::Floating,
+                  "unwired straps must classify Floating");
+    // And the center position (straps wired, switch at LAPTOP) is Drive too.
+    static_assert(bootmode::combineStrapPins(bootmode::StrapPinRead::Open,
+                                             bootmode::StrapPinRead::Open) ==
+                      bootmode::StrapReading::DrivePosition,
+                  "center/LAPTOP must classify DrivePosition");
+    TEST_ASSERT_EQUAL(BootMode::Drive,
+                      bootmode::resolve(bootmode::classifyStrapLevels(kAllHigh, kAllHigh, 9)));
+}
+
+// Latch-once-at-boot doctrine, mirrored at main.cpp's composition level: the
+// mode is resolved from the BOOT-TIME sample arrays exactly once; a selector
+// that later reads differently changes NOTHING because nothing ever
+// re-classifies (g_bootMode is written once in setup() and never again --
+// changing mode = key cycle). The test plays main.cpp's exact composition:
+// resolve once from boot samples, then prove the post-boot samples WOULD
+// classify differently while the latched mode is untouched.
+void test_boot_mode_latches_once_at_boot() {
+    // Boot: switch at SHOW.
+    const BootMode latched =
+        bootmode::resolve(bootmode::classifyStrapLevels(kAllHigh, kAllLow, 9));
+    TEST_ASSERT_EQUAL(BootMode::Showcase, latched);
+
+    // Mid-session the giftee slides the switch to SOLO. The samples would
+    // classify differently...
+    TEST_ASSERT_EQUAL(StrapReading::SoloPosition,
+                      bootmode::classifyStrapLevels(kAllLow, kAllHigh, 9));
+    // ...but no re-resolution exists: the latched mode is still Showcase,
+    // and every policy keeps answering for Showcase.
+    TEST_ASSERT_EQUAL(BootMode::Showcase, latched);
+    TEST_ASSERT_FALSE(bootmode::armSwitchInput(latched, true));
+    TEST_ASSERT_TRUE(bootmode::link2ShowcaseFlag(latched));
 }
 
 // --- Policy 1: the arm input ------------------------------------------------
@@ -281,6 +397,29 @@ void test_d4_with_real_fsm_never_linked_then_lost_then_relinked() {
                                                   fsm.hasEverLinked()));
 }
 
+// D3 -> D4 regression: SHOWCASE selected via the NEW physical strap path
+// (GPIO32 throw) reaches exactly the ratified showcase semantics -- the same
+// mode value the compile-time bench injection produces, so every D4/policy
+// behavior already pinned above applies verbatim to a strap-selected boot.
+void test_showcase_via_strap_path_has_d4_semantics() {
+    const BootMode mode =
+        bootmode::resolve(bootmode::classifyStrapLevels(kAllHigh, kAllLow, 9));
+    TEST_ASSERT_EQUAL(BootMode::Showcase, mode);
+    // Identical to the bench-injection route (one mode model, no parallel path).
+    TEST_ASSERT_EQUAL(bootmode::resolve(StrapReading::ShowPosition), mode);
+
+    // Policy 1: structurally disarmed -- the hostile arming scenario that
+    // arms Drive never arms a strap-selected Showcase.
+    TEST_ASSERT_FALSE(scenarioEverArms(mode));
+    // Policy 2: the D4 flag rows for showcase (shelf never hazards; a dead
+    // table radio is still told).
+    TEST_ASSERT_FALSE(bootmode::link2FailsafeFlag(mode, true, false));
+    TEST_ASSERT_TRUE(bootmode::link2FailsafeFlag(mode, true, true));
+    TEST_ASSERT_FALSE(bootmode::link2FailsafeFlag(mode, false, true));
+    // Policy 3: the showcase wire bit rides.
+    TEST_ASSERT_TRUE(bootmode::link2ShowcaseFlag(mode));
+}
+
 // --- Policy 3: the showcase wire flag ----------------------------------------
 
 void test_showcase_flag_is_the_boot_mode_and_nothing_else() {
@@ -294,13 +433,16 @@ void test_showcase_flag_is_the_boot_mode_and_nothing_else() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_resolver_truth_table_floats_to_drive);
-    RUN_TEST(test_classify_high_floating_or_empty_is_drive);
-    RUN_TEST(test_classify_majority_low_is_solo);
-    RUN_TEST(test_classify_tie_or_minority_low_fails_toward_drive);
+    RUN_TEST(test_classify_pin_majority_and_faults);
+    RUN_TEST(test_sp3t_position_truth_table);
+    RUN_TEST(test_sp3t_fault_injections_fail_toward_drive);
+    RUN_TEST(test_no_straps_resolves_to_todays_drive);
+    RUN_TEST(test_boot_mode_latches_once_at_boot);
     RUN_TEST(test_arm_switch_input_pinned_false_in_showcase_passthrough_in_drive);
     RUN_TEST(test_showcase_never_arms_where_drive_does);
     RUN_TEST(test_d4_failsafe_flag_truth_table);
     RUN_TEST(test_d4_with_real_fsm_never_linked_then_lost_then_relinked);
+    RUN_TEST(test_showcase_via_strap_path_has_d4_semantics);
     RUN_TEST(test_showcase_flag_is_the_boot_mode_and_nothing_else);
     return UNITY_END();
 }
