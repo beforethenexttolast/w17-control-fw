@@ -448,6 +448,129 @@ void test_recovery_needs_reconnect_report_and_continuous_good_window() {
     TEST_ASSERT_EQUAL(failsafe::State::Active, h.tick(1170)); // 150 ms after 1020
 }
 
+// --- The native twin of the esp32dev_simbt scripted session ------------------
+// (src/SimPadFeeder.cpp, design §7 sim stage, review F2). Same beats, driven
+// through the same pure modules the BT head wires, in the same per-pass order
+// as loopBtPad: poll -> monitor -> decode-on-report -> disconnect-clears-
+// ritual -> failsafe -> arm gate -> Safe-clears-ritual. main.cpp's wiring
+// itself is covered by the esp32dev_simbt BUILD (stock core, no Bluepad32)
+// plus the Wokwi serial narration; this test pins the behavioral sequence.
+void test_full_session_mirrors_sim_pad_feeder_beats() {
+    test_mocks::FakePadSource src;
+    PadLinkMonitor mon;
+    failsafe::FailsafeStateMachine fsm; // default Config: 500/150, as everywhere
+    PadDecoder dec;                     // default armHoldMs = 1000
+    channels::ArmGate gate;
+    Controls controls;
+    bool frameSinceTick = false;
+    bool armed = false;
+    failsafe::State st = failsafe::State::Safe;
+
+    auto pass = [&](uint32_t t) { // one loopBtPad pass + control tick
+        btpad::PadFrame f;
+        const bool newReport = src.poll(f);
+        mon.update(newReport, src.connected());
+        frameSinceTick |= newReport;
+        if (newReport) {
+            controls = dec.decode(f, t);
+        }
+        if (!src.connected()) {
+            dec.forceDisarmRitual();
+        }
+        st = fsm.update(t, frameSinceTick, mon.padSignalsFailsafe());
+        frameSinceTick = false;
+        armed = gate.update(controls.armSwitch, controls.throttle,
+                            /*forceDisarm=*/st == failsafe::State::Safe);
+        if (st == failsafe::State::Safe) {
+            dec.forceDisarmRitual();
+        }
+    };
+
+    // Beat A -- awaiting pad: silent + disconnected => Safe, disarmed.
+    for (uint32_t t = 0; t <= 480; t += 20) {
+        pass(t);
+    }
+    TEST_ASSERT_EQUAL(failsafe::State::Safe, st);
+    TEST_ASSERT_FALSE(armed);
+
+    // Beat B -- connect + neutral stream: Active after 150 ms, still disarmed.
+    src.setConnected(true);
+    for (uint32_t t = 500; t <= 640; t += 20) {
+        src.scriptReport(PadFrame{});
+        pass(t);
+        TEST_ASSERT_EQUAL(failsafe::State::Safe, st);
+    }
+    src.scriptReport(PadFrame{});
+    pass(650);
+    TEST_ASSERT_EQUAL(failsafe::State::Active, st);
+    TEST_ASSERT_FALSE(armed);
+
+    // Beat C -- ritual: L1+R1 held 1 s arms (triggers neutral throughout).
+    for (uint32_t t = 700; t <= 1680; t += 20) {
+        src.scriptReport(frameButtons(kL1R1));
+        pass(t);
+    }
+    TEST_ASSERT_FALSE(armed); // 980 ms held: one tick short
+    src.scriptReport(frameButtons(kL1R1));
+    pass(1700);
+    TEST_ASSERT_TRUE(armed);
+    src.scriptReport(frameButtons(0)); // grips released: stays armed
+    pass(1720);
+    TEST_ASSERT_TRUE(armed);
+
+    // Beat D -- drive: full trigger passes the gate; the tick would shape it
+    // with the btpad demo envelope (same shapeThrottle call, cap 400).
+    src.scriptReport(frameTriggers(1023, 0));
+    pass(1740);
+    TEST_ASSERT_TRUE(armed);
+    TEST_ASSERT_EQUAL_INT16(1000, controls.throttle);
+    TEST_ASSERT_EQUAL_INT16(400, gearbox::shapeThrottle(controls.throttle,
+                                                        gearbox::GearParams{400, 50}));
+
+    // Beat E -- dropout: disconnect => Safe on the very next tick, ritual
+    // cleared (strict BT-3), gate force-disarmed.
+    src.setConnected(false);
+    pass(1800);
+    TEST_ASSERT_EQUAL(failsafe::State::Safe, st);
+    TEST_ASSERT_FALSE(armed);
+
+    // Beat F -- reconnect CLAIM only: connected but silent => the disconnect
+    // latch holds and failsafe stays Safe (the seam rule review F1 enforces
+    // wrapper-side; here the scripted source honors it by construction).
+    src.setConnected(true);
+    for (uint32_t t = 2000; t <= 2200; t += 100) {
+        pass(t);
+        TEST_ASSERT_EQUAL(failsafe::State::Safe, st);
+    }
+
+    // Beat G -- neutral stream, no ritual: link recovers, car STAYS DISARMED.
+    for (uint32_t t = 2300; t <= 2440; t += 20) {
+        src.scriptReport(PadFrame{});
+        pass(t);
+        TEST_ASSERT_EQUAL(failsafe::State::Safe, st);
+    }
+    src.scriptReport(PadFrame{});
+    pass(2460);
+    TEST_ASSERT_EQUAL(failsafe::State::Active, st);
+    TEST_ASSERT_FALSE(armed); // re-arm demands the full deliberate ritual
+
+    // Beat H -- fresh ritual arms again.
+    for (uint32_t t = 2500; t <= 3480; t += 20) {
+        src.scriptReport(frameButtons(kL1R1));
+        pass(t);
+    }
+    TEST_ASSERT_FALSE(armed);
+    src.scriptReport(frameButtons(kL1R1));
+    pass(3500);
+    TEST_ASSERT_TRUE(armed);
+
+    // Beat I -- OPTIONS: instant disarm.
+    src.scriptReport(frameButtons(0, btpad::kMiscOptions));
+    pass(3520);
+    TEST_ASSERT_FALSE(armed);
+    TEST_ASSERT_EQUAL(failsafe::State::Active, st); // link stays up; only the arm drops
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_stick_normalization_anchors_through_decode);
@@ -477,5 +600,6 @@ int main(int, char**) {
     RUN_TEST(test_staleness_timeout_matches_crsf_outcomes);
     RUN_TEST(test_disconnect_flag_drops_active_immediately);
     RUN_TEST(test_recovery_needs_reconnect_report_and_continuous_good_window);
+    RUN_TEST(test_full_session_mirrors_sim_pad_feeder_beats);
     return UNITY_END();
 }

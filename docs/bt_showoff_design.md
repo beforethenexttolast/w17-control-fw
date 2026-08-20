@@ -429,12 +429,23 @@ awaiting controller" as distinct from "link lost".
 | Settings | `btpad` sub-config `valid()` bounds; blob v2 round-trip; v1 blob rejected ⇒ complete defaults (guard-chain behavior) |
 | link2 | bit-7 encode; golden-frame variant with `awaitingController` set; receivers-mask rule untouched for bits 1/7 |
 
-**Sim stage:** Wokwi has no Bluetooth, so the sim's job here is wiring, not radio: a
-`W17_SIM_PAD_FEEDER`-style scripted `IPadSource` (the `SimCrsfFeeder` pattern,
-`src/SimCrsfFeeder.cpp`) drives the BT-mode main-loop wiring end to end — boot in BT mode,
-scripted pad connect/report/disconnect, assert failsafe/arm/link2 behavior on the serial
-readout. Plus the ELF checks: delivery ELF has no btpad symbols; BT-env ELF has no live
-CRSF-init path in BT mode (spot-check).
+**Sim stage (LANDED, review F2 2026-08-17):** Wokwi has no Bluetooth, so the sim's job
+here is wiring, not radio. `[env:esp32dev_simbt]` builds the SAME `W17_BT_SHOWOFF` main
+wiring — booted straight into the BT head (no strap hardware in the sim) — driven by the
+scripted `src/SimPadFeeder.cpp` session (`W17_SIM_PAD_FEEDER`, the `SimCrsfFeeder`
+pattern) in place of Bluepad32, **on the pinned stock core with `btpad_hal_esp32` still
+`lib_ignore`d**: the env building at all is the proof that the BT head carries no
+BT-stack dependency. The 13 s looping session, narrated on Serial0 (`[simpad]` phase
+lines + a 500 ms `[state]` readout): awaiting-pad → connect + neutral stream (link
+recovers, disarmed) → L1+R1 ritual arms → drive shapes (R2 ramp capped by the btpad
+envelope, steering sweep, Square DRS taps) → dropout (failsafe within ~540 ms, ritual
+cleared) → reconnect CLAIM only (zero reports — stays Safe; the wiring-level twin of the
+BT1 reconnect-without-input probe) → neutral stream without ritual (Active again, STAYS
+DISARMED) → fresh ritual re-arms → OPTIONS instant disarm. The same beat sequence is
+pinned natively in `test/test_btpad`'s
+`test_full_session_mirrors_sim_pad_feeder_beats`, which drives the identical pure-module
+chain in loopBtPad's per-pass order. Plus the ELF checks: delivery ELF has no btpad
+symbols; BT-env ELF has no live CRSF-init path in BT mode (spot-check).
 
 **Bench-only gates:** the list at the end of §5, executed as this mode's own gate (§9),
 car on stand, wheels off the ground, motor-power rules per the existing gate regime.

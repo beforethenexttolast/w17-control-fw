@@ -51,7 +51,16 @@
 // referenced ONLY from here, the pattern of every other *_hal_esp32 lib.
 #include "btpad/PadDecoder.hpp"
 #include "btpad/PadLinkMonitor.hpp"
+#ifdef W17_SIM_PAD_FEEDER
+// Stage-2 sim for the BT head (design §7, review F2): the scripted stock-core
+// IPadSource replaces the Bluepad32 wrapper -- [env:esp32dev_simbt] builds
+// with btpad_hal_esp32 still lib_ignore'd, proving loopBtPad itself carries
+// no BT-stack dependency. Everything below this include swap is the REAL
+// BT-head wiring, unmodified.
+#include "SimPadFeeder.hpp"
+#else
 #include "btpad_hal_esp32/Bluepad32PadSource.hpp"
+#endif
 #endif
 
 // Persisted tuning is LOADED on every build (delivery included): read-only NVS
@@ -243,7 +252,7 @@ reset_diag::RawResetReason mapResetReason(esp_reset_reason_t r) {
     return reset_diag::RawResetReason::Unknown;
 }
 
-#if defined(W17_TUNING_CONSOLE) || defined(W17_SIM_CRSF_FEEDER)
+#if defined(W17_TUNING_CONSOLE) || defined(W17_SIM_CRSF_FEEDER) || defined(W17_SIM_PAD_FEEDER)
 // Format the single concise boot line, e.g. "[boot] reset=TASK_WDT boots=3
 // retained=yes". retained=yes means the counter carried forward from a valid
 // prior session; retained=no means this boot started a fresh session (power-on,
@@ -317,7 +326,11 @@ bool rcFrameSinceTick = false;
 // --- BT show-off mode state (docs/bt_showoff_design.md §2/§4) --------------
 // Mode selection lives in the ONE bootmode seam above (g_bootMode,
 // OWNER-DECIDED(BT-1) strap mechanism A; sampling in setup()).
+#ifdef W17_SIM_PAD_FEEDER
+simpad::SimPadSource btPadSource; // scripted session, stock core (design §7)
+#else
 btpad_hal_esp32::Bluepad32PadSource btPadSource; // inert until begin() (BT mode only)
+#endif
 btpad::PadDecoder btPadDecoder;                  // config pushed by applySettings()
 btpad::PadLinkMonitor btPadLinkMonitor;
 
@@ -514,6 +527,12 @@ void controlTick(uint32_t nowMs, bool& frameSinceTick, bool sourceSignalsFailsaf
 // SHARED controlTick, and the link2 frame to board #2 run identically --
 // sound and light keep working (design §1).
 void loopBtPad(uint32_t nowMs) {
+#ifdef W17_SIM_PAD_FEEDER
+    // Advance the scripted session (the simfeeder::tick pattern); everything
+    // below is the real BT-head wiring, unmodified.
+    btPadSource.tick(nowMs);
+#endif
+
     // Pad head: drain the stack; decode on every new report -- the exact
     // analog of the CRSF drain + decode-on-frame. Gear edges never fire (the
     // decoder pins them false), so no shift handling exists here.
@@ -609,6 +628,23 @@ void loopBtPad(uint32_t nowMs) {
             }
         }
     }
+
+#ifdef W17_SIM_PAD_FEEDER
+    // Live state readout for the sim serial monitor (mirrors the CRSF sim's
+    // [state] line): lets the scripted beats be asserted by eye/log --
+    // failsafe through the dropout and the reconnect-claim window, ritual
+    // latch + armed only after a full deliberate ritual, throttle capped by
+    // the btpad demo envelope, DRS toggling on the Square taps.
+    static uint32_t lastStatusPrintMs = 0;
+    if (nowMs - lastStatusPrintMs >= 500) {
+        lastStatusPrintMs = nowMs;
+        Serial.printf("[state] pad=%d failsafe=%d ritual=%d armed=%d thr=%d steer=%d drs=%d\n",
+                      btPadSource.connected(), controlSnapshot.failsafe,
+                      btPadDecoder.armRitualLatched(), controlSnapshot.armed,
+                      controlSnapshot.commandedThrottle, controlSnapshot.steering,
+                      controlSnapshot.drsOpen);
+    }
+#endif
 }
 #endif // W17_BT_SHOWOFF
 
@@ -662,6 +698,12 @@ void setup() {
     // non-Floating value is a bench override and wins (composition rule at
     // the definitions above). The delay()s are setup-time only, before the
     // control loop exists and before the TWDT subscription below.
+#ifdef W17_SIM_PAD_FEEDER
+    // Sim harness (design §7): no strap switch exists in the sim, and the
+    // feeder's whole purpose is to exercise the BT head -- force BT_SOLO.
+    // The CRSF-mode sim remains the existing esp32dev_sim environment.
+    g_bootMode = bootmode::BootMode::BtSolo;
+#else
     if (kBootStrapReading == bootmode::StrapReading::Floating) {
         pinMode(pinmap::kBtModeStrapPin, INPUT_PULLUP);
         delay(bootmode::kStrapSettleMs);
@@ -673,6 +715,7 @@ void setup() {
         g_bootMode = bootmode::resolve(
             bootmode::classifyStrapLevels(levelsHigh, bootmode::kStrapSampleCount));
     }
+#endif
     // Re-stamp the boot-state wire bit off the now-final mode (the early
     // stamp above ran before the strap read; bit0 stays false in Drive and
     // BT_SOLO boots -- only a Showcase resolution sets it).
@@ -686,6 +729,17 @@ void setup() {
         // Same concise boot diagnostic as the tuning build, on the sim serial
         // path. Lets the W17_SIM_WDT_STALL run show the reboot's reset class and
         // the incremented retained boot count.
+        char bootLine[64];
+        formatBootLine(bootReport, bootLine, sizeof(bootLine));
+        Serial.println(bootLine);
+    }
+#endif
+
+#ifdef W17_SIM_PAD_FEEDER
+    Serial.begin(115200); // sim narration only; real firmware opens no UART0
+    Serial.println("[simpad] W17 control firmware -- BT-head scripted-session sim build");
+    {
+        // Same concise boot diagnostic as the other sim/tuning surfaces.
         char bootLine[64];
         formatBootLine(bootReport, bootLine, sizeof(bootLine));
         Serial.println(bootLine);
