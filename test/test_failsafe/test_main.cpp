@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "channels/ArmGate.hpp"
 #include "failsafe/FailsafeStateMachine.hpp"
 #include "failsafe/GimbalDecay.hpp"
 
@@ -35,50 +36,146 @@ void test_default_link_timeout_matches_spec() {
     // Spec-pinning test: CLAUDE.md section 2.4 says "start at 500 ms".
     const Config config;
     TEST_ASSERT_EQUAL_UINT32(500, config.linkTimeoutMs);
+    // Link-proof defaults (2026-08-20 hardening): 5 frame-bearing ticks and
+    // a 60 ms max intra-proof gap, sized from the 50 Hz control tick and the
+    // 50-250 Hz link cadence this repo assumes (docs/ROADMAP.md A9).
+    TEST_ASSERT_EQUAL_UINT32(150, config.rearmConfirmMs);
+    TEST_ASSERT_EQUAL_UINT16(5, config.rearmMinFrameTicks);
+    TEST_ASSERT_EQUAL_UINT32(60, config.rearmMaxFrameGapMs);
+}
+
+void test_config_valid_encodes_fail_closed_bounds() {
+    TEST_ASSERT_TRUE(Config{}.valid());
+
+    Config c;
+    c.rearmMinFrameTicks = 1; // a single frame must never prove a link
+    TEST_ASSERT_FALSE(c.valid());
+    c.rearmMinFrameTicks = 2;
+    TEST_ASSERT_TRUE(c.valid());
+
+    c = Config{};
+    c.rearmMaxFrameGapMs = 0;
+    TEST_ASSERT_FALSE(c.valid());
+    c.rearmMaxFrameGapMs = c.rearmConfirmMs; // gap tolerance may equal the window...
+    TEST_ASSERT_TRUE(c.valid());
+    c.rearmMaxFrameGapMs = c.rearmConfirmMs + 1; // ...but never exceed it
+    TEST_ASSERT_FALSE(c.valid());
+
+    c = Config{};
+    c.linkTimeoutMs = 60; // gap tolerance must stay strictly below the timeout
+    TEST_ASSERT_FALSE(c.valid());
+
+    c = Config{};
+    c.linkTimeoutMs = 0;
+    TEST_ASSERT_FALSE(c.valid());
+    c = Config{};
+    c.rearmConfirmMs = 0;
+    TEST_ASSERT_FALSE(c.valid());
+}
+
+// Feed frames at the real 20 ms control cadence from `startMs`; asserts Safe
+// throughout the confirm window and Active at exactly startMs +
+// rearmConfirmMs -- pinning that the link proof does NOT slow healthy-link
+// recovery by a single tick (entry latency unchanged by the hardening).
+uint32_t climbToActiveAt20msCadence(FailsafeStateMachine& fsm, uint32_t startMs) {
+    for (uint32_t t = startMs; t < startMs + 150; t += 20) {
+        TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, true, false));
+    }
+    TEST_ASSERT_EQUAL(State::Active, fsm.update(startMs + 150, true, false));
+    return startMs + 150; // time of the last frame fed
 }
 
 void test_climbs_to_active_after_rearm_window_with_real_frames() {
     FailsafeStateMachine fsm; // rearmConfirmMs = 150 by default
-
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(0, true, false));    // first frame ever: window opens
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(100, true, false));  // still within window
-    TEST_ASSERT_EQUAL(State::Active, fsm.update(150, true, false)); // exactly rearmConfirmMs elapsed
+    climbToActiveAt20msCadence(fsm, 0);
 }
 
+// THE hardening regression (adversarial review, 2026-08-20): before the link
+// proof, ONE CRC-valid frame stamped the link "fresh" for the whole 500 ms
+// timeout, the 150 ms confirm window elapsed on that stale timestamp alone,
+// and the machine sat Active from t=160 to t=480 at the 20 ms tick (~340 ms;
+// continuous-time bound 350 ms) on zero real link. A single frame -- however
+// it CRC-collided into validity -- must now never leave Safe.
+void test_single_valid_frame_never_reaches_active() {
+    FailsafeStateMachine fsm;
+    TEST_ASSERT_EQUAL(State::Safe, fsm.update(0, true, false)); // the one frame
+    for (uint32_t t = 20; t <= 1000; t += 20) {                 // then silence
+        TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, false, false));
+    }
+    TEST_ASSERT_EQUAL(State::Safe, fsm.state());
+}
+
+// N-1 frames then silence: the proof needs rearmMinFrameTicks = 5 frame
+// ticks, so 4 must stay Safe forever -- and, run against the REAL ArmGate
+// exactly as main.cpp wires it (Safe => forceDisarm), must never produce an
+// armable tick even with the arm switch held on and throttle at neutral.
+void test_four_frames_then_silence_stays_safe_and_never_armable() {
+    FailsafeStateMachine fsm;
+    channels::ArmGate gate;
+    const uint32_t frameTimes[] = {0, 20, 40, 60}; // rearmMinFrameTicks - 1
+    size_t frameIdx = 0;
+    for (uint32_t t = 0; t <= 1200; t += 20) {
+        const bool frame = frameIdx < 4 && t == frameTimes[frameIdx];
+        if (frame) {
+            ++frameIdx;
+        }
+        const State s = fsm.update(t, frame, false);
+        TEST_ASSERT_EQUAL(State::Safe, s);
+        const bool armed = gate.update(/*armSwitchOn=*/true, /*throttle=*/0,
+                                       /*forceDisarm=*/s == State::Safe);
+        TEST_ASSERT_FALSE(armed);
+    }
+}
+
+// Bounded-interval requirement: valid frames trickling in far below the
+// assumed 50-250 Hz cadence (here 10 Hz -- each gap 100 ms > the 60 ms proof
+// gap, yet well inside the 500 ms timeout) must never accumulate into a
+// proof, with or without no-frame ticks in between.
+void test_sparse_valid_frames_never_prove_link() {
+    // As the firmware sees it: 50 Hz ticks, a frame every fifth tick.
+    FailsafeStateMachine fsm;
+    for (uint32_t t = 0; t <= 2000; t += 20) {
+        TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, t % 100 == 0, false));
+    }
+
+    // Degenerate caller: update() invoked ONLY at the frame instants (the
+    // gap must be measured frame-to-frame, not frame-to-self).
+    FailsafeStateMachine fsm2;
+    for (uint32_t t = 0; t <= 2000; t += 100) {
+        TEST_ASSERT_EQUAL(State::Safe, fsm2.update(t, true, false));
+    }
+}
+
+// Regression pin: the hardening slows ENTRY to Active only -- failsafe entry
+// stays immediate at the exact same boundaries as before it existed.
 void test_timeout_exceeded_drops_immediately_to_safe() {
     Config config;
     FailsafeStateMachine fsm(config);
 
-    // Climb to Active with real frames; last frame at t = rearmConfirmMs.
-    fsm.update(0, true, false);
-    TEST_ASSERT_EQUAL(State::Active, fsm.update(config.rearmConfirmMs, true, false));
+    const uint32_t lastFrameAt = climbToActiveAt20msCadence(fsm, 0);
 
     // One tick before the timeout: still Active.
-    const uint32_t lastFrameAt = config.rearmConfirmMs;
     TEST_ASSERT_EQUAL(State::Active, fsm.update(lastFrameAt + config.linkTimeoutMs - 1, false, false));
     // At the timeout boundary: immediate drop, no grace period on the way in.
     TEST_ASSERT_EQUAL(State::Safe, fsm.update(lastFrameAt + config.linkTimeoutMs, false, false));
 }
 
 void test_rx_failsafe_flag_drops_immediately_even_with_fresh_frames() {
-    Config config;
-    FailsafeStateMachine fsm(config);
+    FailsafeStateMachine fsm;
 
-    fsm.update(0, true, false);
-    TEST_ASSERT_EQUAL(State::Active, fsm.update(config.rearmConfirmMs, true, false));
+    const uint32_t lastFrameAt = climbToActiveAt20msCadence(fsm, 0);
 
     // Frames still arriving, but the RX itself signals failsafe: flag wins.
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(config.rearmConfirmMs + 1, true, true));
+    TEST_ASSERT_EQUAL(State::Safe, fsm.update(lastFrameAt + 1, true, true));
 }
 
 void test_latches_safe_despite_a_single_good_tick() {
-    Config config;
-    FailsafeStateMachine fsm(config);
+    FailsafeStateMachine fsm;
 
     // Climb to Active (last frame at t=150), then time out.
-    fsm.update(0, true, false);
-    fsm.update(config.rearmConfirmMs, true, false);
+    const uint32_t lastFrameAt = climbToActiveAt20msCadence(fsm, 0);
     TEST_ASSERT_EQUAL(State::Safe, fsm.update(1000, false, false)); // 1000-150 >= 500
+    (void)lastFrameAt;
 
     // A single subsequent tick with a fresh frame must NOT flip straight back
     // to Active -- the re-arm window must still elapse.
@@ -86,26 +183,56 @@ void test_latches_safe_despite_a_single_good_tick() {
 }
 
 void test_rearm_window_chatter_resets_confirmation() {
-    Config config; // rearmConfirmMs = 150
-    FailsafeStateMachine fsm(config);
+    FailsafeStateMachine fsm; // rearmConfirmMs = 150
 
     // Establish a link, go Active, then lose it.
-    fsm.update(0, true, false);
-    fsm.update(150, true, false);   // Active, last frame at t=150
-    fsm.update(1000, false, false); // 850ms without a frame -> Safe
+    climbToActiveAt20msCadence(fsm, 0); // Active, last frame at t=150
+    fsm.update(1000, false, false);     // 850 ms without a frame -> Safe
     TEST_ASSERT_EQUAL(State::Safe, fsm.state());
 
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(1000, true, false)); // frame: window opens at t=1000
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(1100, true, false)); // 100ms into the window
+    // Frames resume at the real cadence: window opens at t=1020.
+    for (uint32_t t = 1020; t <= 1100; t += 20) {
+        TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, true, false));
+    }
 
     // A single bad tick (failsafe flag) mid-window resets the confirmation.
     TEST_ASSERT_EQUAL(State::Safe, fsm.update(1120, true, true));
 
-    // Window restarts rather than accumulating: 50ms since re-open is not enough...
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(1170, true, false)); // re-opens at t=1170
-    TEST_ASSERT_EQUAL(State::Safe, fsm.update(1220, true, false)); // only 50ms since re-open
-    // ...but a full uninterrupted window re-arms.
-    TEST_ASSERT_EQUAL(State::Active, fsm.update(1320, true, false)); // 150ms since re-open
+    // Window restarts rather than accumulating: re-opens at t=1140, so 140 ms
+    // later is still not enough...
+    for (uint32_t t = 1140; t <= 1280; t += 20) {
+        TEST_ASSERT_EQUAL(State::Safe, fsm.update(t, true, false));
+    }
+    // ...but a full uninterrupted window (>= 150 ms since 1140) re-arms.
+    TEST_ASSERT_EQUAL(State::Active, fsm.update(1300, true, false));
+}
+
+// everLinkedThisBoot (bootmode D4): the latch moves to PROOF COMPLETION --
+// hasEverReceivedFrame() stays the raw bytes-seen diagnostic, hasEverLinked()
+// asserts only once a full link proof lands, and survives the loss.
+void test_ever_linked_latches_only_on_proven_link() {
+    FailsafeStateMachine fsm;
+    TEST_ASSERT_FALSE(fsm.hasEverReceivedFrame());
+    TEST_ASSERT_FALSE(fsm.hasEverLinked());
+
+    // A lone noise frame: bytes seen, link NOT proven -- forever.
+    fsm.update(0, true, false);
+    TEST_ASSERT_TRUE(fsm.hasEverReceivedFrame());
+    for (uint32_t t = 20; t <= 1000; t += 20) {
+        fsm.update(t, false, false);
+        TEST_ASSERT_FALSE(fsm.hasEverLinked());
+    }
+
+    // A real link: still unproven during the confirm window, latched at the
+    // Safe -> Active instant, and the latch survives a later link loss.
+    for (uint32_t t = 2000; t < 2150; t += 20) {
+        fsm.update(t, true, false);
+        TEST_ASSERT_FALSE(fsm.hasEverLinked());
+    }
+    TEST_ASSERT_EQUAL(State::Active, fsm.update(2150, true, false));
+    TEST_ASSERT_TRUE(fsm.hasEverLinked());
+    TEST_ASSERT_EQUAL(State::Safe, fsm.update(2700, false, false)); // timeout
+    TEST_ASSERT_TRUE(fsm.hasEverLinked());
 }
 
 // ---------------------------------------------------------------------------
@@ -426,11 +553,16 @@ int main(int, char**) {
     RUN_TEST(test_boots_safe_before_any_frame_ever_seen);
     RUN_TEST(test_never_goes_active_when_no_frame_ever_arrives);
     RUN_TEST(test_default_link_timeout_matches_spec);
+    RUN_TEST(test_config_valid_encodes_fail_closed_bounds);
     RUN_TEST(test_climbs_to_active_after_rearm_window_with_real_frames);
+    RUN_TEST(test_single_valid_frame_never_reaches_active);
+    RUN_TEST(test_four_frames_then_silence_stays_safe_and_never_armable);
+    RUN_TEST(test_sparse_valid_frames_never_prove_link);
     RUN_TEST(test_timeout_exceeded_drops_immediately_to_safe);
     RUN_TEST(test_rx_failsafe_flag_drops_immediately_even_with_fresh_frames);
     RUN_TEST(test_latches_safe_despite_a_single_good_tick);
     RUN_TEST(test_rearm_window_chatter_resets_confirmation);
+    RUN_TEST(test_ever_linked_latches_only_on_proven_link);
     RUN_TEST(test_gimbal_decay_default_matches_spec_and_bounds);
     RUN_TEST(test_gimbal_passthrough_is_transparent_while_link_ok);
     RUN_TEST(test_gimbal_decay_full_deflection_reaches_center_in_configured_time);
