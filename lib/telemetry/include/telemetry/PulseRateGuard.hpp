@@ -37,6 +37,19 @@ constexpr uint32_t plausibleEdgesPerWindow(uint16_t maxPlausibleRpm, uint8_t mag
 
 // The margin the owner ruled: at least 20x the physical maximum, so a real
 // wheel can never trip the guard and put a false sensor fault on the HUD.
+//
+// LATENT COUPLING, stated so it cannot be discovered the hard way (review
+// 2026-09-03, finding 11): both this constant and PulseRateGuardConfig::valid()
+// below derive the margin from WheelSpeedConfig{} DEFAULTS, not from the
+// WheelSpeedConfig the live WheelSpeed was constructed with. Benign today and
+// verified: src/main.cpp builds `wheelSpeed` from `telemetry::WheelSpeedConfig{}`
+// and no wheel field exists in the persisted settings::Settings blob, so nothing
+// can change it at runtime or at boot. But a non-default magnetsPerRev or
+// maxPlausibleRpm would raise the real physical maximum while these numbers
+// stayed put -- silently shrinking the margin below the 20x the owner ruled,
+// with valid() still returning true because it measures against the same
+// defaults. If wheel config ever becomes configurable, hand it to the guard
+// instead of defaulting.
 inline constexpr uint8_t kRateGuardMarginX = 20;
 inline constexpr uint16_t kRateGuardWindowMs = 100;
 inline constexpr uint32_t kRateGuardEntriesPerWindow =
@@ -70,6 +83,17 @@ struct PulseRateGuardConfig {
                                                WheelSpeedConfig{}.magnetsPerRev, windowMs);
     }
 };
+
+// The 20x margin is the entire safety argument for this guard, and until now
+// nothing enforced it: valid() was checked only by a unit test constructing the
+// default config. It is asserted HERE rather than beside main.cpp's other
+// `constexpr X kFoo{}; static_assert(kFoo.valid())` pairs because the guard's
+// config reaches the firmware as a DEFAULT ARGUMENT (Esp32HallPulseCounter's
+// constructor) -- main.cpp never names the type, so it has nothing to attach an
+// assertion to. At the definition site it also covers the native test build.
+static_assert(PulseRateGuardConfig{}.valid(),
+              "hall rate guard: the default bound is under 20x the fastest edge rate a "
+              "real wheel can produce -- a real wheel could trip it (false sensor fault)");
 
 class PulseRateGuard {
 public:
