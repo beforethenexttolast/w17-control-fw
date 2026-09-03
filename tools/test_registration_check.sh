@@ -31,6 +31,20 @@
 # wrapper macro (RUN_GROUP(test_b) expanding to RUN_TEST) reads as unregistered.
 # That last one fails LOUD (exit 1), which is the safe direction; this repo
 # registers every test with a literal RUN_TEST line.
+# Two more (2026-09-03 re-verify, R5), both silent rather than loud: a RUN_TEST
+# inside an inactive `#ifdef`/`#ifndef` still counts as a live registration --
+# only a bare `#if 0` is stripped as dead code above -- so a build where that
+# guard macro is undefined actually runs one FEWER test than this script
+# reports; and a definition split across lines (`void` on one line, `test_x()`
+# on the next) matches neither the definition grep nor the "forward
+# declaration" exclusion, so a test written that way is invisible rather than
+# flagged as a mismatch. Neither is closed here. The backstop for both is the
+# CI step that compares this script's `--print-total` against `pio test`'s own
+# reported case count: a real divergence between the two fails loudly even
+# when this script's own per-file diff stays silent (the split-line case only
+# trips that backstop if the invisible definition is ALSO registered
+# elsewhere -- a split-line test that is both unregistered and undetected
+# stays a genuine blind spot).
 #
 # Usage: tools/test_registration_check.sh [-q|--quiet] [--print-total] [PATH ...]
 #        PATH defaults to every test/test_*/test_main.cpp in the repo.
@@ -59,7 +73,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -q|--quiet) QUIET=1; shift ;;
         --print-total) PRINT_TOTAL=1; QUIET=1; shift ;;
-        -h|--help) sed -n '3,50p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,64p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "error: unknown argument '$1' (try --help)" >&2; exit 3 ;;
         *) FILES="$FILES $1"; shift ;;
     esac
