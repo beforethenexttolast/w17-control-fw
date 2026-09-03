@@ -773,6 +773,24 @@ Two independent gates, **both** required for any active output; neither alone is
   > limit rather than assuming coverage. The existing "verified to bite on all three
   > injections" evidence does not cover it. Not actioned in this pass because `w17-mapper` is
   > a different repo with a live session in it.
+  >
+  > **DONE — closed 2026-08-04 in `w17-mapper`, recorded here 2026-09-03.** The pass did better
+  > than what was owed: rather than only documenting the miss, it closed the specific name.
+  > `.githooks/pre-push` gained **check 4** — `first_?active` matched **case-insensitively**
+  > over the code/build globs (`.githooks/pre-push:18-22`, grep at `:94-101`) — so the
+  > `const firstActive = false` form that once passed clean is now REFUSED. The hook's own
+  > VERIFICATION MATRIX (`:40-49`) records all five injections *including that reversal*
+  > (`I4 const firstActive = false -> REFUSED by check 4 (was ALLOWED before check 4)`), and
+  > it keeps the residual **class** limit explicit rather than implying coverage:
+  > `I5 const enableShaping = false -> ALLOWED. Not a bug; the documented class limit`
+  > (`:27-32`). Check 4's false-positive surface over the in-scope globs was **measured** at
+  > zero, with the measurement's own scope stated (`:50-55`). Re-verified 2026-09-03 against
+  > the `u4-arbiter` tip: checks 1, 2 and 4 all match and the hook exits 1.
+  >
+  > This does **not** upgrade the guard. It is still a name-matching speed bump against
+  > accident, `--no-verify` still bypasses it, it still does nothing where `core.hooksPath`
+  > was never set, and it still scans only the pushed tip tree. The class limit above is
+  > exactly why §2.3.11.4 resolves to the build tag EXCLUSIVELY.
 - **Runtime** — even in a FIRST_ACTIVE build, an explicit runtime enable (flag/env, working
   name `W17_FIRST_ACTIVE_ARM` or equivalent, **default off**) plus the per-tick **armed**
   precondition (§2.3.11.2 item 5) are required. Runtime-on alone in a non-FIRST_ACTIVE build
