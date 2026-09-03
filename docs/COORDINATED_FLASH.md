@@ -43,24 +43,30 @@ round-trip) is not a coordinated-flash situation — Phase 9's plain steps cover
 checkout isn't at the default `../w17-soundlight-fw`) before a coordinated flash to confirm
 which situation you're in.
 
-> **A known false alarm in this same family, so you don't chase it:** `tools/link2_copy_check.sh`
-> deliberately treats `docs/link2_protocol.md` as **reported, not fatal** — each repo's copy
-> legitimately carries its own local prose (an "Ownership" section, for one), so a plain diff
-> cannot tell normative drift from local commentary. Confirmed at this revision: the two
-> `docs/link2_protocol.md` files *do* differ, entirely in that kind of prose (ownership/tooling
-> narration) — no normative content (frame layout, payload table, CRC, timing rule, state
-> matrix) differs. **This repo's own `.github/workflows/ci.yml` `link2-drift` job does not
-> call `tools/link2_copy_check.sh` at all** — it re-implements its own diff loop over all four
-> shared files, including the doc, and fails on any difference (job `:45-71`, diff loop
-> `:51-71`). That job can go red on a legitimate doc-only difference with zero protocol drift.
-> Treat a red `link2-drift` job
-> as inconclusive until you've separately run `tools/link2_copy_check.sh` (which does draw the
-> fatal/reported line correctly) — do not read CI red alone as proof of a coordinated-flash
-> hazard, and do not read CI green as proof of its absence, since the job as written can also
-> pass while a *code* file has drifted if GitHub Actions network access to the sibling clone
-> fails silently in a way this session did not exercise. This CI-job gap is a known finding
-> (tracked for a separate fix wave, not resolved by this document) — it does not change what
-> you should actually do here, which is run the code-file check yourself before flashing.
+> **Known state at this revision (2026-09-03), so you don't chase a stale claim:**
+> `tools/link2_copy_check.sh` deliberately treats `docs/link2_protocol.md` as **reported, not
+> fatal** — each repo's copy legitimately carries its own local prose (an "Ownership" section,
+> for one), so a plain diff cannot tell normative drift from local commentary on its own; a
+> human still has to read the reported diff. **This repo's `.github/workflows/ci.yml`
+> `link2-drift` job now calls `tools/link2_copy_check.sh --strict --sibling /tmp/sibling`**
+> directly (fixed 2026-09-03, commit `1ccfc81`) — it no longer re-implements its own diff loop
+> over the four shared files plus the doc, so **a red `link2-drift` job now means CODE
+> drift**: one of the four shared files under `lib/link2/` differs between the two checkouts.
+> The false-alarm failure mode this callout used to warn about (the job hard-failing on
+> legitimate doc-only prose) is fixed at the job level now, not just something to read past.
+>
+> The doc tier is still only reported, never fatal, and right now it is **not** prose-only:
+> commit `1ccfc81` added a new paragraph to `docs/link2_protocol.md`'s State matrix
+> (`~:198-209`, "BT_SOLO boots have no rows of their own…") describing what a BT_SOLO-mode
+> link2 frame looks like to a receiver. `w17-soundlight-fw`'s copy of this document does not
+> yet carry that paragraph, so — correcting any earlier claim that only ownership/tooling
+> prose differed — **normative content does differ** between the two copies as of this
+> revision. This is not something to fix from here (never edit `w17-soundlight-fw` from a
+> control-fw session — workspace `CLAUDE.md`): **OWED — cross-repo doc re-sync**, for the
+> orchestrator to route to a soundlight-fw session: copy the BT_SOLO paragraph (and any other
+> normative drift the reported tier surfaces later) into that repo's `docs/link2_protocol.md`.
+> Until that lands, treat the reported doc diff as a real, known, one-paragraph gap, not the
+> "nothing to do" case the script's own default message describes.
 
 ## Order
 
@@ -94,8 +100,11 @@ Board #1's settings blob is versioned (`lib/settings/include/settings/Settings.h
 `[version][struct bytes][crc8]`, loaded through `settings::loadOrDefault` with a strict guard
 chain — length → CRC → **version** → `Settings::valid()` — and *any* failure at any link falls
 back to **complete compiled defaults**, never a partial or mixed config. There is currently one
-history step, v1 → v2, already merged and shipped in this codebase (not something a coordinated
-flash performs going forward, but the behavior it establishes governs every future bump):
+history step, v1 → v2, already merged into this codebase's source (not something a coordinated
+flash performs going forward, but the behavior it establishes governs every future bump).
+**"Merged" is a source-code fact only: no board has ever been flashed with either blob
+version** — A2 is NOT-EXECUTED and Phase B is BLOCKED, so this whole migration is
+**hypothetical, `[bench-TBD]`, until the first real flash exercises it**:
 
 - **v1** carried steering + gearbox + battery.
 - **v2** added, in one bump, `failsafe::GimbalDecayConfig` (`gimbal.decay`), `link2::SoundConfig`
@@ -110,9 +119,10 @@ flash performs going forward, but the behavior it establishes governs every futu
 - The practical consequence for a coordinated flash: if you are moving a board from an
   old build predating v2 straight to today's `main`, budget time to **recalibrate and
   `save`** after the flash, not just to confirm connectivity. If the board already carries a
-  v2 blob (this codebase's steady state since the 2026-08-17 merge), a same-version re-flash
-  (e.g. `_tuning` ↔ `esp32dev` in Phase 11a) round-trips the existing blob with no data loss —
-  that path is exercised and confirmed by Phase 11a step 6.
+  v2 blob (this codebase's source has been at v2 since the 2026-08-17 merge — again, no board
+  has actually carried one yet), a same-version re-flash (e.g. `_tuning` ↔ `esp32dev` in
+  Phase 11a) is expected to round-trip the existing blob with no data loss — **this is what
+  Phase 11a step 6 exists to confirm, `[bench-TBD]`**, not a path already exercised.
 - Keys that must survive the round-trip, read back with `get <key>` or `status`: `steer.min`,
   `steer.max`, `steer.center`, `steer.trim`, `batt.ppt`, `gear.<N>.max`/`gear.<N>.expo` for each
   gear, `gimbal.decay`, `sound.profile`, `sound.volume`. This is the same list
