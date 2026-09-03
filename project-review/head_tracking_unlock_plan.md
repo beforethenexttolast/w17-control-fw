@@ -1123,6 +1123,27 @@ perform the **live mapper node-graph binding validation** above before the first
 until that validation passes, active testing stays blocked (and R12's "arm affordance signed
 off" stays open — the affordance is *chosen*, not yet *validated on the live binding*).
 
+> **Amendment 2026-09-03 — the button NUMBERS above are the DirectInput reading; the physical
+> controls are unchanged.** `w17-mapper` `4e27b0e` (2026-08-17, review blocker F1) corrected the
+> shipped W17 profile to the **SDL HIDAPI GameController** layout, which is what the PS4 driver
+> reports by default on Windows. In that layout **SHARE = button 4, OPTIONS = button 6, and the
+> D-pad is a HAT (hat 0)** — "D-pad DOWN" is a hat direction, **not "button 13"**. The legacy
+> DirectInput fallback moves both axes *and* buttons, and is where 8/9/13 came from; both layouts
+> are documented side by side in `w17-mapper` `configs/README.md`.
+>
+> **Nothing about the adopted affordance changes.** Alternative C is a choice of *physical*
+> controls — SHARE, OPTIONS, D-pad DOWN — the reservation in the shipped profile is by physical
+> button, and the arbiter's bindings are **external, validated and fail-closed with no shipped
+> default**, so no numeric value is owed anywhere in code. Only the numbering attributed to those
+> controls in the prose above was wrong.
+>
+> What the correction *does* change is the live-binding validation this section already demands:
+> it must now also establish **which numbering the bench pad actually reports** and **whether its
+> D-pad enumerates as a hat or as buttons**, by pressing each bound control on the machine that
+> will run it. A binding record written against the wrong assumption fails closed rather than
+> arming — the failure is safe, but it is a failure. R12's "arm affordance signed off" stays
+> open, unchanged, and FIRST_ACTIVE stays NO-GO / BLOCKED.
+
 ##### 2.3.12.7 Hybrid controller mapping (owner decision: preserved/ratified)
 
 - Head **yaw → gimbal pan**; head **pitch → gimbal tilt**; head **roll is ignored**.
