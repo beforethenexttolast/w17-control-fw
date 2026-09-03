@@ -45,7 +45,8 @@ power only.
 | B1.4 | **Scope GPIO14 + GPIO13 from power-on through first `setup()` write** — confirm no ESC arm/twitch or servo kick in the pre-`ledcAttachPin` float window. This is the boot-float exposure A2's PD1 row records the harness side of; this is the firmware-timing side. |
 
 **Expected observations:** channels track the TX within the normal CRSF update rate; a link
-drop is visible in the decoded state within the ~540 ms budget; the GPIO13/14/18 scope traces
+drop is visible in the decoded state within up to ~540 ms worst-case detection against the
+500 ms budget (`src/main.cpp:982`); the GPIO13/14/18 scope traces
 show clean 50 Hz PWM with no glitch or transient pulse before `setup()` finishes attaching the
 LEDC channels.
 
@@ -64,7 +65,7 @@ point of gating power at all.
 | B2.1 | Power up with **no CRSF** → expect ESC neutral, DRS closed, steering centered. |
 | B2.2 | Bring the link up **with the throttle stick forward** → motor command stays off until the stick returns to neutral (ArmGate) and the arm conditions are met. |
 | B2.3 | Confirm the ESC arms every boot with the neutral-hold sequence (motor still disconnected); reconcile `bootArmHoldMs=2000` against the ESC's own manual; confirm **forward/brake** ESC mode (not forward/reverse). |
-| B2.4 | Confirm worst-case failsafe detection latency at the chosen RP1 packet rate + LQ=0 burst stays within the ~540 ms budget. |
+| B2.4 | Confirm worst-case failsafe detection latency at the chosen RP1 packet rate + LQ=0 burst stays within up to ~540 ms worst-case detection against the 500 ms budget (`src/main.cpp:982`). |
 | B2.5 | **Re-arm invariant** (`D8_BENCH_BRINGUP.md` Phase 5, full detail): a failsafe episode latches a disarm. Recovery with the arm switch left ON through the episode **must stay disarmed**; only an OFF→ON toggle with the stick centered re-arms; a boot with the switch already ON needs the same toggle. Contract: `lib/channels/include/channels/ArmGate.hpp`. |
 
 **Expected observations:** every one of the above holds exactly as stated — there is no
@@ -74,7 +75,8 @@ to B3.
 
 **Stop conditions:** ESC arms or accepts throttle before the boot-arm hold elapses; the arm
 gate ever allows arm-into-full-throttle; a failsafe episode fails to latch a disarm; recovery
-re-arms without the required switch toggle; failsafe detection exceeds the ~540 ms budget. Any
+re-arms without the required switch toggle; failsafe detection exceeds ~540 ms worst-case
+against the 500 ms budget. Any
 one of these is a hard stop — pull the battery lead, do not power-cycle-and-retry, report the
 exact reading first.
 
