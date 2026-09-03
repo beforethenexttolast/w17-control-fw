@@ -15,7 +15,16 @@ Full brief: `CLAUDE.md`. Bench bring-up: `docs/D8_BENCH_BRINGUP.md`. Pin map:
 | **`esp32dev`** | **the real / gift firmware** (default). Loads validated NVS tuning at boot; no serial console, no sim feeder, cannot change tuning. |
 | `esp32dev_sim` | `esp32dev` + `-DW17_SIM_CRSF_FEEDER` — scripted CRSF self-feed for the Wokwi Stage-2 sim (also loads NVS tuning). |
 | `esp32dev_tuning` | `esp32dev` + `-DW17_TUNING_CONSOLE` — adds a UART0 serial console that can **change/save/reset** the same NVS tuning, used for bench bring-up. |
+| `esp32dev_btshowoff` | `-DW17_BT_SHOWOFF`, real Bluepad32 stack + custom core (`platform_packages`), `huge_app` partitions — the BT show-off **prototype, never a delivery target** (`docs/bt_showoff_design.md`). Only env that wires and reads the GPIO27/32 boot-mode strap for real. |
+| `esp32dev_simbt` | `esp32dev_btshowoff` + `-DW17_SIM_PAD_FEEDER` — same three-mode firmware, scripted pad input instead of real Bluepad32, for host-side BT-head simulation. |
 | `native` | host Unity unit tests over the pure-logic libs (no hardware). |
+
+**Boot modes:** three modes (Drive / Solo / Showcase), resolved once at boot from a physical
+selector and never switched at runtime — see `lib/bootmode/include/bootmode/BootMode.hpp` for
+the resolution logic and `lib/config/include/config/PinMap.hpp:36-56` for the GPIO27 (Solo) /
+GPIO32 (Show) strap pins. Every delivery-lineage env (`esp32dev`, `esp32dev_tuning`,
+`esp32dev_sim`) hardcodes a Floating reading at compile time and always resolves to Drive —
+only `esp32dev_btshowoff` and `esp32dev_simbt` read the strap pins at all.
 
 ## Build / test / flash
 
