@@ -86,6 +86,15 @@ hardware on first power.
 - [ ] Confirm **boot is safe** (A1 regression, live): at power-on with the TX **off**, the
       board must sit in failsafe — no spurious "active." (This is the bug that used to slam
       steering to full-lock; verify it's gone on real hardware.)
+- [ ] **Know what `save` does to the link.** The NVS commit runs INLINE on the control tick:
+      the flash write disables the flash cache, and the CRSF UART ISR was never confirmed to be
+      IRAM-resident under the pinned core, so RX may go deaf for the duration of the write (the
+      128-byte FIFO covers only ~3 ms at 420 kbaud). A dropped frame or two around `saved` is
+      expected; a write long enough to pass the 500 ms failsafe timeout would show as a
+      failsafe blip, which is the **safe** direction, not a fault. Save only while
+      **DISARMED** — the console already refuses otherwise. Nothing has measured this yet
+      (`lib/console/src/ConsoleRunner.cpp`, finding timing-3, carried UNVERIFIED), so record
+      what you actually see: this bullet is the only place that observation gets made.
 
 ## Phase 3b — Boot-mode selector (SP3T, GPIO27/GPIO32) — skip if not wired
 

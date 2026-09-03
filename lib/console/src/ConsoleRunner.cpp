@@ -59,9 +59,9 @@ void ConsoleRunner::runLine(bool armed, bool& changedOut) {
         // bench-only (this translation unit is not in the delivery image), the
         // console refuses mutations unless DISARMED, and a gap is at worst a
         // failsafe blip, which is the safe direction and far inside the 500 ms
-        // budget. What is owed is the D8 line telling the bench operator to
-        // expect that blip; it is in the fix-wave branch report because D8 is
-        // another branch's file this wave.
+        // budget. The bench operator is told to expect (and record) that gap:
+        // docs/D8_BENCH_BRINGUP.md, Phase 3, the "Know what `save` does to the
+        // link" bullet. That observation is what would settle this finding.
         uint8_t buf[settings::kBlobLen];
         const size_t n = settings::serialize(settings_, buf);
         io_.write(store_.save(buf, n) ? "saved\r\n" : "SAVE FAILED\r\n");
