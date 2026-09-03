@@ -28,13 +28,14 @@ public:
     // input non-blocking, accumulates one line, and on newline runs the
     // command -- then RETURNS, at most one command per pass (timing-2), leaving
     // anything else buffered for the next pass. Returns true if the RAM
-    // Settings changed (caller re-applies).
-    bool poll(bool armed);
+    // Settings changed (caller re-applies). `hall` is folded into `status`
+    // (R2); callers with no Hall sensor to report (or tests) omit it.
+    bool poll(bool armed, const HallDiagnostics& hall = HallDiagnostics{});
 
     const settings::Settings& settings() const { return settings_; }
 
 private:
-    void runLine(bool armed, bool& changedOut);
+    void runLine(bool armed, bool& changedOut, const HallDiagnostics& hall);
 
     hal::ICharIO& io_;
     hal::ISettingsStore& store_;

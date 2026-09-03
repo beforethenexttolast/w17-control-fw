@@ -103,7 +103,8 @@ int parseGearIndex(const char* start, const char* end, const char** suffix) {
 
 } // namespace
 
-Result Console::handleLine(const char* line, settings::Settings& s, bool armed) const {
+Result Console::handleLine(const char* line, settings::Settings& s, bool armed,
+                            const HallDiagnostics& hall) const {
     Result r;
     const char* starts[4];
     const char* ends[4];
@@ -135,7 +136,8 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
                       "sound.profile=%u sound.volume=%u\r\n"
                       "gears=%u  g1.max=%d g1.expo=%u ...\r\n"
                       "btpad: max=%d expo=%u dz=%d inv=%u armhold=%u pairwin=%u\r\n"
-                      "channels(read-only): steer=%u thr=%u arm=%u drs=%u",
+                      "channels(read-only): steer=%u thr=%u arm=%u drs=%u\r\n"
+                      "hall: isrEntries=%u lastWindowEntries=%u guardFaults=%u",
                       armed ? 1 : 0, s.steering.centerMicros, s.steering.trimMicros,
                       s.steering.minMicros, s.steering.maxMicros, s.battery.calibrationPpt,
                       s.gimbalDecay.fullToCenterMs,
@@ -143,7 +145,8 @@ Result Console::handleLine(const char* line, settings::Settings& s, bool armed) 
                       s.gearbox.numGears, s.gearbox.gears[0].maxOutput, s.gearbox.gears[0].expoPercent,
                       s.btpad.maxOutput, s.btpad.expoPercent, s.btpad.steerDeadzone,
                       s.btpad.invertSteering, s.btpad.armHoldMs, s.btpad.pairWindowMs,
-                      0u, 2u, 4u, 5u);
+                      0u, 2u, 4u, 5u,
+                      hall.isrEntries, hall.lastWindowEntries, hall.guardFaults);
         return r;
     }
 

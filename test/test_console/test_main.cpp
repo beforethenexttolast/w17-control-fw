@@ -20,6 +20,7 @@
 
 using console::Console;
 using console::ConsoleRunner;
+using console::HallDiagnostics;
 using console::Result;
 using settings::kDefaults;
 using settings::Settings;
@@ -242,6 +243,43 @@ void test_sound_in_status() {
     Settings s = kDefaults;
     Result r = c.handleLine("status", s, false);
     TEST_ASSERT_TRUE(std::strstr(r.text, "sound.profile=0 sound.volume=80") != nullptr);
+}
+
+// Finding R2 (OD-11): the bench-only Hall counters PHASE_B_FIRST_POWER.md
+// B4.4 and D8 Phase 8 name as their instrument. Omitting the parameter (every
+// caller that has no Hall sensor to report -- and every OTHER test in this
+// file) must still produce a well-formed line of zeros, not garbage or a
+// missing field.
+void test_hall_diagnostics_default_zero_in_status() {
+    Console c;
+    Settings s = kDefaults;
+    Result r = c.handleLine("status", s, false);
+    TEST_ASSERT_TRUE(
+        std::strstr(r.text, "hall: isrEntries=0 lastWindowEntries=0 guardFaults=0") != nullptr);
+}
+
+void test_hall_diagnostics_reported_in_status() {
+    Console c;
+    Settings s = kDefaults;
+    const HallDiagnostics hall{7, 42, 3};
+    Result r = c.handleLine("status", s, false, hall);
+    TEST_ASSERT_TRUE(
+        std::strstr(r.text, "hall: isrEntries=7 lastWindowEntries=42 guardFaults=3") != nullptr);
+}
+
+// The counters must survive the ConsoleRunner hop too -- main.cpp calls
+// consoleRunner.poll(armed, hall), never Console::handleLine directly.
+void test_runner_threads_hall_diagnostics_into_status() {
+    test_mocks::MockCharIO io;
+    test_mocks::MockSettingsStore store;
+    ConsoleRunner runner(io, store);
+    runner.loadAtBoot();
+    io.clearOutput();
+
+    io.feed("status\n");
+    const HallDiagnostics hall{99, 5, 1};
+    TEST_ASSERT_FALSE(runner.poll(/*armed=*/false, hall));
+    TEST_ASSERT_TRUE(io.outputContains("hall: isrEntries=99 lastWindowEntries=5 guardFaults=1"));
 }
 
 void test_runner_sound_survives_save_and_load() {
@@ -1161,6 +1199,9 @@ int main(int, char**) {
     RUN_TEST(test_sound_reserved_profile_rejected);
     RUN_TEST(test_sound_volume_out_of_range_rejected);
     RUN_TEST(test_sound_in_status);
+    RUN_TEST(test_hall_diagnostics_default_zero_in_status);
+    RUN_TEST(test_hall_diagnostics_reported_in_status);
+    RUN_TEST(test_runner_threads_hall_diagnostics_into_status);
     RUN_TEST(test_runner_sound_survives_save_and_load);
     RUN_TEST(test_steer_min_valid_accepted);
     RUN_TEST(test_steer_max_valid_accepted);

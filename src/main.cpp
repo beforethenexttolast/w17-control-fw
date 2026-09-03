@@ -571,8 +571,11 @@ void loopBtPad(uint32_t nowMs) {
 
 #ifdef W17_TUNING_CONSOLE
     // Same bench console as the CRSF path (UART0 is independent of the input
-    // head); btpad.* edits apply live through the same applySettings.
-    if (consoleRunner.poll(armGate.isArmed())) {
+    // head); btpad.* edits apply live through the same applySettings. Hall
+    // counters (R2) come from the one hallSensor instance regardless of head.
+    if (consoleRunner.poll(armGate.isArmed(),
+                            {hallSensor.isrEntries(), hallSensor.lastWindowEntries(),
+                             hallSensor.guardFaults()})) {
         applySettings(consoleRunner.settings());
     }
 #endif
@@ -921,7 +924,11 @@ void loop() {
     // Bench console: polled outside the control tick, non-blocking, one capped
     // line per pass. Mutations are gated on DISARMED inside the console; a
     // change is applied to the live modules immediately (RAM-only until save).
-    if (consoleRunner.poll(armGate.isArmed())) {
+    // Hall counters (R2, OD-11's Phase-B margin measurement) ride along on
+    // `status` -- PHASE_B_FIRST_POWER.md B4.4 and D8 Phase 8 name this line.
+    if (consoleRunner.poll(armGate.isArmed(),
+                            {hallSensor.isrEntries(), hallSensor.lastWindowEntries(),
+                             hallSensor.guardFaults()})) {
         applySettings(consoleRunner.settings());
     }
 #endif

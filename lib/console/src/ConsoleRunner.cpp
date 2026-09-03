@@ -21,7 +21,7 @@ void ConsoleRunner::loadAtBoot() {
 // control tick, non-blocking, one capped line per pass"; this makes the code
 // match. A human interface does not need more than one line per ~20 ms tick, and
 // what is left in the RX ring is still there next pass.
-bool ConsoleRunner::poll(bool armed) {
+bool ConsoleRunner::poll(bool armed, const HallDiagnostics& hall) {
     bool changed = false;
     for (int c = io_.read(); c >= 0; c = io_.read()) {
         if (c == '\r') {
@@ -33,7 +33,7 @@ bool ConsoleRunner::poll(bool armed) {
                 io_.write("line too long, ignored\r\n");
                 overflow_ = false;
             } else {
-                runLine(armed, changed);
+                runLine(armed, changed, hall);
             }
             len_ = 0;
             return changed; // the cap: the rest of the ring waits for next pass
@@ -47,8 +47,8 @@ bool ConsoleRunner::poll(bool armed) {
     return changed;
 }
 
-void ConsoleRunner::runLine(bool armed, bool& changedOut) {
-    Result r = console_.handleLine(line_, settings_, armed);
+void ConsoleRunner::runLine(bool armed, bool& changedOut, const HallDiagnostics& hall) {
+    Result r = console_.handleLine(line_, settings_, armed, hall);
 
     if (r.saveRequested) {
         // The NVS commit happens INLINE, on the loopTask (finding timing-3,
