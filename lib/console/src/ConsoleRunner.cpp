@@ -51,6 +51,17 @@ void ConsoleRunner::runLine(bool armed, bool& changedOut) {
     Result r = console_.handleLine(line_, settings_, armed);
 
     if (r.saveRequested) {
+        // The NVS commit happens INLINE, on the loopTask (finding timing-3,
+        // carried UNVERIFIED). A flash write disables the flash cache, and the
+        // CRSF UART ISR under this pinned core was NOT confirmed to be
+        // IRAM-resident, so RX may be deaf for the duration -- the 128-byte
+        // FIFO holds ~3 ms at 420 kbaud. Left inline deliberately: `save` is
+        // bench-only (this translation unit is not in the delivery image), the
+        // console refuses mutations unless DISARMED, and a gap is at worst a
+        // failsafe blip, which is the safe direction and far inside the 500 ms
+        // budget. What is owed is the D8 line telling the bench operator to
+        // expect that blip; it is in the fix-wave branch report because D8 is
+        // another branch's file this wave.
         uint8_t buf[settings::kBlobLen];
         const size_t n = settings::serialize(settings_, buf);
         io_.write(store_.save(buf, n) ? "saved\r\n" : "SAVE FAILED\r\n");
