@@ -70,10 +70,11 @@ jobs:
         run: pio run -e esp32dev_tuning
 
       # Delivery-image quarantine guard (grand review 2026-09-03, safety-3).
-      # platformio.ini:24/:54-55 and CLAUDE.md call the "no console, no BT, no
-      # sim code in esp32dev" invariant "ELF-verified", but until this step
-      # nothing automated verified it -- the evidence was a one-off human `nm`
-      # spot-check in D8 phase 7. Runs AFTER all three builds because it needs
+      # platformio.ini's two env comments, CLAUDE.md/AGENTS.md "Delivery vs
+      # tuning builds" and ROADMAP D8 all call the "no console, no BT, no sim
+      # code in esp32dev" invariant "ELF-verified", but until this step nothing
+      # automated verified it -- the evidence was a one-off human `nm`
+      # spot-check in D8 Phase 11a (step 7). Runs AFTER all three builds because it needs
       # the two control ELFs: --strict makes a missing control build a failure,
       # so the check can never pass by scanning nothing (exit 4 = VACUOUS).
       - name: Delivery image shape check (no console/BT/sim in esp32dev)

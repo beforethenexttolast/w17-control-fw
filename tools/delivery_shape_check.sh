@@ -2,22 +2,35 @@
 #
 # Delivery-image shape guard (grand review 2026-09-03, finding safety-3).
 #
-# The repo asserts in four places -- platformio.ini:24 and :54-55, CLAUDE.md:67,
-# docs/ROADMAP.md:244 -- that the DELIVERED image (env:esp32dev) links no bench
-# console, no BT show-off code and no simulation feeder, and calls that
-# "ELF-verified". Until this script existed nothing automated enforced it: the
+# The repo asserts in FIVE places that the DELIVERED image (env:esp32dev) links
+# no bench console, no BT show-off code and no simulation feeder, and calls that
+# "ELF-verified":
+#   * platformio.ini, [env:esp32dev]'s lib_ignore note ("the pure console libs
+#     (compiled but never linked, ELF-verified)");
+#   * platformio.ini, [env:esp32dev_btshowoff]'s header ("links zero btpad/BT
+#     code (ELF-verified alongside the console invariant)");
+#   * CLAUDE.md and AGENTS.md, section "Delivery vs tuning builds (stable
+#     invariant)" ("Delivery ... links no console parser (ELF-verified)");
+#   * docs/ROADMAP.md, D8's "CF-1 remediation" paragraph ("ELF-verified: 0
+#     console symbols/strings in esp32dev").
+# (Cited by section, not by line: these files move, and a stale line number in
+# the guard that exists to make claims true would be its own small joke.)
+#
+# Until this script existed nothing automated enforced any of it: the
 # verification was a one-off human `nm` spot-check recorded in
-# docs/D8_BENCH_BRINGUP.md phase 7, i.e. a point-in-time claim, not a regression
-# guard. This script is that guard, in the same spirit as
-# tools/link2_copy_check.sh: it only READS build output, never writes anything.
+# docs/D8_BENCH_BRINGUP.md Phase 11a (step 7, "Flash plain delivery firmware"),
+# i.e. a point-in-time claim, not a regression guard. This script is that guard,
+# in the same spirit as tools/link2_copy_check.sh: it only READS build output,
+# never writes anything.
 #
 # Scope -- what this does and does not prove:
 #   DOES     prove that the named quarantined code is absent from a BUILT
 #            delivery ELF: no console/btpad/Bluepad32/sim symbol survived to the
 #            link, and no sim/console banner string is in the image.
 #   DOES NOT prove the firmware is otherwise correct, nor that the ELF it scanned
-#            is the one that gets flashed. Pair it with the D8 phase-7 ritual
-#            ("re-flash the delivery image and attach this check's output").
+#            is the one that gets flashed. Pair it with the D8 Phase 11a step-7
+#            ritual ("re-flash the delivery image and attach this check's
+#            output").
 #
 # Anti-vacuity (why the positive controls are not optional -- and why EACH
 # scanner is proven separately): a scanner that finds nothing because its
@@ -105,7 +118,7 @@ while [ $# -gt 0 ]; do
                NM="$1"; shift ;;
         --strict) STRICT=1; shift ;;
         -q|--quiet) QUIET=1; shift ;;
-        -h|--help) sed -n '3,81p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,94p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "error: unknown argument '$1' (try --help)" >&2; exit 3 ;;
     esac
 done
@@ -130,7 +143,7 @@ REPO_ROOT="$(dirname -- "$SCRIPT_DIR")"
 #       target; docs/bt_showoff_design.md 2.1).
 #   luepad / btstack / uni_platform  Bluepad32's own core + BTstack symbols, so
 #       the check does not depend on our wrapper alone (matches the pattern set
-#       D8 phase 7 prescribes; "luepad" avoids B/b case questions).
+#       D8 Phase 11a step 7 prescribes; "luepad" avoids B/b case questions).
 #   simfeeder:: / simpad::           the scripted sim feeders (src/SimCrsfFeeder,
 #       src/SimPadFeeder), delivery-lineage source gated by -DW17_SIM_*.
 SYMBOL_PATTERNS='console::|console_hal_esp32::|btpad::|btpad_hal_esp32::|luepad|btstack|uni_platform|simfeeder::|simpad::'
@@ -193,8 +206,9 @@ if [ -n "$symbol_hits" ] || [ -n "$string_hits" ]; then
     fi
     echo "" >&2
     echo "The gift image (env:esp32dev) must link NO bench console, NO BT show-off" >&2
-    echo "code and NO sim feeder -- that quarantine is what platformio.ini:24/:54-55" >&2
-    echo "and CLAUDE.md call 'ELF-verified'. Move the code behind its build flag, or" >&2
+    echo "code and NO sim feeder -- that quarantine is what platformio.ini's env" >&2
+    echo "comments, CLAUDE.md/AGENTS.md 'Delivery vs tuning builds' and ROADMAP D8" >&2
+    echo "call 'ELF-verified'. Move the code behind its build flag, or" >&2
     echo "change the invariant deliberately (and everywhere) first." >&2
     exit 1
 fi
