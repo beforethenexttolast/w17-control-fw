@@ -26,6 +26,14 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
+      # Unity runs only what RUN_TEST() names, so a test can be written, never
+      # registered, and never noticed -- the suite stays green and the count
+      # still rises (grand review 2026-09-03, correctness-4: one of twelve
+      # ArmGate tests had sat unregistered). Runs BEFORE the suite so an orphan
+      # is reported even when the tests themselves fail.
+      - name: Unity test registration check (defined == RUN_TEST)
+        run: ./tools/test_registration_check.sh
+
       - name: Native unit tests
         run: pio test -e native
 

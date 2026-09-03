@@ -531,6 +531,7 @@ int main(int, char**) {
     RUN_TEST(test_armgate_toggle_during_outage_does_not_count);
     RUN_TEST(test_armgate_episode_with_switch_off_does_not_latch);
     RUN_TEST(test_armgate_repeated_episodes_each_require_a_toggle);
+    RUN_TEST(test_armgate_neutral_while_switch_off_does_not_prearm);
     RUN_TEST(test_armgate_neutral_window_boundary);
     return UNITY_END();
 }
