@@ -88,9 +88,15 @@ public:
 
     // Latching with hysteresis + time qualification; never true before the
     // first sample (the EMA is seeded from it, so there is no climb-from-zero
-    // boot artifact). The time qualification is SYMMETRIC: warnDelayMs of
-    // sustained low to latch, and warnDelayMs of sustained sensor
-    // implausibility to unlatch (see sample()). So a latched warning SURVIVES a
+    // boot artifact). The time qualification is SYMMETRIC: warnDelayMs of low
+    // readings uninterrupted by a plausible reading above warnMv to latch, and
+    // warnDelayMs of sustained sensor implausibility to unlatch (see
+    // sample()). "Uninterrupted", not "continuously observed": an implausible
+    // run shorter than warnDelayMs does not reset the low dwell, so its
+    // wall-clock time still counts toward the latch (R4, 2026-09-03) -- an
+    // intermittent lead on a flat pack can latch from as few as two low
+    // samples bracketing a dropout, which is the accepted conservative
+    // direction on a monitoring-only path. So a latched warning SURVIVES a
     // short dropout -- a flapping sense lead does not change what the pack is
     // doing -- and only a sustained "I have no reading at all" clears it.
     bool lowVoltageWarning() const { return warning_; }

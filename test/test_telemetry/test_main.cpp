@@ -340,6 +340,37 @@ void test_battery_a_long_dropout_forgets_the_low_qualification() {
     TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
 }
 
+void test_battery_low_dwell_credits_a_sub_warndelayms_implausible_gap() {
+    // R4 seam (2026-09-03 re-verify): the low dwell is wall-clock time
+    // UNINTERRUPTED BY A PLAUSIBLE READING ABOVE warnMv, not continuously
+    // OBSERVED low samples -- an implausible run does not reset belowSince_
+    // unless it itself reaches warnDelayMs (see sample()). A single
+    // implausible stretch just under warnDelayMs, bracketed by only TWO low
+    // readings total, still latches. This is the accepted conservative
+    // direction on a monitoring-only path (over-warn, never under-warn on an
+    // intermittent lead) -- existing seams sat at 100 ms and 3900 ms
+    // (test_battery_implausible_clears_a_latched_warning_only_after_the_dwell,
+    // test_battery_a_long_dropout_forgets_the_low_qualification); nothing
+    // covered ~2900 ms until now.
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 1865; // 6901 mV: one low, plausible reading
+    monitor.sample(0);
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
+
+    sensor.pinMillivolts = 0; // sensor gone -- well under warnDelayMs so far
+    for (uint32_t t = 100; t <= 2900; t += 100) {
+        monitor.sample(t);
+        TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
+    }
+
+    sensor.pinMillivolts = 1865; // back, still low -- only the SECOND low
+                                  // reading ever observed by this monitor
+    monitor.sample(3000);        // exactly warnDelayMs after the first
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+}
+
 void test_battery_6900mv_still_warns_above_the_floor() {
     // The floor must not swallow a genuinely low pack: 6900 mV is 3.45 V/cell,
     // deep in warning territory and far above implausibleBelowMv.
@@ -711,6 +742,7 @@ int main(int, char**) {
     RUN_TEST(test_battery_intermittent_lead_on_a_flat_pack_keeps_the_warning_latched);
     RUN_TEST(test_battery_intermittent_lead_on_a_flat_pack_still_latches_from_scratch);
     RUN_TEST(test_battery_a_long_dropout_forgets_the_low_qualification);
+    RUN_TEST(test_battery_low_dwell_credits_a_sub_warndelayms_implausible_gap);
     RUN_TEST(test_battery_6900mv_still_warns_above_the_floor);
     RUN_TEST(test_battery_config_valid_rejects_bad_plausibility_bounds);
     RUN_TEST(test_wheel_first_update_seeds_without_spike);
