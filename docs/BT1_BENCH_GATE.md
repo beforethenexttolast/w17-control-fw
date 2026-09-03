@@ -34,9 +34,10 @@ pad, a real BT radio, or sustained power to observe at all.
   `PinMap.hpp:36-56`, `project-review/13_phase_a_a2_no_power_checklist.md` §S4c.
   `esp32dev_simbt` does not need the physical switch and may be exercised independent of this
   precondition (it boots straight into BT_SOLO with no strap read at all).
-- `D8_BENCH_BRINGUP.md` Phase 3b has already passed on `esp32dev_btshowoff` for the wiring
-  that exists (each selector position resolves to the mode it should, ambiguous → Drive,
-  Showcase cannot arm, BT_SOLO never opens the CRSF UART).
+- `D8_BENCH_BRINGUP.md` Phase 3b **is BT1 item 0** — not a precondition BT1 waits on, its
+  first action, done under this same gate (each selector position resolves to the mode it
+  should, ambiguous → Drive, Showcase cannot arm, BT_SOLO never opens the CRSF UART). Do the
+  rest of this gate's items only after Phase 3b passes.
 - Wheels off the ground. Car on a stand. Observer present. Battery lead pullable at the star
   switch/master disconnect, same as every other Phase B item.
 - A pad: genuine Sony DualShock-class hardware is the spec — clone controllers are known-flaky
