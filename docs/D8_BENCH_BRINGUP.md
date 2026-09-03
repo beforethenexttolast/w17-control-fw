@@ -3,10 +3,10 @@
 > **Phase -1 — HARD STOP: A2 CLOSED and Phase B APPROVED, or stop here.** This entire
 > runbook is Phase-B-and-later work. It assumes `project-review/13_phase_a_a2_no_power_checklist.md`
 > has been filled in with real readings, its §12 two-part PASS is recorded, and
-> `../CURRENT_STATUS.md` says Phase B is open. **As of this revision, neither is true: A2
+> `../../CURRENT_STATUS.md` says Phase B is open. **As of this revision, neither is true: A2
 > is NOT-EXECUTED and Phase B is BLOCKED** (`../CLAUDE.md` hardware-gates section). No
 > battery, no USB, no bench PSU, nothing flashed, until that status changes — re-check
-> `../CURRENT_STATUS.md` immediately before Phase 1 and again before Phase 3, since gate
+> `../../CURRENT_STATUS.md` immediately before Phase 1 and again before Phase 3, since gate
 > state can move between sessions. Standalone first-power sequencing (which board, which
 > order, what "logic only" means before the ESC gets motor power) lives in
 > `PHASE_B_FIRST_POWER.md`; this document is the phase-by-phase detail Phase B's own
@@ -49,7 +49,7 @@ hardware on first power.
 ## Phase 1 — Power rails smoke (no firmware dependency)
 
 > **Stop — first battery connection of this bring-up.** Re-confirm the Phase -1 gate
-> (A2 closed, Phase B approved in `../CURRENT_STATUS.md`) before this step. Everything
+> (A2 closed, Phase B approved in `../../CURRENT_STATUS.md`) before this step. Everything
 > before this line needed no battery; everything from here on does.
 
 - [ ] Battery → XT60 Y-split → ESC + BEC#1 + BEC#2. Confirm BEC#1 ≈ 5 V, BEC#2 ≈ 5–6 V under a

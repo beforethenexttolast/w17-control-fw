@@ -3,7 +3,7 @@
 > **Gate — read before doing anything else.** Phase B is **BLOCKED** until A2
 > (`project-review/13_phase_a_a2_no_power_checklist.md`) is filled in with real bench
 > readings, its §12 two-part PASS is recorded, and the result is reviewed and approved
-> (`../CURRENT_STATUS.md` carries the live status). **As of this revision A2 is
+> (`../../CURRENT_STATUS.md` carries the live status). **As of this revision A2 is
 > NOT-EXECUTED and Phase B is BLOCKED** — no battery, no USB, no bench PSU, nothing
 > flashed. This document is the standalone entry point for the moment that changes; it
 > keeps the ledger (§Phase B in `project-review/11_hardware_validation_plan.md`) as the

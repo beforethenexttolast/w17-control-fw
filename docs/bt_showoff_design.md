@@ -13,7 +13,7 @@ originated as a scratchpad draft dated 2026-08-16, committed here the same day; 
 unchanged apart from this header, the §8 decision outcomes, and the dated amendment notes
 marked "Owner 2026-08-17" / "2026-08-20"). Commissioned by the owner 2026-08-16 as the
 design half of the approved "design + default-off compile-flagged branch prototype in one
-pass" (`../W17_PRODUCT_VISION.md`, backlog item *BT show-off mode*, decision 12).
+pass" (`../../W17_PRODUCT_VISION.md`, backlog item *BT show-off mode*, decision 12).
 
 **Still true, unaffected by the correction above:** `W17_BT_SHOWOFF` is absent from every
 delivery-lineage build, nothing has been flashed or run on real hardware, nothing has been
@@ -101,7 +101,7 @@ exists to exclude.
 ### 2.2 Boot-selection mechanisms (proposals)
 
 The eventual operator is a non-hobbyist giftee ("user friendly af",
-`../W17_PRODUCT_VISION.md` operator model), so the selector must be a physical, labeled,
+`../../W17_PRODUCT_VISION.md` operator model), so the selector must be a physical, labeled,
 un-screw-uppable thing — and it must have exactly **one** source of truth.
 
 | # | Mechanism | How it works | Giftee UX | Risk / cost |
@@ -121,7 +121,7 @@ design pass because of the invariant it touches.
 strapping pin (0/2/12/15 avoided per repo `CLAUDE.md` pin rules), supports internal
 pull-up. Final say per repo rule: reconcile against `PinMap.hpp` + the wiring atlas at
 implementation, and note the A2 interaction — a new wired pin joins the continuity-matrix
-scope question already tracked as F20 (`../CURRENT_STATUS.md` 2026-08-04 entry).
+scope question already tracked as F20 (`../../CURRENT_STATUS.md` 2026-08-04 entry).
 
 **[2026-08-17 three-mode reconciliation — ONE selector seam.]** The showcase-mode merge
 brought `lib/bootmode` (Drive/Showcase) to `main`; this branch folded its own
@@ -527,7 +527,7 @@ consequence of a decision). Bench execution of anything here remains gated on BT
 ## 9. Relationship to gates
 
 - **A2 / Phase B: untouched.** A2 remains NOT-EXECUTED and Phase B BLOCKED
-  (`../CURRENT_STATUS.md`); nothing in this design changes their scope, order, or wording.
+  (`../../CURRENT_STATUS.md`); nothing in this design changes their scope, order, or wording.
   The only contact point is additive: if the strap switch is adopted, its pin joins the
   continuity-matrix scope discussion already open as F20.
 - **This mode gets its own bench gate** — proposed name **BT1** — consisting of the
@@ -539,7 +539,7 @@ consequence of a decision). Bench execution of anything here remains gated on BT
   prototype on a feature branch with `W17_BT_SHOWOFF` default-OFF in every existing env,
   **native tests only** — no flash, no bench, nothing merged and nothing pushed before the
   owner reads and approves. This mirrors the branch-only precedent the owner set for the
-  U4 arbiter (`../W17_PRODUCT_VISION.md`, head-tracking reality check).
+  U4 arbiter (`../../W17_PRODUCT_VISION.md`, head-tracking reality check).
 - **Authority note, recorded:** the mode dilutes "Windows is the control/integration
   authority" (boundary 7) the same way the approved ELRS backup handset does — accepted by
   the owner at vision lock (decision 12), gated per process. Boundaries 1–6 are untouched

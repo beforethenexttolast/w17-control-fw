@@ -1,7 +1,7 @@
 # W17 — Coordinated Two-Board Flash (link2 v2 lockstep)
 
 > **Gate.** Flashing is Phase B work. Do not run any step below unless A2 is CLOSED and
-> Phase B is APPROVED (`../CURRENT_STATUS.md`) — see `D8_BENCH_BRINGUP.md` Phase -1 and
+> Phase B is APPROVED (`../../CURRENT_STATUS.md`) — see `D8_BENCH_BRINGUP.md` Phase -1 and
 > `PHASE_B_FIRST_POWER.md`. This document is the detail that `D8_BENCH_BRINGUP.md` Phase 9
 > and Phase 11a point to; it does not open the gate on its own.
 

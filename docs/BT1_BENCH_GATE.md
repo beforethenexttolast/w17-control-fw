@@ -1,7 +1,7 @@
 # BT1 — BT show-off / showcase bench gate
 
 > **Gate.** BT1 is a Phase B item: it can only begin once powered bench work is legal at all
-> (A2 closed, Phase B approved — `../CURRENT_STATUS.md`, `D8_BENCH_BRINGUP.md` Phase -1,
+> (A2 closed, Phase B approved — `../../CURRENT_STATUS.md`, `D8_BENCH_BRINGUP.md` Phase -1,
 > `PHASE_B_FIRST_POWER.md`) and it runs **car on stand, wheels off the ground**; ESC
 > motor-power rules are the existing ones, unchanged by anything in this document. **No BT
 > code runs on powered hardware before BT1 is opened by the owner.** This gate is promoted
