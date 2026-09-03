@@ -298,9 +298,17 @@ Hall EMI scope, link2 staleness, camera H.265→WebRTC, com0com telemetry) live 
    paths, untouched). Board #2's half (ignition on `armed || showcase`, curated idle
    script, showcase halo) lives in `w17-soundlight-fw`. **Deliberately NOT in this wave**
    (deferred to the BT-branch settings-blob reconciliation, which owns the third
-   `kBlobVersion` bump): the **strap pin choice + wiring** (OWNER-PENDING, D3 — shared
-   with the BT selector; BT-2 candidates GPIO27/32/33; joins the A2 continuity-matrix
-   scope, F20) and any **NVS boot-mode override** — `src/main.cpp` today injects a
+   `kBlobVersion` bump): the **strap pin choice + wiring** — at the time this item was
+   written, `OWNER-PENDING, D3` (shared with the BT selector; BT-2 candidates GPIO27/32/33;
+   joins the A2 continuity-matrix scope, F20). **Dated update, 2026-09-02: D3 was decided
+   2026-08-20 (`OWNER-RATIFIED(D3-SHOW-SELECT)`) — not a single strap pin but one SP3T
+   switch, common to GND, throws on GPIO27 (SOLO) and GPIO32 (SHOW), center = LAPTOP/Drive;
+   candidate GPIO33 was dropped, not chosen. Current source of truth:
+   `lib/config/include/config/PinMap.hpp:36-56`,
+   `lib/bootmode/include/bootmode/BootMode.hpp:18-34`. The A2 continuity-matrix rows this
+   paragraph flagged as owed now exist at `project-review/13_phase_a_a2_no_power_checklist.md`
+   §S4c (added the same date). This paragraph is left otherwise unchanged as the historical
+   record of the wave that deferred the decision.** Any **NVS boot-mode override** — `src/main.cpp` today injects a
    constexpr `Floating` reading, so every shipped build resolves to Drive and a bench
    SHOWCASE build is a one-line flip. No settings-blob change of any kind rides this
    wave. First powered showcase run is a normal Phase B bench item, after A2.
