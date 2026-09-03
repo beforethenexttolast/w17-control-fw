@@ -62,4 +62,20 @@ jobs:
         # sibling byte-for-byte. --strict makes an unreachable/missing sibling a
         # hard failure (exit 2) rather than a silent pass, which is correct here
         # since the clone step above guarantees the sibling is present.
-        run: ./tools/link2_copy_check.sh --strict --sibling /tmp/sibling
+        #
+        # A reported doc-tier difference does not fail the job -- that exit-code
+        # contract is the script's own and stays unchanged here -- but it also
+        # should not be invisible on green. If the script's output names a
+        # docs/link2_protocol.md difference, surface it as a GitHub Actions
+        # warning annotation so a normative divergence (as opposed to
+        # this-repo-local prose) still gets a human's attention without
+        # turning the job red.
+        run: |
+          set +e
+          output="$(./tools/link2_copy_check.sh --strict --sibling /tmp/sibling)"
+          status=$?
+          printf '%s\n' "$output"
+          if printf '%s\n' "$output" | grep -q 'REPORT -- docs/link2_protocol.md differs'; then
+            echo "::warning file=docs/link2_protocol.md::link2-copy-check reports this file differs from the w17-soundlight-fw copy (reported tier, non-fatal). Check by hand for normative drift -- field table, lengths, CRC, the 500 ms staleness rule -- vs. this-repo-local prose; see the job log above for the script's own diff pointer."
+          fi
+          exit "$status"
