@@ -9,6 +9,22 @@ WheelSpeed::WheelSpeed(hal::IWheelPulseSensor& sensor, WheelSpeedConfig config)
 
 void WheelSpeed::update(uint32_t nowMs) {
     const hal::WheelPulseSnapshot snapshot = sensor_.read();
+    sensorFault_ = snapshot.sensorFault;
+
+    if (sensorFault_) {
+        // The pulse input is disabled (rate guard tripped one layer down).
+        // Report a standstill, not the last speed: it is the harvest-safe
+        // direction at ErsSystem's rpm == 0 gate and the honest one -- we are
+        // not measuring the wheel at all right now. Keep the count baseline
+        // and the timestamp current so re-arming does not look like one
+        // enormous pulse after the gap.
+        seeded_ = true;
+        lastCount_ = snapshot.count;
+        lastPulseSeenMs_ = nowMs;
+        measuredRpm_ = 0;
+        reportedRpm_ = 0;
+        return;
+    }
 
     if (!seeded_) {
         // First update only seeds: the counter may already be nonzero (wheel

@@ -51,6 +51,11 @@ public:
     // down. Saturates rather than wraps.
     uint32_t rejectedPulses() const { return rejectedPulses_; }
 
+    // Mirrors the last snapshot's hal::WheelPulseSnapshot::sensorFault: the
+    // pulse input is disabled and the reported speed is a hard 0 for that
+    // reason, not because the car is standing still.
+    bool sensorFault() const { return sensorFault_; }
+
     uint16_t speedMmPerSec() const {
         return static_cast<uint16_t>(
             (static_cast<uint32_t>(reportedRpm_) * config_.wheelCircumferenceMm) / 60u);
@@ -65,6 +70,7 @@ private:
     uint16_t measuredRpm_ = 0;     // from the last valid pulse period
     uint16_t reportedRpm_ = 0;     // measured, decayed, or zeroed
     uint32_t rejectedPulses_ = 0;  // implausible periods seen (diagnostic)
+    bool sensorFault_ = false;     // last snapshot's sensor-fault flag
 };
 
 } // namespace telemetry

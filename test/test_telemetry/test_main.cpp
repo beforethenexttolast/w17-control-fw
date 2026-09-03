@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "telemetry/BatteryMonitor.hpp"
+#include "telemetry/PulseRateGuard.hpp"
 #include "telemetry/WheelSpeed.hpp"
 
 #include "../mocks/FakeVoltageSensor.hpp"
@@ -8,6 +9,8 @@
 
 using telemetry::BatteryConfig;
 using telemetry::BatteryMonitor;
+using telemetry::PulseRateGuard;
+using telemetry::PulseRateGuardConfig;
 using telemetry::WheelSpeed;
 using telemetry::WheelSpeedConfig;
 using test_mocks::FakeVoltageSensor;
@@ -418,6 +421,165 @@ void test_wheel_config_valid_rejects_bad_values() {
     TEST_ASSERT_FALSE(zeroCircumference.valid());
 }
 
+// --- PulseRateGuard: Hall interrupt-rate bound (timing-1 / OD-11 guard (c)) ---
+//
+// The guard consumes ISR ENTRIES, not accepted edges: the 2 ms debounce lockout
+// already bounds accepted edges to <= 500/s, which is why the old code could not
+// see a storm at all. Default bound: 180 entries per 100 ms window (9 plausible
+// edges x 20).
+
+namespace {
+
+// Feeds the guard `windows` windows at `entriesPerWindow`, polling at the 20 ms
+// control tick like main.cpp does. Returns the last action seen.
+PulseRateGuard::Action runWindows(PulseRateGuard& guard, uint32_t& t, uint32_t& entries,
+                                  int windows, uint32_t entriesPerWindow) {
+    PulseRateGuard::Action last = PulseRateGuard::Action::None;
+    for (int w = 0; w < windows; ++w) {
+        for (int tick = 0; tick < 5; ++tick) { // 5 x 20 ms = one 100 ms window
+            t += 20;
+            entries += entriesPerWindow / 5;
+            const PulseRateGuard::Action a = guard.update(t, entries);
+            if (a != PulseRateGuard::Action::None) {
+                last = a;
+            }
+        }
+    }
+    return last;
+}
+
+} // namespace
+
+void test_rate_guard_margin_is_at_least_20x_the_physical_maximum() {
+    // The whole safety argument in one assertion: the default bound is >= 20x
+    // the fastest edge rate a real wheel can produce at maxPlausibleRpm.
+    const uint32_t plausible = telemetry::plausibleEdgesPerWindow(
+        WheelSpeedConfig{}.maxPlausibleRpm, WheelSpeedConfig{}.magnetsPerRev, 100);
+    TEST_ASSERT_EQUAL_UINT32(9, plausible); // 5000 rpm, 1 magnet, 100 ms
+    TEST_ASSERT_TRUE(PulseRateGuardConfig{}.maxEntriesPerWindow >= 20u * plausible);
+    TEST_ASSERT_TRUE(PulseRateGuardConfig{}.valid());
+
+    PulseRateGuardConfig tooTight;
+    tooTight.maxEntriesPerWindow = 20u * plausible - 1u;
+    TEST_ASSERT_FALSE(tooTight.valid()); // a bound a real wheel could reach
+}
+
+void test_rate_guard_never_trips_on_a_real_wheel_stream() {
+    PulseRateGuard guard;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    guard.update(t, entries); // seed
+
+    // Ten seconds at the MAXIMUM plausible wheel rate (9 entries per window),
+    // then ten more at ten times that -- still inside the 20x margin, because
+    // false faults would mean a dead speedo and no ERS harvest on a real drive.
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::None == runWindows(guard, t, entries, 100, 10));
+    TEST_ASSERT_FALSE(guard.faulted());
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::None == runWindows(guard, t, entries, 100, 90));
+    TEST_ASSERT_FALSE(guard.faulted());
+    TEST_ASSERT_EQUAL_UINT32(0, guard.faultCount());
+}
+
+void test_rate_guard_trips_on_an_edge_storm() {
+    PulseRateGuard guard;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    guard.update(t, entries);
+
+    // A floating pin / EMI storm: ~10 kHz = 1000 entries per 100 ms window,
+    // against a bound of 180. The debounce lockout would still have counted at
+    // most 50 EDGES in the same window, which is why counting edges is blind.
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::Detach == runWindows(guard, t, entries, 1, 1000));
+    TEST_ASSERT_TRUE(guard.faulted());
+    TEST_ASSERT_EQUAL_UINT32(1, guard.faultCount());
+    TEST_ASSERT_TRUE(guard.lastWindowEntries() > guard.config().maxEntriesPerWindow);
+}
+
+void test_rate_guard_rearms_after_a_quiet_window_and_refaults_if_the_storm_persists() {
+    PulseRateGuard guard;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    guard.update(t, entries);
+    runWindows(guard, t, entries, 1, 1000); // trip
+    TEST_ASSERT_TRUE(guard.faulted());
+
+    // While detached no entries arrive (the ISR is gone) and the guard stays
+    // faulted for the whole cool-down.
+    for (uint32_t elapsed = 20; elapsed < 1000; elapsed += 20) {
+        TEST_ASSERT_TRUE(PulseRateGuard::Action::None == guard.update(t + elapsed, entries));
+        TEST_ASSERT_TRUE(guard.faulted());
+    }
+    t += 1000;
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::Reattach == guard.update(t, entries));
+    TEST_ASSERT_FALSE(guard.faulted());
+
+    // Storm still there -> trips again. Duty-cycle limiting, not a permanent
+    // latch, so a transient burst does not kill the speedo for the drive.
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::Detach == runWindows(guard, t, entries, 1, 1000));
+    TEST_ASSERT_EQUAL_UINT32(2, guard.faultCount());
+}
+
+void test_rate_guard_ignores_a_stalled_control_loop() {
+    PulseRateGuard guard;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    guard.update(t, entries);
+
+    // The tick disappears for 2 s (a long flash write). The entries that
+    // accumulated are a full 2 s of PLAUSIBLE wheel motion (~166), which is
+    // over a single window's budget but not over the rate -- and the window is
+    // 20x nominal, so the sample carries no information either way. It must not
+    // manufacture a fault.
+    t += 2000;
+    entries += 166;
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::None == guard.update(t, entries));
+    TEST_ASSERT_FALSE(guard.faulted());
+}
+
+void test_rate_guard_scales_the_allowance_with_a_late_tick() {
+    PulseRateGuard guard;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    guard.update(t, entries);
+
+    // A 300 ms window (late, but inside the 10x sanity bound) at exactly the
+    // nominal rate: 3 x 180 = 540 entries is allowed, 541 is not.
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::None == guard.update(t + 300, entries + 540));
+
+    PulseRateGuard other;
+    uint32_t t2 = 0;
+    uint32_t e2 = 0;
+    other.update(t2, e2);
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::Detach == other.update(t2 + 300, e2 + 541));
+}
+
+void test_wheel_sensor_fault_reports_zero_not_the_last_speed() {
+    FakeWheelPulseSensor sensor;
+    WheelSpeed wheel(sensor);
+    wheel.update(0);
+
+    sensor.snapshot = {1, 20000}; // 3000 rpm, real
+    wheel.update(100);
+    TEST_ASSERT_EQUAL_UINT16(3000, wheel.rpm());
+    TEST_ASSERT_FALSE(wheel.sensorFault());
+
+    // The HAL detached the interrupt: motion is UNKNOWN, and unknown reports 0
+    // (harvest-safe at the ErsSystem gate). Note the period field still carries
+    // a plausible 20 ms -- the flag alone must be enough.
+    sensor.snapshot = {2, 20000, true};
+    wheel.update(120);
+    TEST_ASSERT_TRUE(wheel.sensorFault());
+    TEST_ASSERT_EQUAL_UINT16(0, wheel.rpm());
+    TEST_ASSERT_EQUAL_UINT16(0, wheel.speedMmPerSec());
+
+    // Recovery: the count jumped far while the input was disabled; that must
+    // not read as one enormous pulse.
+    sensor.snapshot = {900, 20000, false};
+    wheel.update(140);
+    TEST_ASSERT_FALSE(wheel.sensorFault());
+    TEST_ASSERT_EQUAL_UINT16(3000, wheel.rpm()); // from the period, as always
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_battery_divider_conversion);
@@ -444,5 +606,12 @@ int main(int, char**) {
     RUN_TEST(test_wheel_decays_gracefully_while_silent);
     RUN_TEST(test_wheel_new_pulse_after_decay_reports_true_period);
     RUN_TEST(test_wheel_config_valid_rejects_bad_values);
+    RUN_TEST(test_rate_guard_margin_is_at_least_20x_the_physical_maximum);
+    RUN_TEST(test_rate_guard_never_trips_on_a_real_wheel_stream);
+    RUN_TEST(test_rate_guard_trips_on_an_edge_storm);
+    RUN_TEST(test_rate_guard_rearms_after_a_quiet_window_and_refaults_if_the_storm_persists);
+    RUN_TEST(test_rate_guard_ignores_a_stalled_control_loop);
+    RUN_TEST(test_rate_guard_scales_the_allowance_with_a_late_tick);
+    RUN_TEST(test_wheel_sensor_fault_reports_zero_not_the_last_speed);
     return UNITY_END();
 }

@@ -407,6 +407,11 @@ console::ConsoleRunner consoleRunner(serialConsole, nvsStore);
 //                          disconnect latch), alongside the frame timeout.
 void controlTick(uint32_t nowMs, bool& frameSinceTick, bool sourceSignalsFailsafe,
                  const gearbox::GearParams& trainingParams) {
+    // Hall interrupt-RATE guard (timing-1 / OD-11), evaluated on the tick and
+    // never in the ISR: an implausible entry rate detaches the interrupt, which
+    // WheelSpeed sees as a sensor fault and reports as a standstill. Must run
+    // before wheelSpeed.update() so the fault is visible in the same tick.
+    hallSensor.poll(nowMs);
     wheelSpeed.update(nowMs);
 
     const failsafe::State state =

@@ -16,6 +16,13 @@ struct WheelPulseSnapshot {
     uint32_t count;            // monotonically increasing edge count since boot
     uint32_t lastPeriodMicros; // micros between the two most recent edges;
                                // 0 until two edges have ever been seen
+    // True while the implementation has DISABLED the pulse input because the
+    // interrupt rate was implausible (telemetry::PulseRateGuard; finding
+    // timing-1 / OD-11). It is a statement about the SENSOR, not the wheel:
+    // consumers must report zero motion, never the last known value, because
+    // "we stopped listening" and "the car stopped" are the same thing to
+    // everything downstream (speedo, GPS-groundspeed frame, ERS harvest gate).
+    bool sensorFault = false;
 };
 
 class IWheelPulseSensor {
