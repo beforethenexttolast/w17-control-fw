@@ -907,6 +907,10 @@ Codex milestone gates movement (§ top-of-doc). Both must pass.
       §2.3.5) approved and recorded (fork-hygiene rule #3).
 - [ ] **R12** The exact shaping constants (deadband width, `maxRate`, `maxAccel`, override
       threshold, arm affordance) reviewed and signed off — no placeholder constants ship.
+      **Scope widened 2026-09-03 (OD-17, §2.3.12.13(b)):** this enumeration is illustrative,
+      not exhaustive — the record R12 signs is `pkg/headarbiter/calib.go`'s full schema
+      (6 metadata + 14 per-axis + 10 policy + the bindings block, enumerated in full at
+      §2.3.12.13(b)), so nothing can be signed by omission.
 - [ ] **R13** The full §2.3.11.5 test matrix (Groups A/B/C) implemented and **green**, with the
       byte-identical-while-inactive proof (Group A) demonstrated on the default build, before
       the flag is flipped in any shared build.
@@ -1374,10 +1378,10 @@ below are additional gated-implementation tests):
 | R9 real-device log-only bridge | **NO-GO** | hardware/network (U1/CB6) |
 | R10 sender 250 ms suppression | **PARTIAL — PASS (automated)** | §2.3.12.9 item 4; real-device lifecycle/axes/mount + canonical commit + mirror pending |
 | R11 fork path/name/license | **PASS** | §2.3.12.9 item 1 |
-| R12 shaping constants signed | **NO-GO** | derivation policy recorded (§2.3.12.8); values need R7 measurement |
+| R12 shaping constants signed | **NO-GO** | derivation policy recorded (§2.3.12.8); values need R7 measurement. **Amended 2026-09-03 (OD-17, §2.3.12.13(b)):** scope widened to `calib.go`'s full schema — the checklist's five named items are illustrative, not exhaustive. Verdict unchanged. |
 | R13 test matrix green | **NO-GO** | **Amended 2026-09-03 — the evidence line was stale; the verdict is not.** "No U4 code exists" stopped being true on 2026-08-16: the gated U4 arbiter exists on `w17-mapper` branch **`u4-arbiter`** (tip `8007603`, 2026-09-03), under the owner's 2026-08-16 **branch-only** approval — **never merged, never pushed**, and `.githooks/pre-push` refuses that tree by construction (re-verified 2026-09-03 on the tip: checks 1/2/4 all match, hook exits 1). The proto still ends at `HEAD_INTENT_STATE_ACTIVE_LOG_ONLY = 8` — verified by **reading** `pkg/proto/server.proto:519-527`, and because the branch changes no `.proto` file at all (I9), **not** inferred from check 3's zero hits: check 3 is a negative regex on one name shape and a differently named active value would pass it (`[fix-wave: MAP-13]`). On that branch the §2.3.11.5 matrix is green in **both build modes** on go1.26.5 — `go build`, `go vet ./pkg/...`, the full `./...` suite and `-race` over the full `./...`, default and `-tags w17_first_active` — and the ten identity dumps still share **one SHA-256** after the 2026-09-02 rebase onto `w17-headtrack` `9cb501e`. R13 stays **NO-GO** anyway, for two reasons that automated green cannot touch: (a) the branch has had **no adversarial desk R-review by anyone other than its author**, which §3 roadmap step **L** requires (a fresh adversarial §2.3.11.6 R1–R16 re-check), and (b) the matrix rows that need hardware (R15's physical unplug, FIRST_ACTIVE R16's servo sweep) are not runnable at a desk at all. Review packet: `w17-mapper` `docs/u4-branch-README.md` + `docs/u4-evidence/` |
 | R14 written rollback | **PASS** | §2.3.12.12 |
-| R15 device-loss disarm (I10) | **NO-GO** | added 2026-07-30; no U4 code exists to test. **Evidence line corrected 2026-08-04:** it previously read "the §2.3.11.1 hold-last defect it guards against is confirmed present in the fork's channel assembler (`output_tx.go:43`)" — both the claim and the line reference are stale. The assembler defect was fixed at `w17-mapper` `2dc7c5a`/`e452d55`/`c60843e` (§2.3.11.1). R15 is unaffected: it demonstrates **device-loss disarm** against the real SDL/OS removal path, which no unit test covers and which the fix was never claimed to establish. Needs a physical unplug demonstration, so it is hardware-*procedure* class, not bench-power class — it does **not** require Phase B |
+| R15 device-loss disarm (I10) | **NO-GO** | added 2026-07-30; no U4 code exists to test. **Evidence line corrected 2026-08-04:** it previously read "the §2.3.11.1 hold-last defect it guards against is confirmed present in the fork's channel assembler (`output_tx.go:43`)" — both the claim and the line reference are stale. The assembler defect was fixed at `w17-mapper` `2dc7c5a`/`e452d55`/`c60843e` (§2.3.11.1). R15 is unaffected: it demonstrates **device-loss disarm** against the real SDL/OS removal path, which no unit test covers and which the fix was never claimed to establish. Needs a physical unplug demonstration, so it is hardware-*procedure* class, not bench-power class — it does **not** require Phase B. **Amended 2026-09-03 (OD-18, §2.3.12.13(c)):** transport ruled — gated build reaches the Windows VM as a `git bundle`/archive copied in by hand, never a push; hook stays intact; bundle deleted after the session; no serial port, no TX. Verdict unchanged: NO-GO until run. |
 | R16 bench-only servo sweep | **NO-GO** | promoted out of R2 blocker 7, 2026-07-30; no waiver clause; requires Phase B, so gated behind R6 |
 | **Overall** | **NO-GO / BLOCKED** | hardware-evidence items R1/R2/R6–R9, R12, R13, R15, R16 open |
 
@@ -1396,6 +1400,100 @@ Missing hardware evidence is **not** converted into PASS anywhere in this table.
   Rollback never leaves two binders or zero owners by construction — the modes are driven by
   one switch on each side and were validated mutually exclusive in
   `w17-ground-station/docs/2026-07-15_cb8_slice3c_integration_evidence.md`.
+
+##### 2.3.12.13 R-review ratifications (owner, 2026-09-03) — OD-17 / OD-18
+
+Owner rulings on the desk R-review of `u4-arbiter` (review packet: `w17-mapper`
+`docs/u4-branch-README.md` + `docs/u4-evidence/`), answering items 2 and 8 of that review's
+own "exactly what stands between `u4-arbiter` and an R-review pass" list. **This subsection
+changes no gate: FIRST_ACTIVE stays NO-GO / BLOCKED (§2.3.12.11), and R12/R13/R15 stay
+NO-GO.**
+
+**(a) `dtClampMs = 50` ms — RATIFIED as a policy constant (D10 spirit).** The branch's
+original comment cited "(plan §2.3.12.10 row D10)" for this value. D10 (`:1354`,
+"Monotonic time | all freshness/ramp math on the monotonic clock; wall-clock jumps have no
+effect") governs the **clock**, not a per-tick integration clamp — no plan text anywhere
+ratifies 50 ms or any other clamp value, and the supporting "~2 tick periods at the slowest
+standard CRSF refresh rate" rationale was unsourced against a refresh rate that is in fact
+**dynamic**, reset from telemetry at runtime (`pkg/link/send.go:291-292`,
+`ticker.Reset(nextRefreshRate)`). The branch has already corrected the citation
+(`u4-arbiter` `pkg/headarbiter/gate.go:35-53`, tip `e4f6ae8`): it now says the value is the
+implementer's unratified choice, not plan-derived, tagged `[bench-TBD / owner ratification
+pending]`. **The owner now ratifies the value itself, 2026-09-03, as a policy constant in the
+D10 spirit** — the clock stays monotonic (D10's actual requirement, independently satisfied:
+`send.go:299`'s `time.Now()` is a monotonic reading) and the clamp exists only to bound what a
+scheduling gap or clock anomaly can integrate into motion. **The clamp only ever reduces
+commanded motion — smaller is always at least as safe, never less** — so ratifying an
+implementer-chosen value here carries no motion-increasing risk. Value unchanged at **50 ms**.
+`w17-mapper` records this ratification at `gate.go`'s `dtClampMs` comment, in
+`docs/u4-branch-README.md` deviation 7, and in
+`docs/u4-evidence/calibration_record_TEMPLATE.md:153-159`.
+
+**(b) R12 scope WIDENED to the full `calib.go` schema.** R12's checklist text (§2.3.11.6,
+`:908-909`) enumerates five things: "deadband width, `maxRate`, `maxAccel`, override
+threshold, arm affordance". The signed record the branch actually requires before the
+arbiter will leave passthrough is **`pkg/headarbiter/calib.go`'s complete schema**
+(`u4-arbiter` tip `e4f6ae8`) — every field below is fail-closed: absence alone, not just an
+out-of-policy value, refuses the record. **R12's signature now covers all of them, not only
+the five named in the checklist text, so nothing can be signed by omission.**
+
+Enumerated from `calib.go` (field — where the record is refused without it):
+
+*Metadata, 6 fields required non-empty (`calib.go:98-107` schema, `:189-212` validation):*
+`schema_version` (present and exactly `1`, `:98`, `:189-192`) · `hardware_id` (`:99`, `:201`,
+`:208-211`) · `measured_date` (`:100`, `:202`, `:208-211`) · `operator` (`:101`, `:203`,
+`:208-211`) · `evidence_source` (`:102`, `:204`, `:208-211`) · `signed_off_by` (`:103`,
+`:205`, `:208-211`).
+
+*`pan` and `tilt` axis blocks, 7 fields each = 14 (`calib.go:110-118` schema; block itself
+required at `:104-105`/`:215`/`:218`/`:330-332`; each field required at `:338-354`):*
+`center_count` · `safe_min_count` · `safe_max_count` · `sign` · `counts_per_degree` ·
+`stationary_jitter_deg` · `controller_noise_counts` — once per axis (`pan.*` and `tilt.*`).
+
+*`policy` block, 10 fields (`calib.go:120-131` schema; block itself required at `:222-224`):*
+`deadband_deg` (`:121`, `:237`) — named in R12's text · `max_rate_deg_s` (`:122`, `:246`) —
+named (as `maxRate`) · `max_accel_deg_s2` (`:123`, `:253`) — named (as `maxAccel`) ·
+`takeover_threshold_counts` (`:124`, `:260`) — named (override threshold) ·
+**`lowpass_tau_ms`** (`:125`, `:273`) — **not named in R12's text**; §2.3.12.10's "Smoothing"
+row (`:1349`) calls the time constant "reviewed" but R12's own enumeration omits it ·
+**`blend_start_deg`** (`:126`, `:280`) — **not named in R12's text or anywhere upstream**;
+§2.3.12.7 (`:1153-1163`) defines the position→rate blend qualitatively only and names no
+field for its geometry (deviation 2) · **`blend_full_deg`** (`:127`, `:283`) — same gap as
+`blend_start_deg` · **`invalid_fault_threshold`** (`:128`, `:290-293`) — **not named**;
+§2.3.12.4 (`:1041`) calls the threshold/window "an R12-reviewed constant" but R12's
+enumeration omits it · **`invalid_fault_window_ms`** (`:129`, `:295-298`) — same gap as the
+threshold · **`fault_recovery_valid_ms`** (`:130`, `:300-303`) — **not named anywhere
+upstream**.
+
+*`bindings` block, 7 top-level fields + sub-fields (`calib.go:139-147` schema; block itself
+required at `:415`/`:417-418`):* `device_id` (`:140`, `:420-422`) · `target_port` (`:141`,
+`:424-426`) · `deadman`, `arm_confirm`, `recenter` — three binding blocks (`:142-144`,
+`:430`/`:433`/`:436`), each requiring its own `kind` (`:387-389`), `index` (`:391-394`), and
+`hat_mask` (required iff `kind=="hat"`, forbidden iff `kind=="button"`, `:395-411`); the three
+bindings must also be three physically distinct controls (`:445-447`) · `override_pan_axis`
+(`:145`, `:449-451`) and `override_tilt_axis` (`:146`, `:453-455`) — the two must differ
+(`:457-459`).
+
+**Total: 6 metadata + 14 per-axis (7 × 2) + 10 policy + 7-plus bindings fields, all
+fail-closed.** Of the 10 policy fields, only 4 were named in R12's original checklist text;
+`lowpass_tau_ms`, `blend_start_deg`, `blend_full_deg`, `invalid_fault_threshold`,
+`invalid_fault_window_ms`, and `fault_recovery_valid_ms` were not. **R12 is amended: its
+checklist enumeration (§2.3.11.6) is illustrative, not exhaustive — the record R12 signs is
+`calib.go`'s schema in full, at whatever commit is under review.** R12 itself stays **NO-GO**
+(§2.3.12.11): this widens what a future signature must cover; it does not supply one.
+
+**(c) R15 transport — RATIFIED (OD-18).** The gated `u4-arbiter` build reaches the Windows VM
+as a **`git bundle` / archive copied in by hand — never a `git push`**. `.githooks/pre-push`
+stays enabled and intact on every clone that can reach a remote; the bundle/archive transport
+never touches a remote at all, so the hook is never in that loop and is not weakened by this
+ruling. The bundle/archive is **deleted after the session** — it does not persist as a second
+copy of gated code outside the two worktrees the branch already lives in. R15 itself runs
+with **no serial port opened and no CRSF TX**: it is the arbiter's device-loss disarm demo
+(unplug the gamepad from `ARMING`/`ACTIVE`/`OVERRIDDEN` per D19–D22, reconnect proven not to
+restore authority), observed through the existing read-only diagnostics stream, not through
+powered output. This discharges the transport question the desk review raised ("nobody has
+asked this, and it silently blocks the one open R item that needs neither A2 nor Phase B") —
+see the amended R15 row, §2.3.12.11. **R15 stays NO-GO until the procedure is actually run.**
 
 ## 3. Ordered unlock sequence
 
