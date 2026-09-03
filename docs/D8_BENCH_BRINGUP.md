@@ -243,6 +243,17 @@ cannot clear; the contract lives in `lib/channels/include/channels/ArmGate.hpp`,
 - [ ] **Hall wheel-speed**: spin the axle by hand → rpm reads sane; then at full throttle
       **scope the Hall line near the motor** for EMI double-counts. Add 1–10 nF across the
       sensor output if the edge is ugly (the 2 ms ISR lockout absorbs mild bounce).
+- [ ] **Hall interrupt-rate margin, full-throttle half (OD-11; continues
+      `PHASE_B_FIRST_POWER.md` B4.4's motor-free half):** with the ESC configured and the motor
+      connected (Phase 7's rule: **wheels still off the ground**), log
+      `hallSensor.isrEntries()`, `lastWindowEntries()`, and `guardFaults()` — the bench
+      console's `status` line prints all three — over a full-throttle pass, then repeat with
+      the GPIO35 10 kΩ pull-up lifted (scope the pin). Record entries per 100 ms in normal
+      running (expect ≲ 9) and confirm it sits far below the guard's 180 entries/100 ms bound
+      (20× the 5000 rpm maximum); if it is ever approached, confirm the fault path (detach →
+      rpm 0 → re-arm after 1 s) behaves as the native tests describe. A window that ran more
+      than 10× long is judged only when it carries ≥ 10× the elapsed-scaled allowance (a 2 s
+      stall: 36 000 entries). `[bench-TBD]` — nothing has measured this yet.
 - [ ] **No-hardware cross-check for the HUD's low-battery path:** on the ground station,
       `npm run demo:low-battery` (`w17-ground-station/scripts/run.js --demo-low-battery`,
       `W17_REPLAY_TIMELINE=low-battery`) replays a scripted low-battery timeline without a
