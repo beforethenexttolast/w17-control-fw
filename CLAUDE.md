@@ -14,7 +14,11 @@ hardware outputs**, and only from already-arbitrated inputs.
 
 - MCU: MH-ET Live D1-Mini ESP32 (ESP32-WROOM-32 class; owner decision 2026-07-24). The
   on-hand USB-C DevKit V1 clones are TEST/SPARE boards only, not the car's controllers.
-- Stack: PlatformIO + Arduino-ESP32. Board env `esp32dev`, plus a `native` test env.
+- Stack: PlatformIO + Arduino-ESP32. Six `platformio.ini` envs: `esp32dev` (delivery board
+  target), `esp32dev_sim` (Wokwi CRSF self-feeder), `esp32dev_tuning` (serial console + NVS),
+  `esp32dev_btshowoff` (BT pad show-off PROTOTYPE, custom Bluepad32/BTstack core — never a
+  delivery target unless bench gate BT1 passes), `esp32dev_simbt` (BT-head sim on the pinned
+  stock core), and `native` (host-side Unity tests).
 - The build is mature: the module set below exists, is unit-tested, and is reviewed. Treat
   this as a maintenance codebase, not a greenfield one — no day-1 scaffolding is pending.
 
@@ -42,6 +46,18 @@ hardware outputs**, and only from already-arbitrated inputs.
   pan/tilt. Real `ledcWrite` sits behind an interface so logic tests assert commanded µs.
 - `telemetry` — battery ADC (divider + calibration → volts, monitoring only) and Hall
   wheel-speed (rising-edge ISR → RPM/speed). Pure conversion functions.
+- `bootmode` — resolves exactly one of three boot modes (Drive / Showcase / BtSolo) once at
+  boot from the physical SP3T selector (`pinmap::kBtModeStrapPin` = SOLO, `kShowModeStrapPin`
+  = SHOW, center = Drive); any ambiguous or faulted reading fails to Drive. Pure logic,
+  natively tested.
+- `btpad` (+ `btpad_hal_esp32`) — BT gamepad frame decode and link-liveness monitor used only
+  by the `W17_BT_SHOWOFF` prototype envs; the HAL wraps Bluepad32 and is `lib_ignore`'d out of
+  every delivery-lineage env.
+- `reset_diag` — classifies `esp_reset_reason()` and updates an RTC-retained boot-count
+  session on every boot. The classification runs in every build; only the tuning/sim builds
+  format and print a boot line (`src/main.cpp`, gated on `W17_TUNING_CONSOLE` /
+  `W17_SIM_CRSF_FEEDER` / `W17_SIM_PAD_FEEDER`) — the delivery image captures the same data
+  and surfaces none of it (no UART0 console). This silence is deliberate, not an oversight.
 - `ers` — energy-recovery/ERS behavior feeding telemetry + link2 (harvest state, etc.).
 - `link2` — framed one-way UART message (start byte + payload + checksum) to ESP32 #2
   carrying drive + telemetry state for sound/light. The payload field list lives in
@@ -74,11 +90,14 @@ loading independent of `W17_TUNING_CONSOLE`. Canonical delivery runbook:
 
 ## Pin map — where the truth lives
 
-Pins are **maintained in the config header `lib/config/include/config/PinMap.hpp`**, not
-decided from this file. Reconcile any pin question against that header and the current
-project docs (`docs/`, `docs/w17_wiring_assembly_atlas.html`) — do not treat any table in a
-brief as authoritative. GPIO 34/35 are input-only (battery analog, Hall with external
-pull-up); avoid GPIO 6–11 (flash) and be careful with strapping pins 0/2/12/15.
+Pins are **maintained in the config header `lib/config/include/config/PinMap.hpp`** — the
+sole source of truth; do not decide pins from this file or from a brief.
+`docs/w17_wiring_assembly_atlas.html` is not a pin source either — its own closing note calls
+its pin numbers "illustrative," not the real ones. GPIO 34/35 are input-only (battery analog,
+Hall with external pull-up); avoid GPIO 6–11 (flash) and be careful with strapping pins
+0/2/12/15. GPIO27 (SOLO) / GPIO32 (SHOW) are reserved for the SP3T boot-mode strap — read only
+in `W17_BT_SHOWOFF` builds (`esp32dev_btshowoff` / `esp32dev_simbt`); every delivery-lineage
+env leaves them untouched.
 
 ## Architecture rules
 
