@@ -19,16 +19,27 @@
 #            is the one that gets flashed. Pair it with the D8 phase-7 ritual
 #            ("re-flash the delivery image and attach this check's output").
 #
-# Anti-vacuity (why the positive control is not optional): a scanner that finds
-# nothing because its patterns are wrong, its `nm` is the host one, or its ELF
-# path is stale, PASSES silently and looks exactly like a clean build. So the
-# same scan, with the same patterns and the same nm, is also run over a build
-# that MUST trip it:
-#   * esp32dev_tuning (the bench console env) must report console:: hits;
-#   * esp32dev_sim (the Wokwi sim env) -- when present -- must report sim hits.
-# If a control build comes back clean, this script fails with exit 4 (VACUOUS)
-# instead of reporting a green delivery image, because at that point it has
-# proven nothing about the delivery image either.
+# Anti-vacuity (why the positive controls are not optional -- and why EACH
+# scanner is proven separately): a scanner that finds nothing because its
+# patterns are wrong, its `nm` is the host one, or its ELF path is stale, PASSES
+# silently and looks exactly like a clean build. So the same scans, with the same
+# patterns and the same nm, are also run over builds that MUST trip them:
+#   * esp32dev_tuning (the bench console env) must produce console:: SYMBOL hits
+#     AND a [tune] STRING hit;
+#   * esp32dev_sim (the Wokwi sim env) -- when present -- must produce
+#     simfeeder:: SYMBOL hits AND a [sim] STRING hit.
+# The two scanners are asserted INDEPENDENTLY, never as a union, because a union
+# hides the one failure that matters most here: with a working `strings` and a
+# useless `nm` (host nm, wrong binary, empty output) the string hits alone would
+# satisfy both controls -- while the BT half of the quarantine has NO string
+# detector at all (Bluepad32/BTstack put no banner in .rodata), so `nm` is its
+# ONLY detector. The 2026-09-03 review demonstrated the hole: this script with
+# `--nm /usr/bin/true --elf .pio/build/esp32dev_btshowoff/firmware.elf` exited 0
+# and certified a full Bluepad32/BTstack image as clean. That same command now
+# exits 4.
+# If a control build fails to trip EITHER scanner, this script fails with exit 4
+# (VACUOUS) instead of reporting a green delivery image, because at that point it
+# has proven nothing about the delivery image either.
 #
 # Usage:
 #   tools/delivery_shape_check.sh [--elf PATH] [--console-control PATH]
@@ -55,8 +66,8 @@
 #   1  SHAPE VIOLATION: quarantined code is present in the delivery image
 #   2  CANNOT CHECK: delivery ELF or a working cross-nm is missing
 #   3  usage error
-#   4  VACUOUS: a control build did not trip the scanner (or, under --strict, is
-#      missing), so a "clean" result would not mean anything
+#   4  VACUOUS: a control build did not trip one of the two scanners (or, under
+#      --strict, is missing), so a "clean" result would not mean anything
 #
 # Falsification recipe (how to see it go red, no source edit needed):
 #   pio run -e esp32dev_tuning
@@ -64,6 +75,10 @@
 #   => exit 1, listing the console:: symbols. That is the injected-regression
 #      proof the fix-wave verdict asks for: a delivery ELF carrying console code
 #      is exactly what the tuning ELF is.
+#
+#   tools/delivery_shape_check.sh --nm /usr/bin/true
+#   => exit 4 (VACUOUS): a `nm` that prints nothing trips no symbol match on the
+#      console control, so the run is refused instead of reporting a clean image.
 
 set -u
 
@@ -90,7 +105,7 @@ while [ $# -gt 0 ]; do
                NM="$1"; shift ;;
         --strict) STRICT=1; shift ;;
         -q|--quiet) QUIET=1; shift ;;
-        -h|--help) sed -n '3,70p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,81p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "error: unknown argument '$1' (try --help)" >&2; exit 3 ;;
     esac
 done
@@ -187,8 +202,14 @@ fi
 # --- anti-vacuity controls ---------------------------------------------------
 vacuous=0
 
-check_control() { # NAME PATH EXPECT_REGEX
-    name="$1"; path="$2"; expect="$3"
+# check_control NAME PATH EXPECT_SYMBOL_REGEX EXPECT_STRING_REGEX
+#
+# Both scanners must trip, and they are judged SEPARATELY. Union logic would let
+# a live `strings` cover for a dead `nm` -- see the anti-vacuity note in the
+# header: the BT quarantine has no string detector, so a silently useless `nm`
+# would disarm it while this script still printed OK.
+check_control() {
+    name="$1"; path="$2"; expect_sym="$3"; expect_str="$4"
     if [ ! -f "$path" ]; then
         if [ "$STRICT" -eq 1 ]; then
             echo "delivery-shape-check: VACUOUS -- $name control build missing at $path" >&2
@@ -201,20 +222,32 @@ check_control() { # NAME PATH EXPECT_REGEX
         fi
         return
     fi
-    hits="$( { scan_elf "$path"; scan_strings "$path"; } | grep -E "$expect" )"
-    if [ -z "$hits" ]; then
-        echo "delivery-shape-check: VACUOUS -- the $name control build tripped nothing." >&2
-        echo "  $path contains no /$expect/ match, so the scanner is broken (wrong nm," >&2
-        echo "  wrong patterns, or a stale ELF) and the clean delivery result above" >&2
-        echo "  proves NOTHING. Fix the scanner before trusting either." >&2
+    sym_hits="$(scan_elf "$path" | grep -E "$expect_sym")"
+    str_hits="$(scan_strings "$path" | grep -E "$expect_str")"
+
+    if [ -z "$sym_hits" ]; then
+        echo "delivery-shape-check: VACUOUS -- the $name control tripped no SYMBOL match." >&2
+        echo "  $path yields no /$expect_sym/ from '$NM -C', so the symbol scanner is" >&2
+        echo "  broken (host nm, wrong nm, wrong patterns, or a stale ELF). The symbol" >&2
+        echo "  scan is the ONLY detector for the Bluepad32/BTstack half of the" >&2
+        echo "  quarantine, so a clean delivery result above proves NOTHING about it." >&2
         vacuous=1
-    else
-        say "delivery-shape-check: control OK -- $name build trips the scanner ($(printf '%s\n' "$hits" | wc -l | tr -d ' ') hits)"
+    fi
+    if [ -z "$str_hits" ]; then
+        echo "delivery-shape-check: VACUOUS -- the $name control tripped no STRING match." >&2
+        echo "  $path yields no /$expect_str/ from 'strings', so the string scanner is" >&2
+        echo "  broken or missing (binutils absent on this runner). It is the detector" >&2
+        echo "  that survives a build where the code was inlined into unnamed symbols," >&2
+        echo "  so a clean delivery result above is only half-proven." >&2
+        vacuous=1
+    fi
+    if [ -n "$sym_hits" ] && [ -n "$str_hits" ]; then
+        say "delivery-shape-check: control OK -- $name build trips BOTH scanners ($(printf '%s\n' "$sym_hits" | wc -l | tr -d ' ') symbol, $(printf '%s\n' "$str_hits" | wc -l | tr -d ' ') string hits)"
     fi
 }
 
-check_control "console (esp32dev_tuning)" "$CONSOLE_CONTROL" 'console::|\[tune\]'
-check_control "sim (esp32dev_sim)" "$SIM_CONTROL" 'simfeeder::|\[sim\]'
+check_control "console (esp32dev_tuning)" "$CONSOLE_CONTROL" 'console::' '\[tune\]'
+check_control "sim (esp32dev_sim)" "$SIM_CONTROL" 'simfeeder::' '\[sim\]'
 
 if [ "$vacuous" -ne 0 ]; then
     exit 4
