@@ -387,6 +387,13 @@ void applySettings(const settings::Settings& s) {
 // nvsStore above and loads through the same validated loader as delivery.
 console_hal_esp32::Esp32SerialConsole serialConsole;
 console::ConsoleRunner consoleRunner(serialConsole, nvsStore);
+// The TX ring the HAL installs must absorb the LONGEST response a command can
+// produce, or console writes block the loopTask again (finding timing-2). The
+// two constants live in different libraries -- console_hal_esp32 does not
+// depend on console -- so this is the one translation unit where both are in
+// scope, and therefore the only place the coupling can be machine-checked.
+static_assert(console_hal_esp32::Esp32SerialConsole::kTxBufferBytes >= console::kMaxOutput,
+              "console TX ring is smaller than the longest possible console response");
 #endif
 
 // --- The 50 Hz control tick (CLAUDE.md 2.8), extracted VERBATIM from loop()

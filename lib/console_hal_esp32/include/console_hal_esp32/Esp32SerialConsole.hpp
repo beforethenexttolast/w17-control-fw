@@ -15,8 +15,16 @@ namespace console_hal_esp32 {
 class Esp32SerialConsole : public hal::ICharIO {
 public:
     // TX ring installed in begin() so console writes cannot block the loopTask
-    // (finding timing-2). 256 bytes > the longest console response.
-    static constexpr size_t kTxBufferBytes = 256;
+    // (finding timing-2). Sized from console::kMaxOutput (512, lib/console/
+    // include/console/Console.hpp), which is the hard cap on a single command's
+    // response text -- NOT from a guess: the longest real response, `help`, is
+    // 403 bytes (lib/console/src/Console.cpp, the "commands: ..." literal) plus
+    // the "\r\n" ConsoleRunner writes after it. src/main.cpp static_asserts
+    // this against console::kMaxOutput in the tuning build, where both headers
+    // are in scope; keep that assertion if this constant ever moves.
+    // IDF also requires a ring LARGER than SOC_UART_FIFO_LEN (128), which 512
+    // satisfies with the FIFO itself as extra absorbency behind it.
+    static constexpr size_t kTxBufferBytes = 512;
 
     void begin(unsigned long baud = 115200);
     int read() override;
