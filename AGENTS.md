@@ -26,8 +26,9 @@ hardware outputs**, and only from already-arbitrated inputs.
 - Stack: PlatformIO + Arduino-ESP32. Six `platformio.ini` envs: `esp32dev` (delivery board
   target), `esp32dev_sim` (Wokwi CRSF self-feeder), `esp32dev_tuning` (serial console + NVS),
   `esp32dev_btshowoff` (BT pad show-off PROTOTYPE, custom Bluepad32/BTstack core — never a
-  delivery target unless bench gate BT1 passes), `esp32dev_simbt` (BT-head sim on the pinned
-  stock core), and `native` (host-side Unity tests).
+  delivery target unless bench gate BT1 passes first (OD-2; gate defined in
+  `docs/bt_showoff_design.md`)), `esp32dev_simbt` (BT-head sim on the pinned stock core), and
+  `native` (host-side Unity tests).
 - The build is mature: the module set below exists, is unit-tested, and is reviewed. Treat
   this as a maintenance codebase, not a greenfield one — no day-1 scaffolding is pending.
 
@@ -55,13 +56,17 @@ hardware outputs**, and only from already-arbitrated inputs.
   pan/tilt. Real `ledcWrite` sits behind an interface so logic tests assert commanded µs.
 - `telemetry` — battery ADC (divider + calibration → volts, monitoring only) and Hall
   wheel-speed (rising-edge ISR → RPM/speed). Pure conversion functions.
-- `bootmode` — resolves exactly one of three boot modes (Drive / Showcase / BtSolo) once at
-  boot from the physical SP3T selector (`pinmap::kBtModeStrapPin` = SOLO, `kShowModeStrapPin`
-  = SHOW, center = Drive); any ambiguous or faulted reading fails to Drive. Pure logic,
-  natively tested.
-- `btpad` (+ `btpad_hal_esp32`) — BT gamepad frame decode and link-liveness monitor used only
-  by the `W17_BT_SHOWOFF` prototype envs; the HAL wraps Bluepad32 and is `lib_ignore`'d out of
-  every delivery-lineage env.
+- `bootmode` — resolves the boot mode (Drive / Showcase / BtSolo) exactly once, never at
+  runtime. Delivery-lineage builds (`esp32dev` / `_tuning` / `_sim`) resolve it at COMPILE
+  time from the `kBootStrapReading` bench override in `src/main.cpp`, which ships as
+  `Floating` ⇒ Drive: the shipped image never reads a selector and never boots Showcase.
+  Only the `W17_BT_SHOWOFF` envs read the physical SP3T selector once in `setup()`
+  (`pinmap::kBtModeStrapPin` = SOLO, `kShowModeStrapPin` = SHOW, center = Drive); any
+  ambiguous or faulted reading fails to Drive. Pure logic, natively tested.
+- `btpad` (+ `btpad_hal_esp32`) — BT gamepad frame decode and link-liveness monitor; the pure
+  lib is also compiled and exercised by `[env:native]` (`test/test_btpad`), but it is linked
+  into firmware only by the `W17_BT_SHOWOFF` prototype envs — the HAL wraps Bluepad32 and is
+  `lib_ignore`'d out of every delivery-lineage env.
 - `reset_diag` — classifies `esp_reset_reason()` and updates an RTC-retained boot-count
   session on every boot. The classification runs in every build; only the tuning/sim builds
   format and print a boot line (`src/main.cpp`, gated on `W17_TUNING_CONSOLE` /
