@@ -322,14 +322,40 @@ void test_wheel_first_ever_edge_has_no_period() {
     TEST_ASSERT_EQUAL_UINT16(0, wheel.rpm());
 }
 
-void test_wheel_implausible_period_is_clamped() {
+void test_wheel_implausible_period_is_rejected_to_zero() {
+    // OD-11 speedo (b): reject, never clamp. Clamping reported the car's
+    // maximum speed from a single EMI double-count.
     FakeWheelPulseSensor sensor;
     WheelSpeed wheel(sensor);
     wheel.update(0);
 
     sensor.snapshot = {1, 6000}; // 10000 rpm claimed: EMI, not motion
     wheel.update(100);
-    TEST_ASSERT_EQUAL_UINT16(5000, wheel.rpm()); // maxPlausibleRpm
+    TEST_ASSERT_EQUAL_UINT16(0, wheel.rpm());
+    TEST_ASSERT_EQUAL_UINT16(0, wheel.speedMmPerSec());
+    TEST_ASSERT_EQUAL_UINT32(1, wheel.rejectedPulses());
+}
+
+void test_wheel_glitch_does_not_erase_a_real_speed_permanently() {
+    // The rejection zeroes the CURRENT report (that is the safe direction),
+    // and the next genuine pulse restores a real reading immediately -- the
+    // speedo is not latched off by one noisy edge.
+    FakeWheelPulseSensor sensor;
+    WheelSpeed wheel(sensor);
+    wheel.update(0);
+
+    sensor.snapshot = {1, 20000}; // 3000 rpm, real
+    wheel.update(100);
+    TEST_ASSERT_EQUAL_UINT16(3000, wheel.rpm());
+
+    sensor.snapshot = {2, 6000}; // glitch
+    wheel.update(120);
+    TEST_ASSERT_EQUAL_UINT16(0, wheel.rpm());
+
+    sensor.snapshot = {3, 20000}; // real again
+    wheel.update(140);
+    TEST_ASSERT_EQUAL_UINT16(3000, wheel.rpm());
+    TEST_ASSERT_EQUAL_UINT32(1, wheel.rejectedPulses());
 }
 
 void test_wheel_zero_speed_after_timeout() {
@@ -412,7 +438,8 @@ int main(int, char**) {
     RUN_TEST(test_wheel_first_update_seeds_without_spike);
     RUN_TEST(test_wheel_rpm_from_pulse_period);
     RUN_TEST(test_wheel_first_ever_edge_has_no_period);
-    RUN_TEST(test_wheel_implausible_period_is_clamped);
+    RUN_TEST(test_wheel_implausible_period_is_rejected_to_zero);
+    RUN_TEST(test_wheel_glitch_does_not_erase_a_real_speed_permanently);
     RUN_TEST(test_wheel_zero_speed_after_timeout);
     RUN_TEST(test_wheel_decays_gracefully_while_silent);
     RUN_TEST(test_wheel_new_pulse_after_decay_reports_true_period);

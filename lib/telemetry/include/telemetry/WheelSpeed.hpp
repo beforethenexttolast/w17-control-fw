@@ -14,8 +14,9 @@ struct WheelSpeedConfig {
     // No pulse for this long => report 0 (the graceful-decay rule below
     // already brings the reading down; this truncates the asymptotic tail).
     uint16_t zeroSpeedTimeoutMs = 1500;
-    // Plausibility clamp: ~55 rev/s at the car's real top speed, so anything
-    // near this is EMI/glitch, not motion.
+    // Plausibility bound: ~55 rev/s at the car's real top speed, so anything
+    // near this is EMI/glitch, not motion. A period implying more than this is
+    // REJECTED (reported speed 0), not clamped to it -- see WheelSpeed.cpp.
     uint16_t maxPlausibleRpm = 5000;
 
     constexpr bool valid() const {
@@ -43,6 +44,13 @@ public:
 
     uint16_t rpm() const { return reportedRpm_; }
 
+    // How many pulse periods have been rejected as implausible since boot.
+    // Diagnostic only -- nothing gates on it -- but it is the signal that says
+    // "the Hall input is picking up EMI" when a bench reading looks odd, and
+    // the counterpart to the hardware rate guard (PulseRateGuard) one layer
+    // down. Saturates rather than wraps.
+    uint32_t rejectedPulses() const { return rejectedPulses_; }
+
     uint16_t speedMmPerSec() const {
         return static_cast<uint16_t>(
             (static_cast<uint32_t>(reportedRpm_) * config_.wheelCircumferenceMm) / 60u);
@@ -56,6 +64,7 @@ private:
     uint32_t lastPulseSeenMs_ = 0; // when update() last observed the count change
     uint16_t measuredRpm_ = 0;     // from the last valid pulse period
     uint16_t reportedRpm_ = 0;     // measured, decayed, or zeroed
+    uint32_t rejectedPulses_ = 0;  // implausible periods seen (diagnostic)
 };
 
 } // namespace telemetry

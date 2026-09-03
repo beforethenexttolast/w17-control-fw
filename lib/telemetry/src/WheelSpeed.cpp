@@ -1,5 +1,7 @@
 #include "telemetry/WheelSpeed.hpp"
 
+#include <cstdint>
+
 namespace telemetry {
 
 WheelSpeed::WheelSpeed(hal::IWheelPulseSensor& sensor, WheelSpeedConfig config)
@@ -26,11 +28,23 @@ void WheelSpeed::update(uint32_t nowMs) {
         if (snapshot.lastPeriodMicros != 0) {
             const uint32_t revPeriodMicros =
                 snapshot.lastPeriodMicros * config_.magnetsPerRev;
-            uint32_t rpm = 60000000u / revPeriodMicros;
+            const uint32_t rpm = 60000000u / revPeriodMicros;
             if (rpm > config_.maxPlausibleRpm) {
-                rpm = config_.maxPlausibleRpm; // EMI/glitch clamp
+                // REJECT, never clamp (finding correctness-3, ruling OD-11
+                // speedo (b)). Clamping reported maxPlausibleRpm -- i.e. the
+                // fastest speed the car can go -- from a single EMI
+                // double-count: the giftee's speedo pegged on a parked car,
+                // the GPS-groundspeed frame with it, and ErsSystem harvesting
+                // "coast" energy at rest (it gates only on rpm == 0). 0 is the
+                // harvest-safe direction and the honest one: a period this
+                // short is not a wheel.
+                measuredRpm_ = 0;
+                if (rejectedPulses_ != UINT32_MAX) {
+                    rejectedPulses_++; // saturate: a diagnostic must not wrap
+                }
+            } else {
+                measuredRpm_ = static_cast<uint16_t>(rpm);
             }
-            measuredRpm_ = static_cast<uint16_t>(rpm);
         }
         reportedRpm_ = measuredRpm_;
         return;

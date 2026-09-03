@@ -2,9 +2,13 @@
 
 #include "ers/ErsSystem.hpp"
 #include "gearbox/Gearbox.hpp" // shared-feel-constant pin below (gear count)
+#include "telemetry/WheelSpeed.hpp" // composition test: glitch -> no harvest
+
+#include "../mocks/FakeWheelPulseSensor.hpp"
 
 using ers::ErsConfig;
 using ers::ErsSystem;
+using telemetry::WheelSpeed;
 
 void setUp() {}
 void tearDown() {}
@@ -163,6 +167,45 @@ void test_overtake_bonus_hits_exactly_full_in_gear_three() {
     TEST_ASSERT_EQUAL_INT16(1000, e.applyBoost(800)); // 800 * 1.25 = 1000 exactly
 }
 
+// Composition test for finding correctness-3 (OD-11 speedo (b)): the ERS
+// harvest gate is `wheelRpm == 0`, so what WheelSpeed does with an implausible
+// pulse decides whether a PARKED car silently charges its energy store. This
+// runs both halves -- the sensor and the consumer -- against each other.
+void test_glitch_pulse_at_rest_accrues_no_ers_energy() {
+    test_mocks::FakeWheelPulseSensor sensor;
+    WheelSpeed wheel(sensor);
+    wheel.update(0); // seed
+
+    ErsSystem e;
+    uint32_t t = runTicks(e, 50, 500, 1000, true, false); // drain to 74%
+    TEST_ASSERT_EQUAL_UINT8(74, e.energyPercent());
+
+    // One EMI double-count on a standing car: a 6000 us period claims 10000
+    // rpm. Clamped (the old behaviour) this was maxPlausibleRpm and the coast
+    // band harvested for a full second; rejected it is 0 and nothing accrues.
+    sensor.snapshot = {1, 6000};
+    wheel.update(t);
+    TEST_ASSERT_EQUAL_UINT16(0, wheel.rpm());
+
+    for (int i = 0; i < 50; ++i) { // 1 s of coasting throttle at rest
+        t += 20;
+        e.update(t, true, /*commandedThrottle=*/0, wheel.rpm(), false, false);
+    }
+    TEST_ASSERT_EQUAL_UINT8(74, e.energyPercent()); // not one per-mille gained
+
+    // Control: the same second with a PLAUSIBLE pulse (20 ms period = 3000
+    // rpm) does harvest, so the assertion above is about the rejection and not
+    // about a dead harvest path.
+    sensor.snapshot = {2, 20000};
+    wheel.update(t);
+    TEST_ASSERT_EQUAL_UINT16(3000, wheel.rpm());
+    for (int i = 0; i < 50; ++i) {
+        t += 20;
+        e.update(t, true, /*commandedThrottle=*/0, wheel.rpm(), false, false);
+    }
+    TEST_ASSERT_EQUAL_UINT8(80, e.energyPercent()); // +6% at the coast rate
+}
+
 void test_config_valid_rejects_bad_values() {
     TEST_ASSERT_TRUE(ErsConfig{}.valid());
 
@@ -227,6 +270,7 @@ int main(int, char**) {
     RUN_TEST(test_apply_boost_multiplies_and_clamps);
     RUN_TEST(test_apply_boost_zero_and_negative_invariant);
     RUN_TEST(test_overtake_bonus_hits_exactly_full_in_gear_three);
+    RUN_TEST(test_glitch_pulse_at_rest_accrues_no_ers_energy);
     RUN_TEST(test_config_valid_rejects_bad_values);
     return UNITY_END();
 }
