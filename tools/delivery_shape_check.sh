@@ -77,7 +77,9 @@
 # check" are different failures and CI must be able to tell them apart):
 #   0  delivery ELF is clean AND every available control tripped the scanner
 #   1  SHAPE VIOLATION: quarantined code is present in the delivery image
-#   2  CANNOT CHECK: delivery ELF or a working cross-nm is missing
+#   2  CANNOT CHECK: delivery ELF or a working cross-nm is missing, or the
+#      delivery ELF is present but empty/truncated/unreadable by nm (R3: a
+#      zero-output `nm -C` on the delivery ELF is refused, not read as clean)
 #   3  usage error
 #   4  VACUOUS: a control build did not trip one of the two scanners (or, under
 #      --strict, is missing), so a "clean" result would not mean anything
@@ -92,6 +94,12 @@
 #   tools/delivery_shape_check.sh --nm /usr/bin/true
 #   => exit 4 (VACUOUS): a `nm` that prints nothing trips no symbol match on the
 #      console control, so the run is refused instead of reporting a clean image.
+#
+#   : > /tmp/empty.elf && tools/delivery_shape_check.sh --elf /tmp/empty.elf
+#   head -c 4096 .pio/build/esp32dev_btshowoff/firmware.elf > /tmp/truncated.elf \
+#     && tools/delivery_shape_check.sh --elf /tmp/truncated.elf
+#   => both exit 2 (R3): `nm -C` on either produces no output, so neither is
+#      read as a clean delivery image (before the fix, both exited 0).
 
 set -u
 
@@ -186,6 +194,20 @@ scan_strings() {
 if [ ! -f "$ELF" ]; then
     echo "delivery-shape-check: CANNOT CHECK -- no delivery ELF at $ELF" >&2
     echo "  Build it first: pio run -e esp32dev" >&2
+    exit 2
+fi
+
+# A zero-byte or truncated "ELF" makes `nm` fail (or print nothing), which a
+# plain grep-for-hits reads as "clean" -- the 2>/dev/null in scan_elf swallows
+# nm's own error, and no symbols means no SYMBOL_PATTERNS match either. That is
+# the anti-vacuity hole finding R3 closed: a truncated delivery ELF used to be
+# certified clean. Require real `nm -C` output -- some symbol table, not
+# necessarily a quarantine hit -- before trusting a "clean" verdict below.
+nm_all_hits="$("$NM" -C "$ELF" 2>/dev/null)"
+if [ -z "$nm_all_hits" ]; then
+    echo "delivery-shape-check: CANNOT CHECK -- '$NM -C $ELF' produced no output." >&2
+    echo "  The ELF is empty, truncated, or not a valid object for this nm, so a" >&2
+    echo "  clean scan result would prove nothing. Rebuild it: pio run -e esp32dev" >&2
     exit 2
 fi
 
