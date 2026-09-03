@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include "hal/ICharIO.hpp"
 
 namespace console_hal_esp32 {
@@ -12,6 +14,10 @@ namespace console_hal_esp32 {
 // not part of that binary at all.
 class Esp32SerialConsole : public hal::ICharIO {
 public:
+    // TX ring installed in begin() so console writes cannot block the loopTask
+    // (finding timing-2). 256 bytes > the longest console response.
+    static constexpr size_t kTxBufferBytes = 256;
+
     void begin(unsigned long baud = 115200);
     int read() override;
     void write(const char* text) override;

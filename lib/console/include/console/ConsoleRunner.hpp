@@ -26,7 +26,9 @@ public:
 
     // Poll once per loop pass (outside the control tick). Reads available
     // input non-blocking, accumulates one line, and on newline runs the
-    // command. Returns true if the RAM Settings changed (caller re-applies).
+    // command -- then RETURNS, at most one command per pass (timing-2), leaving
+    // anything else buffered for the next pass. Returns true if the RAM
+    // Settings changed (caller re-applies).
     bool poll(bool armed);
 
     const settings::Settings& settings() const { return settings_; }

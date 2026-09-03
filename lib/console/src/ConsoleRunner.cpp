@@ -13,6 +13,14 @@ void ConsoleRunner::loadAtBoot() {
                                   : "[tune] using defaults (no valid saved settings)\r\n");
 }
 
+// ONE line per pass, deliberately (finding timing-2). This drain used to run
+// EVERY buffered line before returning, each with a blocking UART0 write, on the
+// same loopTask that owns the 50 Hz control tick -- so a pasted block of console
+// commands (or a stuck-key flood) executed as one unbounded burst. src/main.cpp
+// documents the intended behaviour at its call site as "polled outside the
+// control tick, non-blocking, one capped line per pass"; this makes the code
+// match. A human interface does not need more than one line per ~20 ms tick, and
+// what is left in the RX ring is still there next pass.
 bool ConsoleRunner::poll(bool armed) {
     bool changed = false;
     for (int c = io_.read(); c >= 0; c = io_.read()) {
@@ -28,7 +36,7 @@ bool ConsoleRunner::poll(bool armed) {
                 runLine(armed, changed);
             }
             len_ = 0;
-            continue;
+            return changed; // the cap: the rest of the ring waits for next pass
         }
         if (len_ < kMaxLine) {
             line_[len_++] = static_cast<char>(c);

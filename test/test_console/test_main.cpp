@@ -24,6 +24,22 @@ using console::Result;
 using settings::kDefaults;
 using settings::Settings;
 
+namespace {
+
+// The firmware polls once per loop pass and the runner executes at most ONE
+// line per pass (timing-2), so a test that feeds several lines must poll
+// several times -- exactly as main.cpp's loop does. Returns true if ANY pass
+// reported a settings change.
+bool drain(console::ConsoleRunner& runner, bool armed, int passes = 8) {
+    bool changed = false;
+    for (int i = 0; i < passes; ++i) {
+        changed |= runner.poll(armed);
+    }
+    return changed;
+}
+
+} // namespace
+
 void setUp() {}
 void tearDown() {}
 
@@ -235,7 +251,7 @@ void test_runner_sound_survives_save_and_load() {
     runner.loadAtBoot();
 
     io.feed("set sound.profile 1\nset sound.volume 25\nsave\n");
-    TEST_ASSERT_TRUE(runner.poll(/*armed=*/false));
+    TEST_ASSERT_TRUE(drain(runner, /*armed=*/false));
     TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
 
     // The persisted blob carries the sound pair.
@@ -454,7 +470,7 @@ void test_runner_endpoints_survive_save_and_load() {
     runner.loadAtBoot();
 
     io.feed("set steer.min 1100\nset steer.max 1900\nsave\n");
-    TEST_ASSERT_TRUE(runner.poll(/*armed=*/false));
+    TEST_ASSERT_TRUE(drain(runner, /*armed=*/false));
     TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
 
     // The persisted blob carries the endpoints.
@@ -616,7 +632,7 @@ void test_r3_rejected_value_cannot_be_saved() {
     // Set a distinguishable valid value, then attempt a wrap (66536 -> would be
     // 1000, the default -- distinct from 1050), then save.
     io.feed("set batt.ppt 1050\nset batt.ppt 66536\nsave\n");
-    runner.poll(/*armed=*/false);
+    drain(runner, /*armed=*/false);
     TEST_ASSERT_EQUAL_UINT16(1050, runner.settings().battery.calibrationPpt);
     TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
 
@@ -791,7 +807,7 @@ void test_r4_rejected_gear_index_cannot_be_saved() {
     runner.loadAtBoot();
 
     io.feed("set gear.1.max 350\nset gear.99999999999.max 999\nsave\n");
-    runner.poll(/*armed=*/false);
+    drain(runner, /*armed=*/false);
     TEST_ASSERT_EQUAL_INT16(350, runner.settings().gearbox.gears[0].maxOutput);
     TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
 
@@ -831,7 +847,7 @@ void test_runner_set_then_save_persists() {
     runner.loadAtBoot(); // empty store -> defaults
 
     io.feed("set steer.trim 30\nsave\n");
-    const bool changed = runner.poll(/*armed=*/false);
+    const bool changed = drain(runner, /*armed=*/false);
     TEST_ASSERT_TRUE(changed);
     TEST_ASSERT_EQUAL_UINT16(30, runner.settings().steering.trimMicros);
     TEST_ASSERT_EQUAL_UINT32(1, store.saveCount);
@@ -853,6 +869,28 @@ void test_runner_armed_blocks_and_does_not_persist() {
     TEST_ASSERT_FALSE(changed);
     TEST_ASSERT_TRUE(io.outputContains("refused"));
     TEST_ASSERT_EQUAL_INT16(0, runner.settings().steering.trimMicros);
+}
+
+void test_runner_executes_at_most_one_line_per_pass() {
+    // timing-2: the drain used to run EVERY buffered line in one pass, each
+    // with a blocking UART write, on the loopTask that owns the control tick.
+    // A pasted block must now cost one command per pass, not a burst.
+    test_mocks::MockCharIO io;
+    test_mocks::MockSettingsStore store;
+    ConsoleRunner runner(io, store);
+    runner.loadAtBoot();
+
+    io.feed("set steer.trim 10\nset steer.trim 20\nset steer.trim 30\n");
+    runner.poll(/*armed=*/false);
+    TEST_ASSERT_EQUAL_INT16(10, runner.settings().steering.trimMicros);
+    runner.poll(/*armed=*/false);
+    TEST_ASSERT_EQUAL_INT16(20, runner.settings().steering.trimMicros);
+    runner.poll(/*armed=*/false);
+    TEST_ASSERT_EQUAL_INT16(30, runner.settings().steering.trimMicros);
+
+    // Nothing left: an empty pass is a no-op, not a repeat.
+    TEST_ASSERT_FALSE(runner.poll(/*armed=*/false));
+    TEST_ASSERT_EQUAL_INT16(30, runner.settings().steering.trimMicros);
 }
 
 void test_runner_overlong_line_discarded() {
@@ -1173,6 +1211,7 @@ int main(int, char**) {
     RUN_TEST(test_btpad_set_refused_while_armed);
     RUN_TEST(test_runner_set_then_save_persists);
     RUN_TEST(test_runner_armed_blocks_and_does_not_persist);
+    RUN_TEST(test_runner_executes_at_most_one_line_per_pass);
     RUN_TEST(test_runner_overlong_line_discarded);
     RUN_TEST(test_runner_boot_loads_saved);
     RUN_TEST(test_servo_setconfig_applies);
