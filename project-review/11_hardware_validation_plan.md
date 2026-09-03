@@ -55,7 +55,10 @@ Mostly software/config + a multimeter. Clear these first; several are one-line s
 
 ## Phase B — FIRST power, LOGIC ONLY (ESC motor power still disconnected)
 
-The safety-critical bring-up. Corresponds to D8 Phases 2–6.
+The safety-critical bring-up. Corresponds to D8 Phases 1–6. Standalone runbook, safety-ordered
+and gate-annotated, derived from this ledger: `docs/PHASE_B_FIRST_POWER.md` — this section
+stays the source ordering; that document is the phase-by-phase detail with preconditions,
+expected observations, and stop conditions spelled out per item.
 
 ### B1. Links & signals
 | # | Do | R## |
@@ -84,6 +87,7 @@ The safety-critical bring-up. Corresponds to D8 Phases 2–6.
 | B3.6 | **WS2812 `show()` does not glitch while audio DMA runs** (dual-core + DMA/RMT interaction — no sim coverage). | R11 |
 | B3.7 | Board #2 with **link2 RX disconnected at boot** → confirm the calm "breathe" (never-connected) is acceptable; then cut the wire mid-run → confirm **Lost→hazard within 500 ms**. | R22 |
 | B3.8 | Board #2 **mid-frame power-on ordering** (board #1 already transmitting) → boots NeverConnected, syncs on the next start byte. | R16 |
+| B3.9 | **Camera gimbal** (right stick, ch9/ch10): fit the two pan/tilt servos, power up disarmed — they center; move the right stick, confirm axes track and aren't inverted; on a link drop, confirm the smooth ~2 s glide to center (`gimbal.decay`), not a snap and not a hold; confirm it glides back on recovery. | — |
 
 ### B4. Sensors (bench)
 | # | Do | R## |
