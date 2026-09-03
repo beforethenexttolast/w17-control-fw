@@ -25,6 +25,8 @@ struct BatteryConfig {
     // for warnDelayMs -- throttle sag on a healthy pack dips through the
     // threshold for a second or two and must not flap the warning.
     uint16_t warnMv = 7000;
+    // Also the dwell in the other direction: how long the sensor must read
+    // implausible before a latched warning is dropped (BatteryMonitor::sample).
     uint32_t warnDelayMs = 3000;
     // Clears only above warnMv + this (sag recovery is often > 200 mV).
     uint16_t warnClearHysteresisMv = 400;
@@ -86,7 +88,11 @@ public:
 
     // Latching with hysteresis + time qualification; never true before the
     // first sample (the EMA is seeded from it, so there is no climb-from-zero
-    // boot artifact), and never true while the sensor is implausible.
+    // boot artifact). The time qualification is SYMMETRIC: warnDelayMs of
+    // sustained low to latch, and warnDelayMs of sustained sensor
+    // implausibility to unlatch (see sample()). So a latched warning SURVIVES a
+    // short dropout -- a flapping sense lead does not change what the pack is
+    // doing -- and only a sustained "I have no reading at all" clears it.
     bool lowVoltageWarning() const { return warning_; }
 
     // True while the last sample was outside BatteryConfig's plausibility
@@ -95,7 +101,9 @@ public:
     // "your pack is low", this says "I have no idea what your pack is", and
     // the honest UI for the second one is a blank, not a number. Clears on the
     // first plausible sample, which also re-seeds the EMA exactly (same
-    // reasoning as the boot seed: no climb-from-zero artifact).
+    // reasoning as the boot seed: no climb-from-zero artifact). Note this flag
+    // is instantaneous while lowVoltageWarning() is dwelled: a brief dropout
+    // blanks the reading without dropping a latched warning.
     bool sensorImplausible() const { return implausible_; }
 
     // Runtime reconfiguration (bench tuning console; only calibrationPpt is
@@ -121,6 +129,7 @@ private:
     bool belowSince_ = false;
     uint32_t belowSinceMs_ = 0;
     bool implausible_ = false;
+    uint32_t implausibleSinceMs_ = 0; // start of the current implausible run
 };
 
 } // namespace telemetry

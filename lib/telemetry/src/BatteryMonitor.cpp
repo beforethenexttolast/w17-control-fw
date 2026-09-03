@@ -30,16 +30,35 @@ void BatteryMonitor::sample(uint32_t nowMs) {
     // --- Sensor plausibility first (OD-10(a), finding fault-injection-3). A
     // reading outside the band is a broken divider, not a battery state, so it
     // must not enter the EMA (which would drag the average toward a lie for
-    // seconds after recovery), must not qualify the warn timer, and must not
-    // leave a latched warning standing. Reporting NOTHING is the honest
-    // output; every consumer already treats 0 mV as "no reading".
+    // seconds after recovery) and must not be published. Reporting NOTHING is
+    // the honest output; every consumer already treats 0 mV as "no reading".
     if (batteryMvSample < config_.implausibleBelowMv ||
         batteryMvSample > config_.implausibleAboveMv) {
-        implausible_ = true;
-        seeded_ = false;       // batteryMv() -> 0
+        if (!implausible_) {
+            implausible_ = true;
+            implausibleSinceMs_ = nowMs;
+        }
+        // PUBLICATION stops immediately: batteryMv() -> 0, so main.cpp omits
+        // the CRSF battery frame and link2 carries 0.
+        seeded_ = false;
         emaAccumulator_ = 0;
-        warning_ = false;      // never latch a low-battery lie on a dead sensor
-        belowSince_ = false;
+
+        // The WARNING is time-qualified SYMMETRICALLY (review 2026-09-03,
+        // finding 6, as ruled). It takes warnDelayMs of sustained low to latch,
+        // so it must take warnDelayMs of sustained implausibility to unlatch --
+        // and equally to forget a qualification already in progress. Tearing
+        // either down on one raw sample was the bug: an intermittent sense lead
+        // on a genuinely flat pack (the fault this band exists for) alternates
+        // implausible and plausible-low samples, and under the old rule every
+        // implausible one reset the timer, so the warning could neither latch
+        // nor stay latched -- board #2 stayed quiet on a flat pack. A dropout
+        // shorter than warnDelayMs changes nothing we believe about the pack;
+        // a longer one means we genuinely no longer know, and then we say so by
+        // dropping the claim.
+        if (nowMs - implausibleSinceMs_ >= config_.warnDelayMs) {
+            warning_ = false;
+            belowSince_ = false;
+        }
         return;
     }
     implausible_ = false;

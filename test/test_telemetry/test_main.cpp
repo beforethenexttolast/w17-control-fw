@@ -244,7 +244,7 @@ void test_battery_implausible_sample_never_enters_the_ema() {
     TEST_ASSERT_EQUAL_UINT16(7400, monitor.batteryMv());
 }
 
-void test_battery_implausible_clears_a_latched_warning_and_does_not_relatch() {
+void test_battery_implausible_clears_a_latched_warning_only_after_the_dwell() {
     FakeVoltageSensor sensor;
     BatteryMonitor monitor(sensor);
 
@@ -256,15 +256,87 @@ void test_battery_implausible_clears_a_latched_warning_and_does_not_relatch() {
     sensor.pinMillivolts = 0; // now the sensor breaks
     monitor.sample(3100);
     TEST_ASSERT_TRUE(monitor.sensorImplausible());
-    TEST_ASSERT_FALSE(monitor.lowVoltageWarning()); // no latched lie survives
-    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv());
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv()); // publication stops AT ONCE
+    // ... but the warning is dwelled, not torn down by one raw sample: the pack
+    // did not become healthy because the divider dropped out (finding 6).
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+    monitor.sample(6099); // one ms short of warnDelayMs of implausibility
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+    monitor.sample(6100); // dwell complete: we genuinely no longer know
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
 
     // Sensor comes back on a still-low pack: the warning must re-qualify from
     // scratch (delay restarts) rather than reappearing instantly from a latch.
     sensor.pinMillivolts = 1865;
-    monitor.sample(3200);
+    monitor.sample(6200);
     TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
-    monitor.sample(6200); // warnDelayMs after the first plausible low sample
+    monitor.sample(9200); // warnDelayMs after the first plausible low sample
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+}
+
+void test_battery_intermittent_lead_on_a_flat_pack_keeps_the_warning_latched() {
+    // The fault the plausibility band exists for, on a pack that really is
+    // flat: the sense lead makes and breaks. Under the old rule every
+    // implausible sample cleared the latch, so board #2 (which keys its
+    // low-battery show off this flag) stayed quiet on a flat pack.
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 1865; // 6901 mV
+    monitor.sample(0);
+    monitor.sample(3000);
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+
+    for (uint32_t t = 3100; t <= 13000; t += 100) {
+        sensor.pinMillivolts = ((t / 100) % 2 == 0) ? 1865 : 0; // lead flaps
+        monitor.sample(t);
+        TEST_ASSERT_TRUE(monitor.lowVoltageWarning()); // never drops through
+    }
+    // And the reading itself is still honest while the lead is open.
+    sensor.pinMillivolts = 0;
+    monitor.sample(13100);
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv());
+}
+
+void test_battery_intermittent_lead_on_a_flat_pack_still_latches_from_scratch() {
+    // Same fault, but starting from an unlatched monitor: the dropouts are
+    // shorter than warnDelayMs, so they must not keep restarting the
+    // qualification -- otherwise the warning could never latch at all.
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    for (uint32_t t = 0; t < 3000; t += 100) {
+        sensor.pinMillivolts = ((t / 100) % 2 == 0) ? 1865 : 0; // 6901 mV / open
+        monitor.sample(t);
+        TEST_ASSERT_FALSE(monitor.lowVoltageWarning()); // not yet qualified
+    }
+    sensor.pinMillivolts = 1865;
+    monitor.sample(3000); // warnDelayMs of continuously-low plausible readings
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+}
+
+void test_battery_a_long_dropout_forgets_the_low_qualification() {
+    // The other side of the same dwell: a dropout LONGER than warnDelayMs must
+    // discard the qualification in progress, or the first plausible low sample
+    // after a long silence would latch instantly on evidence that is stale.
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 1865; // one low reading starts the qualification
+    monitor.sample(0);
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
+
+    sensor.pinMillivolts = 0; // sensor gone for well over warnDelayMs
+    for (uint32_t t = 100; t <= 4000; t += 100) {
+        monitor.sample(t);
+    }
+
+    sensor.pinMillivolts = 1865; // back, still low
+    monitor.sample(4100);
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning()); // NOT instant
+    monitor.sample(7099);
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
+    monitor.sample(7100); // warnDelayMs after the qualification restarted
     TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
 }
 
@@ -635,7 +707,10 @@ int main(int, char**) {
     RUN_TEST(test_battery_open_lower_leg_saturation_is_implausible_not_full);
     RUN_TEST(test_battery_plausibility_band_boundaries);
     RUN_TEST(test_battery_implausible_sample_never_enters_the_ema);
-    RUN_TEST(test_battery_implausible_clears_a_latched_warning_and_does_not_relatch);
+    RUN_TEST(test_battery_implausible_clears_a_latched_warning_only_after_the_dwell);
+    RUN_TEST(test_battery_intermittent_lead_on_a_flat_pack_keeps_the_warning_latched);
+    RUN_TEST(test_battery_intermittent_lead_on_a_flat_pack_still_latches_from_scratch);
+    RUN_TEST(test_battery_a_long_dropout_forgets_the_low_qualification);
     RUN_TEST(test_battery_6900mv_still_warns_above_the_floor);
     RUN_TEST(test_battery_config_valid_rejects_bad_plausibility_bounds);
     RUN_TEST(test_wheel_first_update_seeds_without_spike);

@@ -625,7 +625,9 @@ void loopBtPad(uint32_t nowMs) {
         // 0 = "no reading" on this wire too (pre-first-sample, or an
         // implausible divider per OD-10). Board #2 drives its low-battery
         // show off the lowBattery FLAG above, not this number, so a broken
-        // sensor makes the car quiet rather than falsely alarmed.
+        // sensor makes the car quiet rather than falsely alarmed -- the flag
+        // is never raised from an implausible reading and a latched one clears
+        // after warnDelayMs of it (BatteryMonitor::sample).
         controlSnapshot.batteryMv = batteryMonitor.batteryMv();
         controlSnapshot.ersPercent = ersSystem.energyPercent();
         controlSnapshot.ersDeploying = ersSystem.deploying();
@@ -965,8 +967,13 @@ void loop() {
         // plausible number would be worse than a blank, and holding the last
         // good one would age silently. No link2 bit is spent saying so (OD-10
         // sub-decision): board #2 keys its low-battery show off the lowBattery
-        // FLAG, which sensorImplausible() forces false, so a dead divider goes
-        // quiet on the car rather than pulsing a red warning at Lola.
+        // FLAG. An implausible reading can never RAISE that flag (only a
+        // plausible low sample latches it) and drops an already-latched one
+        // after warnDelayMs of continuous implausibility, so a dead divider
+        // goes quiet on the car within ~3 s rather than pulsing a red warning
+        // at Lola -- while a sense lead that merely flaps on a genuinely flat
+        // pack keeps the warning it already earned (review 2026-09-03,
+        // finding 6).
         const uint16_t mv = batteryMonitor.batteryMv();
         if (batteryMonitor.sensorImplausible()) {
             // Nothing sent on purpose. Keep this branch: an empty `if` here is
@@ -1033,7 +1040,9 @@ void loop() {
         // 0 = "no reading" on this wire too (pre-first-sample, or an
         // implausible divider per OD-10). Board #2 drives its low-battery
         // show off the lowBattery FLAG above, not this number, so a broken
-        // sensor makes the car quiet rather than falsely alarmed.
+        // sensor makes the car quiet rather than falsely alarmed -- the flag
+        // is never raised from an implausible reading and a latched one clears
+        // after warnDelayMs of it (BatteryMonitor::sample).
         controlSnapshot.batteryMv = batteryMonitor.batteryMv();
         controlSnapshot.ersPercent = ersSystem.energyPercent();
         controlSnapshot.ersDeploying = ersSystem.deploying();
