@@ -16,15 +16,17 @@ Full brief: `CLAUDE.md`. Bench bring-up: `docs/D8_BENCH_BRINGUP.md`. Pin map:
 | `esp32dev_sim` | `esp32dev` + `-DW17_SIM_CRSF_FEEDER` — scripted CRSF self-feed for the Wokwi Stage-2 sim (also loads NVS tuning). |
 | `esp32dev_tuning` | `esp32dev` + `-DW17_TUNING_CONSOLE` — adds a UART0 serial console that can **change/save/reset** the same NVS tuning, used for bench bring-up. |
 | `esp32dev_btshowoff` | `-DW17_BT_SHOWOFF`, real Bluepad32 stack + custom core (`platform_packages`), `huge_app` partitions — the BT show-off **prototype, never a delivery target** (`docs/bt_showoff_design.md`). Only env that wires and reads the GPIO27/32 boot-mode strap for real. |
-| `esp32dev_simbt` | `esp32dev_btshowoff` + `-DW17_SIM_PAD_FEEDER` — same three-mode firmware, scripted pad input instead of real Bluepad32, for host-side BT-head simulation. |
+| `esp32dev_simbt` | `esp32dev` + `-DW17_BT_SHOWOFF -DW17_SIM_PAD_FEEDER` on the **stock pinned core** (`platformio.ini:96-101` — it `extends = env:esp32dev`, not `esp32dev_btshowoff`, so it inherits `esp32dev`'s `lib_ignore = btpad_hal_esp32` and gets none of `esp32dev_btshowoff`'s custom core / `huge_app.csv` / re-enabled lib), scripted `SimPadFeeder` session instead of real Bluepad32. **Not** three-mode: under `-DW17_SIM_PAD_FEEDER` the boot-mode strap read is skipped entirely and `g_bootMode` is forced to `BtSolo` unconditionally (`src/main.cpp:711-715`) — useful for exercising BT_SOLO pad/arm-gate wiring with no Bluetooth hardware at all, never for the boot-mode selector. |
 | `native` | host Unity unit tests over the pure-logic libs (no hardware). |
 
 **Boot modes:** three modes (Drive / Solo / Showcase), resolved once at boot from a physical
 selector and never switched at runtime — see `lib/bootmode/include/bootmode/BootMode.hpp` for
 the resolution logic and `lib/config/include/config/PinMap.hpp:36-56` for the GPIO27 (Solo) /
 GPIO32 (Show) strap pins. Every delivery-lineage env (`esp32dev`, `esp32dev_tuning`,
-`esp32dev_sim`) hardcodes a Floating reading at compile time and always resolves to Drive —
-only `esp32dev_btshowoff` and `esp32dev_simbt` read the strap pins at all.
+`esp32dev_sim`) hardcodes a Floating reading at compile time and always resolves to Drive.
+Only `esp32dev_btshowoff` reads the strap pins for real; `esp32dev_simbt` never reads them
+either — it forces `BtSolo` unconditionally under `-DW17_SIM_PAD_FEEDER`
+(`src/main.cpp:711-715`), skipping the strap read entirely.
 
 ## Build / test / flash
 
