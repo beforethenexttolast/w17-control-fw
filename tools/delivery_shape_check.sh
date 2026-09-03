@@ -126,7 +126,7 @@ while [ $# -gt 0 ]; do
                NM="$1"; shift ;;
         --strict) STRICT=1; shift ;;
         -q|--quiet) QUIET=1; shift ;;
-        -h|--help) sed -n '3,94p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,102p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "error: unknown argument '$1' (try --help)" >&2; exit 3 ;;
     esac
 done
