@@ -346,9 +346,9 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
      > **BT1 (`BT1_BENCH_GATE.md`) having PASSED before handover** — not a free choice made at
      > flash time. Until BT1 passes, this step's single combined `0` spot-check is the correct
      > and only pass condition: today's delivery build is both console-free and BT-free by
-     > construction (measured at this revision: `esp32dev` RAM 7.0%/22884 B, Flash
-     > 23.1%/302837 B of the default 1.25 MB app slot; `esp32dev_btshowoff` RAM 26.6%/87012 B,
-     > Flash 23.6%/741121 B of the 3 MB `huge_app.csv` slot it requires — `pio run -e <env>`,
+     > construction (measured at this revision, R6: `esp32dev` RAM 7.0%/22948 B, Flash
+     > 23.2%/304013 B of the default 1.25 MB app slot; `esp32dev_btshowoff` RAM 26.6%/87076 B,
+     > Flash 23.6%/742305 B of the 3 MB `huge_app.csv` slot it requires — `pio run -e <env>`,
      > re-run this revision if the code has changed). If the SP3T selector from A2 §S4c is
      > wired into the delivered car but the ship image stays `esp32dev` (the OD-2 default), the
      > switch is **electrically inert** — that build never reads GPIO27/32

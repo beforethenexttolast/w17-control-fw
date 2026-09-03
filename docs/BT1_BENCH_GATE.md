@@ -69,11 +69,11 @@ duplicating A2's format.
 
 **Resource numbers, measured this revision (re-run `pio run -e esp32dev_btshowoff` /
 `-e esp32dev` if the code has changed since):**
-- `esp32dev_btshowoff`: RAM 26.6% (87012/327680 B), Flash 23.6% (741121/3,145,728 B of the
+- `esp32dev_btshowoff`: RAM 26.6% (87076/327680 B), Flash 23.6% (742305/3,145,728 B of the
   `huge_app.csv` 3 MB app slot it requires — no OTA slot on this build, by design, since the
   project uses no OTA).
-- `esp32dev` (plain delivery, for comparison): RAM 7.0% (22884/327680 B), Flash 23.1%
-  (302837/1,310,720 B of the default app slot).
+- `esp32dev` (plain delivery, for comparison): RAM 7.0% (22948/327680 B), Flash 23.2%
+  (304013/1,310,720 B of the default app slot).
 - ELF quarantine spot-check (same command as `D8_BENCH_BRINGUP.md` Phase 11a step 7):
   `esp32dev` reports `0` for `console::|btpad|luepad|btstack` combined; `esp32dev_btshowoff`
   reports `216` (`btpad` alone: 27; the remainder is `luepad`/`btstack` library symbols) as the
