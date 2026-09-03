@@ -511,6 +511,114 @@ void test_build_flight_mode_frame_truncates_overlong() {
     TEST_ASSERT_EQUAL_HEX8(0x00, frame[3 + 15]);               // NUL at the end
 }
 
+// --- assembler fault injection (finding fault-injection-5) ---
+//
+// The length guard and the truncated-frame carryover were the two untested
+// paths on the ONLY road into this firmware: every stick position, arm switch
+// and gear shift arrives through here, and the receiver is fed by a UART that
+// glitches at power-up and browns out with the ESC.
+
+void test_assembler_rejects_out_of_range_length_on_the_length_byte() {
+    CrsfFrameAssembler assembler;
+
+    // Too short: length < 2 cannot hold even type + CRC.
+    TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::Incomplete,
+                      assembler.feedByte(crsf::kSyncByte));
+    TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::FrameInvalid, assembler.feedByte(0x01));
+
+    // Too long: 2 + 0x40 = 66 > the 64-byte CRSF maximum. Rejected on the
+    // LENGTH byte, not 64 bytes later -- so a corrupt length cannot make the
+    // assembler swallow the next frame while it waits for a payload.
+    TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::Incomplete,
+                      assembler.feedByte(crsf::kSyncByte));
+    TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::FrameInvalid, assembler.feedByte(0x40));
+
+    // And the very next frame still parses: the reject reset the state machine.
+    uint16_t channels[crsf::kNumChannels];
+    fillChannels(channels, crsf::kChannelRawCenter);
+    uint8_t frame[crsf::kRcChannelsFrameLen];
+    buildValidFrame(channels, frame);
+    CrsfFrameAssembler::FeedResult last = CrsfFrameAssembler::FeedResult::Incomplete;
+    for (size_t i = 0; i < sizeof(frame); ++i) {
+        last = assembler.feedByte(frame[i]);
+    }
+    TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::FrameReady, last);
+    TEST_ASSERT_EQUAL_UINT8(crsf::kFrameTypeRcChannelsPacked, assembler.lastFrameType());
+}
+
+void test_assembler_resynchronises_after_a_frame_cut_mid_payload() {
+    CrsfFrameAssembler assembler;
+
+    uint16_t channels[crsf::kNumChannels];
+    fillChannels(channels, crsf::kChannelRawCenter);
+    uint8_t frame[crsf::kRcChannelsFrameLen];
+    buildValidFrame(channels, frame);
+
+    // Half a frame, then the transmitter comes back mid-stream (a brownout or
+    // a re-plugged RX). The assembler is still in ReadingPayload, so it eats
+    // the second frame's header as payload -- that frame is LOST, which is
+    // acceptable at 50 Hz -- and the CRC check at the expected boundary is what
+    // resynchronises it.
+    for (size_t i = 0; i < sizeof(frame) / 2; ++i) {
+        TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::Incomplete, assembler.feedByte(frame[i]));
+    }
+    bool sawInvalid = false;
+    for (size_t i = 0; i < sizeof(frame); ++i) {
+        if (assembler.feedByte(frame[i]) == CrsfFrameAssembler::FeedResult::FrameInvalid) {
+            sawInvalid = true;
+        }
+    }
+    TEST_ASSERT_TRUE(sawInvalid); // the mis-framed span failed CRC, as designed
+
+    // THE POINT: the frame after that parses. Recovery does not wait for an
+    // accidental 0xC8 in payload data, so a cut mid-frame costs at most the
+    // two frames involved (~40 ms), far inside the 500 ms failsafe budget.
+    CrsfFrameAssembler::FeedResult last = CrsfFrameAssembler::FeedResult::Incomplete;
+    for (size_t i = 0; i < sizeof(frame); ++i) {
+        last = assembler.feedByte(frame[i]);
+    }
+    TEST_ASSERT_EQUAL(CrsfFrameAssembler::FeedResult::FrameReady, last);
+}
+
+void test_receiver_survives_a_burst_of_garbage_between_good_frames() {
+    // End to end through CrsfReceiver: a good frame, a burst of noise
+    // (including sync bytes and plausible lengths), then a good frame. The
+    // channels must come from the LAST good frame, never from the noise.
+    CrsfReceiver receiver;
+    uint16_t first[crsf::kNumChannels];
+    fillChannels(first, crsf::kChannelRawMin);
+    uint8_t frame[crsf::kRcChannelsFrameLen];
+    buildValidFrame(first, frame);
+    TEST_ASSERT_EQUAL(CrsfReceiver::ByteResult::NewRcFrame,
+                      feedAll(receiver, frame, sizeof(frame), 0));
+
+    const uint8_t garbage[] = {0xC8, 0x18, 0x16, 0xFF, 0x00, 0xC8, 0x02, 0xC8,
+                               0x3F, 0x7E, 0xC8, 0xC8, 0x00, 0x01, 0x02, 0x03};
+    feedAll(receiver, garbage, sizeof(garbage), 10);
+    // Whatever the noise did to the state machine, it never produced channels
+    // out of thin air: the last decoded frame is still the first one.
+    TEST_ASSERT_EQUAL_UINT16(crsf::kChannelRawMin, receiver.channels().channels[0]);
+
+    // Recovery, measured rather than assumed: the burst ends with an open
+    // "0xC8 0x18" header, so the assembler is mid-payload and EATS the next
+    // good frame (it reports CorruptFrame at that frame's CRC boundary). The
+    // one after it parses. Worst case is therefore two frames -- ~40 ms at
+    // 50 Hz -- and the 500 ms failsafe budget covers it with an order of
+    // magnitude to spare, which is why no inter-byte staleness reset is
+    // needed inside the assembler.
+    uint16_t second[crsf::kNumChannels];
+    fillChannels(second, crsf::kChannelRawMax);
+    buildValidFrame(second, frame);
+
+    TEST_ASSERT_EQUAL(CrsfReceiver::ByteResult::CorruptFrame,
+                      feedAll(receiver, frame, sizeof(frame), 20));
+    TEST_ASSERT_EQUAL_UINT16(crsf::kChannelRawMin, receiver.channels().channels[0]); // still old
+
+    TEST_ASSERT_EQUAL(CrsfReceiver::ByteResult::NewRcFrame,
+                      feedAll(receiver, frame, sizeof(frame), 40));
+    TEST_ASSERT_EQUAL_UINT16(crsf::kChannelRawMax, receiver.channels().channels[0]);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_build_battery_frame_bytes);
@@ -542,5 +650,8 @@ int main(int, char**) {
     RUN_TEST(test_receiver_unknown_type_changes_nothing);
     RUN_TEST(test_receiver_reports_corrupt_frames);
     RUN_TEST(test_receiver_link_up_summary);
+    RUN_TEST(test_assembler_rejects_out_of_range_length_on_the_length_byte);
+    RUN_TEST(test_assembler_resynchronises_after_a_frame_cut_mid_payload);
+    RUN_TEST(test_receiver_survives_a_burst_of_garbage_between_good_frames);
     return UNITY_END();
 }
