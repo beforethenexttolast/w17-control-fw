@@ -1262,7 +1262,7 @@ reviewed (**R7 + R12**).
 
    **Residual unknown:** real Windows enumeration of the ELRS TX. Unverifiable without
    hardware on a macOS host — tracked with the other Windows-hardware items in
-   `../CURRENT_STATUS.md` (Pending validations).
+   `../../CURRENT_STATUS.md` (Pending validations).
 
    **`go vet ./...` is NOT green in the fork — this is not a regression.** The bump did not
    break vet, it **revealed** it: before v1.6.0, `cmd` never compiled, so vet never reached it.
