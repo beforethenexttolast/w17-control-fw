@@ -1,23 +1,29 @@
-# BT show-off mode — design (canonical; decisions ratified, merge pending)
+# BT show-off mode — design (canonical; ratified, merged, bench-gated)
 
-**Status: canonical design document; all eleven §8 decisions RATIFIED by the owner
-2026-08-17; prototype implemented on this branch; not yet merged.** This is the canonical
-location for the BT show-off design (it originated as a scratchpad draft dated 2026-08-16,
-committed here the same day; content unchanged apart from this header, the §8 decision
-outcomes, and the dated amendment notes marked "Owner 2026-08-17"). Commissioned by the
-owner 2026-08-16 as the design half of the approved "design + default-off compile-flagged
-branch prototype in one pass" (`../W17_PRODUCT_VISION.md`, backlog item *BT show-off
-mode*, decision 12).
+**Status, corrected 2026-09-03 (docs-truth-9 — this section previously said "prototype
+implemented on this branch; not yet merged" and pointed at a `proto/bt-showoff-flagged`
+branch; neither is true at HEAD `25bf5eb` on `main`, and that branch does not exist in
+this repo, locally or on `origin`):** canonical design document; all eleven §8 decisions
+RATIFIED by the owner 2026-08-17; **the prototype is implemented and lives on `main`**,
+quarantined by the `W17_BT_SHOWOFF` compile flag rather than by a git branch — it is
+absent from every delivery-lineage env (`esp32dev`, `_tuning`, `_sim`) and present only
+in the two quarantined envs `esp32dev_btshowoff` / `esp32dev_simbt`
+(`platformio.ini:50-101`). This is the canonical location for the BT show-off design (it
+originated as a scratchpad draft dated 2026-08-16, committed here the same day; content
+unchanged apart from this header, the §8 decision outcomes, and the dated amendment notes
+marked "Owner 2026-08-17" / "2026-08-20"). Commissioned by the owner 2026-08-16 as the
+design half of the approved "design + default-off compile-flagged branch prototype in one
+pass" (`../W17_PRODUCT_VISION.md`, backlog item *BT show-off mode*, decision 12).
 
-The prototype lives on this branch (`proto/bt-showoff-flagged`, originally based on
-`main` = `94b3615`, rebased 2026-08-17 onto `main` = `2d146dc` — the unified settings
-blob v2 and link2 protocol v2): `W17_BT_SHOWOFF` is absent from every existing
-environment, nothing is flashed, nothing has run on hardware, nothing is pushed. The
-owner ratified every §8 recommendation on 2026-08-17 (one scope simplification on BT-9;
-BT-7 resolved onto the link2 v2 `modeFlags` byte) — each decision point in code and docs
-now carries a grep-able `OWNER-DECIDED(BT-n)` tag (n = the §8 row number), so the full
-consequence set of any decision remains a grep away. Bench execution stays gated on BT1
-(§9) regardless of ratification.
+**Still true, unaffected by the correction above:** `W17_BT_SHOWOFF` is absent from every
+delivery-lineage build, nothing has been flashed or run on real hardware, nothing has been
+powered — bench execution stays gated on BT1 (§9), tracked at
+`docs/BT1_BENCH_GATE.md`. The owner ratified every §8 recommendation on 2026-08-17 (one
+scope simplification on BT-9; BT-7 resolved onto the link2 v2 `modeFlags` byte) — each
+decision point in code and docs now carries a grep-able `OWNER-DECIDED(BT-n)` tag (n = the
+§8 row number), so the full consequence set of any decision remains a grep away. The
+one-selector three-mode reconciliation (§2.2) and the D3-SHOW-SELECT SP3T layout
+(2026-08-20) landed afterward, also on `main` — see §2.2 for what changed.
 
 Repo state studied for the draft: `w17-control-fw` at `3f4f9b7` (read via an isolated
 audit worktree — the repo's own tree was not touched). Every firmware claim below cites
@@ -235,6 +241,14 @@ pre-delivery.
 ---
 
 ## 4. Architecture
+
+> **As originally proposed, before §2.2's reconciliation.** §4.2's `BootModeResolver` and
+> §7's "Exclusivity logic" row describe this design's *original* standalone resolver,
+> which no longer exists in code — it was folded into `lib/bootmode`'s
+> `bootmode::BootMode` seam (§2.2, "three-mode reconciliation", 2026-08-17) as
+> `classifyStrapPin()` / `combineStrapPins()` in
+> `lib/bootmode/include/bootmode/BootMode.hpp`. Kept below unchanged as the historical
+> record of what was designed; §2.2 is the current source of truth for what was built.
 
 ### 4.1 Data flow — one arbitration path, two heads
 
