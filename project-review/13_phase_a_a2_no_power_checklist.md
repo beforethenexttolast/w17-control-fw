@@ -7,6 +7,26 @@
 > passed — see `_verification_results.md`. A2 is the physical desk half of Phase A from
 > `11_hardware_validation_plan.md`.)
 
+> **AMENDED 2026-09-02 — the boot-mode selector (SP3T, GPIO27 / GPIO32) gains its own
+> staged rows.** The OWNER-RATIFIED(D3-SHOW-SELECT) selector of 2026-08-20 (one SP3T slide
+> switch, common to the star ground, throws on **GPIO27 = SOLO** and **GPIO32 = SHOW**, center
+> = LAPTOP with both pins open — `lib/config/include/config/PinMap.hpp:36-56`,
+> `lib/bootmode/include/bootmode/BootMode.hpp:18-34`) landed in firmware with the explicit
+> note that "the A2/F20 continuity-matrix note remains a wiring-time task". Until this
+> amendment no row here measured either strap pin: a strap wire landed on 5 V or batt+
+> passed every check that looked. New: **§S4c** (rows MS1–MS13, executed inside the §S4/S4b
+> lead-by-lead gate), the §2 wire list, photo item 15, §11 template rows, and §13 stop 10 with
+> its generating rows. **Design facts fix every expected reading** (beep in the grounded
+> position, OPEN everywhere else, no external resistor); only the part's identity, its
+> terminal layout and its contact resistance are `[bench-TBD]` — the switch itself is still on
+> the owner's shopping list (`../../CURRENT_STATUS.md`), so S4c may legitimately be recorded
+> **NOT-ASSEMBLED** (H5 pattern). Plausibility note, from the code: an **unwired or floating
+> selector reads as DRIVE by design** — the delivery-lineage images never read the pins at all
+> (`src/main.cpp:147-157`), and the only image that does (`esp32dev_btshowoff`,
+> `src/main.cpp:696-736`) classifies open-open, both-low, and any tie as Drive. §12 closure
+> semantics are untouched. **A2 remains NOT-EXECUTED; Phase B remains BLOCKED.** This note
+> sits first for visibility; the blocks below keep their original chronological order.
+
 > **RESTRUCTURED 2026-07-30 — A2 is now the build order, not a single pass at the end.**
 > A2 previously assumed a finished harness and verified it in one sweep. As of 2026-07-30
 > **nothing is soldered** (owner-confirmed; the ESP32 boards arrived with pre-soldered pin
@@ -94,7 +114,8 @@ photograph, report** — don't "try again with power to see."
 - Good lighting + magnifier/phone-macro for solder joints
 - Phone for the photo checklist (§10)
 - USB cable and bench PSU: **have them, do not connect them** — both are Phase B
-- The pin references: `lib/config/include/config/PinMap.hpp` (board #1 authority), soundlight `PinMap.hpp` (board #2), `docs/00_BUILD_SHEET.md` bench fixes
+- The pin references: `lib/config/include/config/PinMap.hpp` (board #1 authority — including the two boot-mode strap pins `kBtModeStrapPin = 27` / `kShowModeStrapPin = 32`, lines 51/56), soundlight `PinMap.hpp` (board #2), `docs/00_BUILD_SHEET.md` bench fixes
+- For §S4c: the SP3T slide switch's datasheet or a meter-derived terminal map (which terminal is the common, which throw each slider position selects) — **owed before the switch is wired**, `[bench-TBD]` until the part is in hand
 
 > **Diode mode is load-bearing, not optional.** The WS2812 supply decision is now fixed to
 > the 1N5819 (§S5, decision 2026-07-30), and the forward-voltage reading is the *only* check
@@ -126,6 +147,7 @@ whole list once after §S6. Work under strong light, top then bottom of every bo
 - [ ] **Battery divider** — 27 kΩ from batt+ side, 10 kΩ to GND, tap to GPIO34. **C3 (100 nF) lives at the GPIO34 pin end, not at the divider** (F13.3 — guide §4 wins; verified at S4, not S1)
 - [ ] **Hall sensor** — A3144: VCC to **5 V**, GND common, output to GPIO35 with **10 kΩ pull-up to 3.3 V at the ESP32 #1 end** (owner decision 2026-08-03/F11 — the sensor lead has no 3V3 conductor, so a sensor-side pull-up is unbuildable and invites exactly §13 stop 8). Pull-up to 3V3, *not* 5 V — check this specifically; H1/H1b measure it
 - [ ] **Servo/ESC signal wiring** — five signal wires route to GPIO13 (steer), 14 (ESC), 18 (DRS), 19 (pan), 23 (tilt); none to strapping pins 0/2/12/15
+- [ ] **Boot-mode selector wiring (added 2026-09-02, §S4c)** — **two** more signal wires, GPIO27 (SOLO throw) and GPIO32 (SHOW throw), from the ESP32 #1 socket positions to the SP3T; the switch **common goes to the star ground**, the **center (LAPTOP) throw carries no wire at all**, and **no resistor** sits anywhere on either strap wire (the firmware uses the chip's internal pull-ups — `src/main.cpp:718-719` — so an external pull-up is a build deviation, and one to 5 V is §13 stop 10). Neither strap wire may touch 3V3, either 5 V rail, or batt+. **Or recorded as NOT-ASSEMBLED** (the switch is on the shopping list) — an absent selector is a valid state, see the S4c plausibility note
 - [ ] **Boot-float pull-downs (if fitted)** — GPIO13 and GPIO14 only, **harness side at the ESP32 #1 socket positions**, each to the star ground, fitted at §S4 with the board-end signal wiring (F18). Not fitted is equally valid — PD1 records which, and §2 has nothing to inspect in that case
 
 ## 3. Measurement conventions (read once, applies to every gate below)
@@ -160,7 +182,11 @@ Four rules that resolve ambiguities the single-pass version left open:
    **The exceptions list is closed by construction, not by memory:** it must name every pair
    this document itself legitimizes a non-open reading on. If a later revision adds a
    deliberate resistance anywhere in the signal set, it belongs here in the same edit — that
-   omission is the defect F13.1, F15 and F17 each are.
+   omission is the defect F13.1, F15 and F17 each are. **The boot-mode strap pins (§S4c,
+   added 2026-09-02) add no resistance exception:** the selector is a dry contact between a
+   strap pin and the star ground with no resistor, so every strap reading is either a
+   **beep** (that pin's throw selected) or **OPEN** — never a finite value. The one
+   position-dependent reading is stated in the S4c matrix itself (MS6/MS7), not here.
 3. **Continuity rows are measured with the plug seated**, at the connector, so the row proves
    the *assembled* path. Isolation and continuity therefore run as two passes over the same
    connector, not one.
@@ -354,6 +380,75 @@ OPEN.
 Repeat S3r/S4r deliberately — a reversed 3-pin plug is the single most common crash-cause on
 a first bring-up, and it is invisible once the shell is on.
 
+**Selector position during S2r/S5r/S1r (added 2026-09-02):** if the §S4c selector is already
+wired when these matrices run, put it at **CENTER (LAPTOP)** first — in the SOLO or SHOW
+position one strap pin is legitimately at the star ground, and a strap↔signal bridge would then
+show up as that *signal* beeping to GND, which S2r reads as a fault without saying why. S4c's
+MS13 is the deliberate version of that cross-check.
+
+### S4c — Boot-mode selector: SP3T on GPIO27 (SOLO) / GPIO32 (SHOW) (added 2026-09-02)
+
+**What is being built.** One SP3T slide switch — OWNER-RATIFIED(D3-SHOW-SELECT) 2026-08-20
+(`lib/config/include/config/PinMap.hpp:36-56`, `lib/bootmode/include/bootmode/BootMode.hpp:18-34`,
+`docs/bt_showoff_design.md` §2.2). Its **common** terminal goes to the **star ground**; the
+**SOLO** throw is wired to the **GPIO27** socket position, the **SHOW** throw to the **GPIO32**
+socket position, and the **third (CENTER = LAPTOP) throw stays empty** — with the slider at
+center the common connects to that empty terminal and both strap pins float on the chip's
+internal pull-ups, which the firmware reads as Drive. **No resistor, no capacitor, no 3V3 or
+5 V conductor** belongs on either strap wire (`src/main.cpp:718-719` enables `INPUT_PULLUP` in
+software). The two strap wires run alongside the harness signals and land at the ESP32 #1
+socket positions like every other board-end signal (F18 placement rule).
+
+**Before wiring — identify the part** (`[bench-TBD]`: the switch is on the owner's shopping
+list, no part number is decided). From its datasheet or with the beeper alone, write down:
+which terminal is the common, and **which throw the physical CENTER position selects** — that
+is the throw that must stay empty. Which of the two outer positions becomes SOLO and which
+SHOW is the owner's labelling choice (`[bench-TBD]`); the firmware only cares which GPIO gets
+grounded. Record all three in the S4c notes.
+
+**Why the readings are fixed by design, not by the part:** every row below is a beeper-mode
+beep or OPEN. The part only contributes its contact resistance to the beeps — record the Ω
+value on MS1 with **no numeric expectation** (`[bench-TBD]`: the chosen part's spec); a beep
+is the pass, a persistent OPEN in the selected position is the fail.
+
+**Plausibility note — an unwired or floating selector is not a fault, it is DRIVE.** The
+delivery-lineage images (`esp32dev`, `_tuning`, `_sim`) never touch GPIO27/32: they resolve
+the mode at compile time to Drive (`src/main.cpp:147-157`). The only image that reads the
+pins (`esp32dev_btshowoff`, `src/main.cpp:696-736`) samples both with pull-ups enabled and
+classifies **open/open → Drive**, **both grounded → Floating → Drive** (a harness fault the
+part cannot produce), and **any tie → Drive** (`BootMode.hpp:118-136`). So recording S4c as
+**NOT-ASSEMBLED** is a valid PASS-with-note (H5 pattern) and closes nothing else; a selector
+built wrong still cannot make the car *more* armed than Drive. What the rows below protect
+against is the electrical harm — 5 V or batt+ on a GPIO — and the silent build error of a
+throw landed on the wrong pin (SOLO and SHOW swapped is a labelling fault, caught only by
+Phase B's boot-mode phase, `../docs/D8_BENCH_BRINGUP.md` Phase 3b).
+
+Two passes, per §3 rule 3: **continuity with the ESP32 unseated and the switch/harness mated**
+(MS2–MS5, MS12 need no board), and **isolation with the ESP32 unseated** (§3 rule 2 — the
+strap pins are ordinary GPIOs with ESD diodes to 3V3/GND, so a seated board reads diode-ish on
+every one of these pairs). Positions are written as **SOLO / CENTER / SHOW**.
+
+| # | Measure | Expected | Note |
+|---|---|---|---|
+| MS1 | **Switch alone, before it joins the harness:** common ↔ each throw, in each slider position | **beep to exactly one throw per position, OPEN to the other two** (3 positions × 3 throws) | single-shot on the bare part (§3 rule 4). Record the beep's Ω value, no numeric expectation. This is where the CENTER throw is identified; a part whose center position beeps to *two* throws (make-before-break or shorting type) is the wrong part — the firmware treats both-grounded as a harness fault → Drive, so it would only ever boot Drive |
+| MS2 | GPIO27 socket position → SOLO throw terminal | **beep** (any position) | the strap wire itself |
+| MS3 | GPIO32 socket position → SHOW throw terminal | **beep** (any position) | |
+| MS4 | Switch common → star GND (PDB input XT60 − pin) | **beep** (any position) | the star node exists from §SF |
+| MS5 | CENTER throw terminal → GPIO27, → GPIO32 | **OPEN in every position**, and **no wire on the terminal** (visual, photo 15) | a beep = a strap wire landed on the wrong throw (then MS6/MS7 will also be wrong) |
+| MS6 | GPIO27 → GND — the SOLO pin's position matrix | **SOLO: beep · CENTER: OPEN · SHOW: OPEN** | the design's truth table (`BootMode.hpp:125-136`), read from the harness side |
+| MS7 | GPIO32 → GND — the SHOW pin's position matrix | **SOLO: OPEN · CENTER: OPEN · SHOW: beep** | |
+| MS8 | GPIO27 ↔ GPIO32 | **OPEN in all three positions** | a beep = both wires on one throw, or the pins bridged at the socket — the "both grounded" harness fault. Firmware → Drive, but it is still a build error: fix it |
+| MS9 | GPIO27 → 3V3, GPIO32 → 3V3 | **OPEN in all three positions** | no external pull-up exists in the design. A beep or ≈10 kΩ = something was built that shouldn't be. *If* the owner ever decides on an external pull-up it must return to **3V3, never 5 V**, be recorded here, and be added to §3 rule 2's exceptions list in the same edit |
+| MS10 | GPIO27, GPIO32 → rail-A wiring and → rail-B wiring | **OPEN in all three positions** | **§13 stop 10's generating row** — 5 V on a strap pin |
+| MS11 | GPIO27, GPIO32 → batt+ wiring | **OPEN in all three positions** | **§13 stop 4's generating row for the strap pins** — 8.4 V on a GPIO, instant board-killer |
+| MS12 | GPIO27 and GPIO32 ↔ each other signal (**13/14/16/17/18/19/23/25/34/35**), selector at **CENTER** | **OPEN, every pair** | extends the S1r/F20 matrix to the two strap pins from their side. Both strap pins are adjacent-pair candidates on the MH-ET socket — the F12 adjacency list (still OWED) governs which joints get the closest look |
+| MS13 | With the selector at **SOLO**, then at **SHOW**: each signal **13/14/16/17/18/19/23/25/35 → GND** | **OPEN** (PD1 exception on 13/14 if pull-downs are populated, per §3 rule 2) | the other side of MS12: a strap↔signal bridge shows here as that signal following the grounded throw. GPIO34 → GND reads ≈10 kΩ regardless (divider, F13.1) — not a fault |
+
+Not covered here, deliberately: which **label** (SOLO/SHOW) sits on which end of the slider is
+Phase B's boot-mode phase (`../docs/D8_BENCH_BRINGUP.md` Phase 3b), because only a running
+`esp32dev_btshowoff` image can tell you which mode a position produced — and that image is
+BT1-gated (`../docs/BT1_BENCH_GATE.md`). A2 proves the *wires*; it cannot prove the *labels*.
+
 ## S5 — WS2812 path (board #2, R20/A2.4)
 
 > **Supply option fixed to A (1N5819 diode) — decision 2026-07-30.** The fork in §8 of the
@@ -538,6 +633,9 @@ Photograph at the gate where the subassembly is still accessible, not all at the
     photo-checkable, §13 stop 6 names reversed caps, and **no no-power measurement
     distinguishes a correctly oriented 1000 µF from a reversed one** — M3 reads a charging
     cap either way. The photo and the §2 visual are the whole of stop 6's evidence for C1
+15. **Boot-mode selector (SP3T): all terminals legible — common lead, SOLO and SHOW throw
+    leads, and the empty CENTER throw** *(at S4c — added 2026-09-02; or a note "NOT-ASSEMBLED"
+    in the S4c row set)*. The empty throw is what MS5 asserts and what a photo can show
 
 ## 11. Measurement table template
 
@@ -592,6 +690,19 @@ evidence.
 | S5r | S4b  | signals -> batt+ wiring         | all OPEN (34: 27k)  |          |     |         |
 | S6r | S4b  | rail-A <-> rail-B wiring        | no beep             |          |     |         |
 | S7r | S4b  | each rail <-> batt+ wiring      | no beep             |          |     |         |
+| MS1 | S4c  | switch alone: C<->throw x3 pos  | 1 beep/pos, or N/A  |          |     |         |
+| MS2 | S4c  | GPIO27 -> SOLO throw            | beep (or N/A: note) |          |     |         |
+| MS3 | S4c  | GPIO32 -> SHOW throw            | beep (or N/A: note) |          |     |         |
+| MS4 | S4c  | switch common -> star GND       | beep (or N/A: note) |          |     |         |
+| MS5 | S4c  | CENTER throw -> 27 / 32, no wire| OPEN all pos, visual|          |     |         |
+| MS6 | S4c  | GPIO27 -> GND  SOLO/CENTER/SHOW | beep / OPEN / OPEN  |          |     |         |
+| MS7 | S4c  | GPIO32 -> GND  SOLO/CENTER/SHOW | OPEN / OPEN / beep  |          |     |         |
+| MS8 | S4c  | GPIO27 <-> GPIO32, all pos      | OPEN                |          |     |         |
+| MS9 | S4c  | 27, 32 -> 3V3, all pos          | OPEN (no pull-up)   |          |     |         |
+| MS10| S4c  | 27, 32 -> rail A / rail B       | OPEN, all pos       |          |     |         |
+| MS11| S4c  | 27, 32 -> batt+ wiring          | OPEN, all pos       |          |     |         |
+| MS12| S4c  | 27, 32 <-> other signals, CENTER| OPEN every pair     |          |     |         |
+| MS13| S4c  | signals -> GND at SOLO, at SHOW | OPEN (34: 10k; PD1) |          |     |         |
 | W1  | S5   | GPIO4(#2) -> strip DIN          | ~330 Ω              |          |     |         |
 | W2  | S5   | rail A -> strip VDD (diode)     | 0.15-0.35 V fwd     |          |     |         |
 | W3  | S5   | same, reversed                  | OL                  |          |     |         |
@@ -659,6 +770,10 @@ Anything in §13 = FAIL, full stop.
 7. **Uncertain connector orientation** — if you cannot positively identify a plug's signal/+/− order, stop and trace it; never "probably right"
 8. GPIO35 pull-up found tied to 5 V instead of 3V3 (input-only pin, no clamp headroom)
 9. **A wire present at GPIO26** (C4) — link2 RX is unwired by design; a beep means something got built that shouldn't exist
+10. **A boot-mode strap pin (GPIO27 / GPIO32) with continuity to 3V3, to either 5 V rail, or to
+    any other signal pin, in any selector position** (added 2026-09-02). The batt+ case is
+    stop 4. **Not a stop:** an unwired, absent, or floating selector — that reads as DRIVE by
+    design (§S4c plausibility note) and is recorded NOT-ASSEMBLED, not failed
 
 **Every stop above must be reachable from a measurement** (the review's F1/F3 lesson: a
 stop with no generating row is an aspiration, not a gate). The generating rows, checked
@@ -669,12 +784,13 @@ stop by stop at revision time:
 | 1 | P2/P6/P7 (SF) · W5 (S5) · **M1–M3, CP3 (S7)** |
 | 2 | E0–E3/E6 (S8a) · E4/E5/E7 (S8b) |
 | 3 | D1–D3 (S1) · C10b (S4) |
-| 4 | **S5r (S4b)** |
+| 4 | **S5r (S4b)** · **MS11 (S4c)** — the strap pins, added 2026-09-02 |
 | 5 | S4r (S4b) · G1–G14 (S7) |
 | 6 | §2 visual at every gate · W2–W4 (S5) · CP1/CP2, PW1/PW2 (S7) · **C1 stripe: §2 + photo 14 (S6) only** — no no-power reading distinguishes a reversed 1000 µF |
 | 7 | §2 + S3r/S4r (S4b) |
 | 8 | **H1b (S2)** |
 | 9 | C4 (S3) |
+| 10 | **MS9, MS10, MS12, MS13 (S4c)** — added 2026-09-02 |
 
 ## 14. What Phase B needs (only after A2 is filled, reviewed, and approved)
 
@@ -682,7 +798,12 @@ Bench PSU or battery via the XT60 split (ESC **motor leads still disconnected**)
 oscilloscope/logic analyzer (GPIO13/14 boot-float scope = B1.4/R04, PWM widths B1.3), the RP1
 bound to the TX with **failsafe mode "No Pulses"**, `elrs-joystick-control` on the PC, and
 flashing `esp32dev_tuning` — which is also the *first* moment the USB cable gets used. **None
-of that is part of A2; Phase B stays blocked until A2 is reviewed and approved.**
+of that is part of A2; Phase B stays blocked until A2 is reviewed and approved.** The
+standalone first-power runbook is `../docs/PHASE_B_FIRST_POWER.md` (added 2026-09-02); the
+two-board flash procedure it calls is `../docs/COORDINATED_FLASH.md`. The §S4c selector's
+**labels** (which end is SOLO, which is SHOW) can only be proven by a running
+`esp32dev_btshowoff` image, which is additionally gated on BT1 (`../docs/BT1_BENCH_GATE.md`) —
+A2 proves the wires, Phase B/BT1 proves the modes.
 
 **Battery reality (corrected 2026-08-04, F5):** there is **no in-envelope car pack** — the
 1500 mAh ZEEE this section previously referenced **never arrived** (inventory correction
