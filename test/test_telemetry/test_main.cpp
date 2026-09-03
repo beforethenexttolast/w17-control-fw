@@ -529,11 +529,52 @@ void test_rate_guard_ignores_a_stalled_control_loop() {
     // accumulated are a full 2 s of PLAUSIBLE wheel motion (~166), which is
     // over a single window's budget but not over the rate -- and the window is
     // 20x nominal, so the sample carries no information either way. It must not
-    // manufacture a fault.
+    // manufacture a fault. (2 s allows 3600 and would need 36000 to be judged a
+    // storm; 166 is nowhere near either.)
     t += 2000;
     entries += 166;
     TEST_ASSERT_TRUE(PulseRateGuard::Action::None == guard.update(t, entries));
     TEST_ASSERT_FALSE(guard.faulted());
+}
+
+void test_rate_guard_trips_on_a_storm_severe_enough_to_stall_the_tick() {
+    // The blind spot the 2026-09-03 review found: the failure mode this guard
+    // exists for is an ISR storm starving the 50 Hz tick, and "a stalled window
+    // carries no information" used to dismiss exactly that case. A 2 s stall at
+    // ~18 kHz is 36000 entries against a scaled allowance of 3600 -- 10x past
+    // it, which is not ambiguous, so it must trip.
+    PulseRateGuard guard;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    guard.update(t, entries);
+
+    t += 2000;
+    entries += 36000;
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::Detach == guard.update(t, entries));
+    TEST_ASSERT_TRUE(guard.faulted());
+    TEST_ASSERT_EQUAL_UINT32(1, guard.faultCount());
+    TEST_ASSERT_EQUAL_UINT32(36000, guard.lastWindowEntries());
+}
+
+void test_rate_guard_stalled_window_boundary_ambiguous_below_storm_at() {
+    // The exact seam between "no information" and "storm" on a stalled window:
+    // allowance for 2 s = 180 x 20 = 3600, storm factor 10 -> 36000. One below
+    // is still ambiguous (no verdict, and the guard does not even record it as
+    // a measured window); at the bound it trips.
+    PulseRateGuard ambiguous;
+    uint32_t t = 0;
+    uint32_t entries = 0;
+    ambiguous.update(t, entries);
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::None == ambiguous.update(t + 2000, entries + 35999));
+    TEST_ASSERT_FALSE(ambiguous.faulted());
+    TEST_ASSERT_EQUAL_UINT32(0, ambiguous.lastWindowEntries());
+
+    PulseRateGuard storm;
+    uint32_t t2 = 0;
+    uint32_t e2 = 0;
+    storm.update(t2, e2);
+    TEST_ASSERT_TRUE(PulseRateGuard::Action::Detach == storm.update(t2 + 2000, e2 + 36000));
+    TEST_ASSERT_TRUE(storm.faulted());
 }
 
 void test_rate_guard_scales_the_allowance_with_a_late_tick() {
@@ -611,6 +652,8 @@ int main(int, char**) {
     RUN_TEST(test_rate_guard_trips_on_an_edge_storm);
     RUN_TEST(test_rate_guard_rearms_after_a_quiet_window_and_refaults_if_the_storm_persists);
     RUN_TEST(test_rate_guard_ignores_a_stalled_control_loop);
+    RUN_TEST(test_rate_guard_trips_on_a_storm_severe_enough_to_stall_the_tick);
+    RUN_TEST(test_rate_guard_stalled_window_boundary_ambiguous_below_storm_at);
     RUN_TEST(test_rate_guard_scales_the_allowance_with_a_late_tick);
     RUN_TEST(test_wheel_sensor_fault_reports_zero_not_the_last_speed);
     return UNITY_END();

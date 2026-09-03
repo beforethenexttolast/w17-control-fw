@@ -52,6 +52,16 @@ constexpr uint32_t plausibleEdgesPerWindow(uint16_t maxPlausibleRpm, uint8_t mag
 // instead of defaulting.
 inline constexpr uint8_t kRateGuardMarginX = 20;
 inline constexpr uint16_t kRateGuardWindowMs = 100;
+
+// A measurement window longer than this multiple of the nominal window means
+// the CALLER stalled (a long flash write, a debugger) -- the guard did not get
+// the tick it needs to measure a rate.
+inline constexpr uint32_t kStalledWindowFactor = 10;
+// ... but a stalled tick is ALSO what a severe storm produces, so a stalled
+// window is still judged once the count runs this far past the elapsed-scaled
+// allowance. Below it the reading is genuinely ambiguous; above it there is
+// nothing left to be ambiguous about. See PulseRateGuard::update().
+inline constexpr uint32_t kStalledStormFactor = 10;
 inline constexpr uint32_t kRateGuardEntriesPerWindow =
     plausibleEdgesPerWindow(WheelSpeedConfig{}.maxPlausibleRpm, WheelSpeedConfig{}.magnetsPerRev,
                             kRateGuardWindowMs) *
