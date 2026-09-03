@@ -1,15 +1,29 @@
 # W17 — Bench Bring-Up Runbook (Stage 3 / D8)
 
-The single ordered checklist to take the firmware from "builds + passes tests" to "driving on
-the car," once hardware arrives. **Do the phases in order** — each is a safety/dependency gate
-for the next. The golden rule threads through all of it: **wheels off the ground, and no ESC
-power, until the failsafe + arm gate are proven live (Phase 5).**
+> **Phase -1 — HARD STOP: A2 CLOSED and Phase B APPROVED, or stop here.** This entire
+> runbook is Phase-B-and-later work. It assumes `project-review/13_phase_a_a2_no_power_checklist.md`
+> has been filled in with real readings, its §12 two-part PASS is recorded, and
+> `../CURRENT_STATUS.md` says Phase B is open. **As of this revision, neither is true: A2
+> is NOT-EXECUTED and Phase B is BLOCKED** (`../CLAUDE.md` hardware-gates section). No
+> battery, no USB, no bench PSU, nothing flashed, until that status changes — re-check
+> `../CURRENT_STATUS.md` immediately before Phase 1 and again before Phase 3, since gate
+> state can move between sessions. Standalone first-power sequencing (which board, which
+> order, what "logic only" means before the ESC gets motor power) lives in
+> `PHASE_B_FIRST_POWER.md`; this document is the phase-by-phase detail Phase B's own
+> ledger points back to.
 
-Firmware to flash for the bench: **`pio run -e esp32dev_tuning -t upload`** on the control board
-(adds the serial tuning console — `steer.min`/`steer.max` endpoints, `steer.center`/`steer.trim`,
-`batt.ppt`, gear table, `save`). The delivered
-gift firmware is plain **`esp32dev`** (no console). Sound/light board: `w17-soundlight-fw`
-`esp32dev`. Ground station: `w17-ground-station` (`npm run demo` until the camera is wired).
+The single ordered checklist to take the firmware from "builds + passes tests" to "driving on
+the car," once hardware arrives and the gate above has actually cleared. **Do the phases in
+order** — each is a safety/dependency gate for the next. The golden rule threads through all of
+it: **wheels off the ground, and no ESC power, until the failsafe + arm gate are proven live
+(Phase 5).**
+
+Sound/light board: `w17-soundlight-fw` `esp32dev` — flash it together with the control board
+per `COORDINATED_FLASH.md` (the two boards' `lib/link2` copies must agree, or board #2 rejects
+every frame as invalid the instant a length byte disagrees). Ground station:
+`w17-ground-station` (`npm run demo` until the camera is wired; `npm run demo:low-battery`
+exercises the HUD's low-battery path with a scripted timeline — no car, no battery, see
+Phase 8).
 
 Tools: multimeter, oscilloscope/logic analyzer, a serial monitor at 115200, the `elrs-joystick-
 control` PC setup, and a way to spin the rear axle by hand (Hall test).
@@ -34,6 +48,10 @@ hardware on first power.
 
 ## Phase 1 — Power rails smoke (no firmware dependency)
 
+> **Stop — first battery connection of this bring-up.** Re-confirm the Phase -1 gate
+> (A2 closed, Phase B approved in `../CURRENT_STATUS.md`) before this step. Everything
+> before this line needed no battery; everything from here on does.
+
 - [ ] Battery → XT60 Y-split → ESC + BEC#1 + BEC#2. Confirm BEC#1 ≈ 5 V, BEC#2 ≈ 5–6 V under a
       light load, before connecting the ESP32s.
 - [ ] Confirm no rail sag / brownout when a servo moves (that's what the 1000 µF is for).
@@ -53,7 +71,15 @@ hardware on first power.
 
 ## Phase 3 — Control board, actuators DISCONNECTED
 
-- [ ] Flash `esp32dev_tuning`. On the serial console you should see the tuning banner + a
+> **Stop — first USB / first flash of this bring-up.** This is Phase B: re-check the
+> Phase -1 gate one more time. The delivered gift firmware is plain **`esp32dev`** (no
+> console); the bench build below adds a console for calibration only and is never what
+> ships (Phase 11a).
+
+- [ ] Firmware to flash for the bench: **`pio run -e esp32dev_tuning -t upload`** on the
+      control board (adds the serial tuning console — `steer.min`/`steer.max` endpoints,
+      `steer.center`/`steer.trim`, `batt.ppt`, `gimbal.decay`, `sound.profile`/`sound.volume`,
+      gear table, `save`). On the serial console you should see the tuning banner + a
       boot-safe state. **ESC signal disconnected, servos disconnected, wheels off ground.**
 - [ ] Confirm CRSF reception: `status` on the console shows the decoded channels updating as you
       move sticks/switches on the TX.
@@ -61,9 +87,46 @@ hardware on first power.
       board must sit in failsafe — no spurious "active." (This is the bug that used to slam
       steering to full-lock; verify it's gone on real hardware.)
 
+## Phase 3b — Boot-mode selector (SP3T, GPIO27/GPIO32) — skip if not wired
+
+**Applies only if the §S4c selector from the A2 checklist is physically wired AND you are
+bench-testing a `W17_BT_SHOWOFF`-family image** (`esp32dev_btshowoff` or `esp32dev_simbt`).
+The three delivery-lineage builds (`esp32dev`, `esp32dev_tuning`, `esp32dev_sim`) never read
+GPIO27/32 — they resolve to Drive at compile time (`src/main.cpp:147-157`) — so on those
+builds this phase is **N/A by design**, not skipped for lack of time; record it that way
+rather than leaving it blank. Full bench-gate context (pairing, RAM/flash budget, the
+reconnect-without-input probe): `BT1_BENCH_GATE.md` — this phase is BT1's boot-mode slice,
+not a substitute for the rest of it.
+
+- [ ] **Flash `esp32dev_btshowoff`** (real Bluepad32/BTstack pad; needs the physical switch)
+      **or `esp32dev_simbt`** (same `W17_BT_SHOWOFF` main wiring, scripted `SimPadFeeder`
+      instead of a real pad — proves the boot-mode/arm-gate wiring with no Bluetooth hardware
+      at all, and is the env to use if the SP3T isn't wired yet but the strap logic needs
+      exercising).
+- [ ] **Selector at CENTER (LAPTOP):** boot resolves to **Drive**, byte-identical to a plain
+      `esp32dev` boot (`BootMode.hpp` center = both straps open on internal pull-ups →
+      `StrapReading::DrivePosition` → Drive). CRSF UART opens normally; console (if the
+      `_tuning`-style build is used) behaves as always.
+- [ ] **Selector at SOLO (GPIO27 grounded, GPIO32 open):** boot resolves to **BtSolo**. Confirm
+      the CRSF UART is **never opened** (`crsfUart.begin()` is skipped — `src/main.cpp:770-772`,
+      `if (g_bootMode != bootmode::BootMode::BtSolo) { crsfUart.begin(); }`) — the RP1 stays
+      powered but nothing reads it. Arming requires the pad ritual (L1+R1 hold or OPTIONS per
+      `docs/bt_showoff_design.md` §3), not the CRSF arm switch.
+- [ ] **Selector at SHOW (GPIO32 grounded, GPIO27 open):** boot resolves to **Showcase**.
+      Confirm the car **cannot arm by any input** — `armSwitchInput()` structurally returns
+      `false` in Showcase (`BootMode.hpp` Policy 1), so the arm gate's neutral-seen latch can
+      never set and the ESC never leaves neutral, regardless of what the handset or pad sends.
+- [ ] **Ambiguous / both-grounded / disconnect one strap mid-read:** must resolve to **Drive**
+      (`combineStrapPins()`, `BootMode.hpp:118-136` — the fail-toward-Drive rule; both-grounded
+      is a harness fault the part cannot produce, and still resolves to Drive, not to something
+      more armed). If it does not, this is a bench finding, not a documentation gap — stop and
+      report rather than proceeding to Phase 4.
+- [ ] Record which of SOLO/SHOW physically corresponds to which slider throw (this is what A2's
+      §S4c note calls "the labels" — A2 proves the wires, this phase proves what they mean).
+
 ## Phase 4 — Channel map + switch thresholds
 
-- [ ] Confirm the `ChannelMapConfig` defaults in `lib/channels/ChannelDecoder.hpp` match your
+- [ ] Confirm the `ChannelMapConfig` defaults in `lib/channels/include/channels/ChannelDecoder.hpp` match your
       **actual TX mapping**: steering ch1, throttle ch3, arm ch5, DRS ch6, gearUp ch7, gearDown
       ch8, boost ch11, overtake ch12, drive-mode ch13. Remap in that header + reflash if needed.
 - [ ] Every 2-pos switch **crosses both hysteresis thresholds (±250)** — *especially the ARM
@@ -73,13 +136,25 @@ hardware on first power.
 
 ## Phase 5 — Failsafe + arm gate PROOF (still NO motor power) — THE GATE
 
-Do not power the ESC until every box here passes.
+Do not power the ESC until every box here passes. **Re-arm rule below is the 2026-08-20
+OWNER-RATIFIED invariant** — a failsafe episode latches a disarm that a fresh neutral alone
+cannot clear; the contract lives in `lib/channels/include/channels/ArmGate.hpp`, and
+`docs/SIMULATION.md`'s `RECOVERY_1_LATCHED`/`RECOVERY_1_TOGGLE` narrative (§"Timeline",
+~:61-64) is the model to compare your bench observations against.
 
 - [ ] Arm switch **OFF** → throttle output stays neutral regardless of stick.
 - [ ] Arm switch **ON with throttle already high** → still neutral (no arm-into-throttle);
       only after throttle returns to neutral does it arm.
+- [ ] **Boot with the arm switch already ON** → stays disarmed even once throttle is seen at
+      neutral; the FSM boots Safe, so this is itself a failsafe episode with the switch ON —
+      it requires the same OFF→ON toggle as recovery, below, before it will arm.
 - [ ] **TX off mid-"drive"** → failsafe: steering centers, throttle neutral, DRS closed.
-- [ ] **Recovery** → does NOT resume throttle until the stick is centered again (fresh-neutral).
+- [ ] **Recovery with the arm switch left ON through the whole episode** → link back, stick
+      centered, switch still ON → **MUST stay disarmed**. A fresh neutral alone does **not**
+      re-arm; this is the invariant this phase exists to prove, not an edge case.
+- [ ] **Recovery re-arm, the only path that works:** switch **OFF, then ON** (the toggle) with
+      the stick centered → arms. Confirm arming will not complete on the toggle if the stick is
+      still displaced at the ON edge — it still waits for a fresh neutral after the toggle.
 - [ ] Hold-position case (if reproducible): LQ=0 while frames still arrive → still drops to safe.
 
 ## Phase 6 — Steering servo
@@ -138,8 +213,18 @@ Do not power the ESC until every box here passes.
 - [ ] **Hall wheel-speed**: spin the axle by hand → rpm reads sane; then at full throttle
       **scope the Hall line near the motor** for EMI double-counts. Add 1–10 nF across the
       sensor output if the edge is ugly (the 2 ms ISR lockout absorbs mild bounce).
+- [ ] **No-hardware cross-check for the HUD's low-battery path:** on the ground station,
+      `npm run demo:low-battery` (`w17-ground-station/scripts/run.js --demo-low-battery`,
+      `W17_REPLAY_TIMELINE=low-battery`) replays a scripted low-battery timeline without a
+      car or a pack attached — use it to confirm the HUD's warning UI *before* trusting a
+      real low reading off the divider above, so a HUD bug and a hardware defect are never
+      diagnosed as the same thing.
 
 ## Phase 9 — link2 → board #2 (sound + light)
+
+**Two-board flash order and NVS-migration detail:** `COORDINATED_FLASH.md`. That document is
+the full procedure (why order matters, what a version mismatch looks like, the settings keys
+that must survive the flash); the steps below are the on-the-bench summary.
 
 - [ ] Flash `w17-soundlight-fw`. Wire ESP32 #1 TX (GPIO25) → ESP32 #2 RX (GPIO16), **common
       ground**, 115200 8N1.
@@ -182,15 +267,22 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
 **reads** it and carries no console/command surface at all.
 
 1. **Flash the bench build:** `pio run -e esp32dev_tuning -t upload`.
-2. **Calibrate** (Phases 6/8): `set steer.min`/`steer.max` (travel endpoints),
+2. **Calibrate** (Phases 6/7b/8/9): `set steer.min`/`steer.max` (travel endpoints),
    `set steer.center`/`steer.trim`, `set batt.ppt` (two-point ADC cal),
-   `set gear.<N>.max`/`gear.<N>.expo` — all only while **DISARMED**.
+   `set gear.<N>.max`/`gear.<N>.expo`, `set gimbal.decay` (link-loss camera-center rate,
+   ms full-deflection-to-center, default 2000 — Phase 7b), `set sound.profile` (0=V10,
+   1=V6) and `set sound.volume` (0–100, the giftee's shipped volume preset) — all only
+   while **DISARMED**. The last two are board #1 settings carried to board #2 over link2,
+   not board #2 settings — there is nothing to calibrate on the sound/light board itself.
 3. **Save to NVS:** `save` (must print `saved`). `set` alone is RAM-only until this.
 4. **Read back the final values:** run `get steer.min`, `get steer.max`, `get steer.center`,
-   `get steer.trim`, `get batt.ppt`,
-   and `get gear.<N>.max` / `get gear.<N>.expo` for each gear (or `status` for the summary).
+   `get steer.trim`, `get batt.ppt`, `get gimbal.decay`, `get sound.profile`,
+   `get sound.volume`, and `get gear.<N>.max` / `get gear.<N>.expo` for each gear (or
+   `status` for the summary — it prints all of these in one line).
 5. **Record those `get` values in the bring-up evidence** (A2 / Phase-B log) as the calibrated
-   set — this is the authoritative record of what the car shipped with.
+   set — this is the authoritative record of what the car shipped with, **including the
+   `sound.volume` the giftee will hear at first power-on**, not only the steering/battery
+   numbers.
 6. **Reboot the tuning build** (power-cycle) and confirm the banner prints
    `[tune] loaded settings from flash` and `get` shows the same values — proves the blob
    round-trips from NVS.
@@ -205,15 +297,46 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
      `docs/bt_showoff_design.md` §2.1). Positive control if the check ever looks too quiet:
      the same command against the `esp32dev_tuning` ELF must report a non-zero `console::`
      count.
+     > **`OWNER-DECISION(SHIP-IMAGE)` — not decided here.** This step assumes the shipped
+     > car runs plain `esp32dev`, which is what makes a single combined `0` the right pass
+     > condition: today's delivery build is both console-free and BT-free by construction
+     > (measured at this revision: `esp32dev` RAM 7.0%/22884 B, Flash 23.1%/302837 B of
+     > the default 1.25 MB app slot; `esp32dev_btshowoff` RAM 26.6%/87012 B, Flash
+     > 23.6%/741121 B of the 3 MB `huge_app.csv` slot it requires — `pio run -e <env>`,
+     > re-run this revision). If the SP3T selector from A2 §S4c is wired into the delivered
+     > car, it is **electrically inert on plain `esp32dev`** — that build never reads
+     > GPIO27/32 (`src/main.cpp:147-157`), so the switch would do nothing after gift day
+     > unless the ship image is instead `esp32dev_btshowoff` (or a future
+     > delivery-lineage image that reads the strap without shipping the tuning console).
+     > That choice is **not decided** by this document. Consequences either way: (a) ship
+     > `esp32dev`, selector present but inert (cheapest, smallest, best-tested image;
+     > Showcase/BT_SOLO stay bench-only forever unless revisited) — the combined spot-check
+     > above is exactly correct as written; (b) ship `esp32dev_btshowoff`, selector live —
+     > the combined grep above is **the wrong check**: `btpad`/`luepad`/`btstack` are
+     > then *expected* non-zero by design, so the spot-check must split into two
+     > independent assertions (`console::` count **must** still be `0` — verified this
+     > revision: `esp32dev_btshowoff`'s own `console::` count is `0`, since
+     > `W17_TUNING_CONSOLE` is a separate flag never set in that env; the BT-pattern count
+     > is expected **non-zero** and its exact value becomes the new positive control) plus
+     > the RAM/flash budget above and the `huge_app.csv` OTA-slot trade-off become the
+     > shipped car's real numbers, not a prototype's. Do not pick (a) or (b) by default —
+     > record the owner's answer here when it exists, and update this step's pass
+     > condition to match.
 8. **Verify the tuning is still live on the plain build** — the delivery firmware loaded the
    NVS blob at boot: steering sits at the trimmed center, the battery reading matches the
-   calibrated `batt.ppt`, and the gears feel as tuned (low gear gentle, top gear full). If the
+   calibrated `batt.ppt`, the gears feel as tuned (low gear gentle, top gear full), the
+   camera glides to center at the calibrated `gimbal.decay` rate on a link drop, and the
+   engine voice/volume over link2 match the recorded `sound.profile`/`sound.volume`. If the
    blob were missing/corrupt it would silently fall back to compiled defaults, so a match here
    confirms the load path worked.
 9. **Re-run the safe-state checks (Phase 5) on the delivery firmware:** TX-off boot sits in
-   failsafe (no phantom "active"), arm gate holds throttle neutral until arm-ON + fresh
-   neutral, mid-run TX-off → failsafe, recovery needs a fresh neutral. These are unchanged by
-   tuning and must pass on the shipped build.
+   failsafe (no phantom "active"); arm gate holds throttle neutral until arm-ON *and* a fresh
+   neutral; boot with the arm switch already ON stays disarmed until one OFF→ON toggle;
+   mid-run TX-off → failsafe; **recovery with the switch left ON stays disarmed — only an
+   OFF→ON toggle with the stick centered re-arms** (the 2026-08-20 episode-latch invariant,
+   `lib/channels/include/channels/ArmGate.hpp`; a fresh neutral alone is **not** sufficient
+   and must not appear to work). These are unchanged by tuning and must pass on the shipped
+   build.
 
 **Reset to defaults / rollback (keep this on the delivery card):**
 
@@ -241,3 +364,8 @@ no longer deferred.)
 - Sound/light: `w17-soundlight-fw` (its `docs/SIMULATION.md` bench notes).
 - Ground station: `w17-ground-station` (`docs/SETUP.md` codec/mediamtx, `docs/TELEMETRY.md`
   the com0com/COM-sharing detail).
+- Standalone first-power sequencing (link order, "logic only" scope, stop conditions):
+  `PHASE_B_FIRST_POWER.md`.
+- Two-board coordinated flash + NVS migration detail: `COORDINATED_FLASH.md`.
+- BT show-off / showcase bench gate (BT1 — pairing, RAM/flash budget, reconnect-without-input
+  probe): `BT1_BENCH_GATE.md`.
