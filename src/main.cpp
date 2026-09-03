@@ -610,6 +610,10 @@ void loopBtPad(uint32_t nowMs) {
         controlSnapshot.lowBattery = batteryMonitor.lowVoltageWarning();
         controlSnapshot.displayGear = static_cast<uint8_t>(virtualGearbox.currentGear() + 1);
         controlSnapshot.rpm = wheelSpeed.rpm();
+        // 0 = "no reading" on this wire too (pre-first-sample, or an
+        // implausible divider per OD-10). Board #2 drives its low-battery
+        // show off the lowBattery FLAG above, not this number, so a broken
+        // sensor makes the car quiet rather than falsely alarmed.
         controlSnapshot.batteryMv = batteryMonitor.batteryMv();
         controlSnapshot.ersPercent = ersSystem.energyPercent();
         controlSnapshot.ersDeploying = ersSystem.deploying();
@@ -940,8 +944,22 @@ void loop() {
     // is reported by the ground TX module itself, so it needs nothing here.
     if (nowMs - lastTelemetryMs >= kTelemetryPeriodMs) {
         lastTelemetryMs = nowMs;
+        // Battery frame, or a DELIBERATE silence. batteryMv() is 0 in exactly
+        // two cases -- before the first sample, and while the divider reads
+        // implausible (BatteryConfig's bounds; OD-10(a), 2026-09-03) -- and in
+        // both the honest report is no frame at all. The ground station then
+        // renders its stale/"--" state and the phone its placeholders, which is
+        // what the ratified telemetry-honesty policy asks for; inventing a
+        // plausible number would be worse than a blank, and holding the last
+        // good one would age silently. No link2 bit is spent saying so (OD-10
+        // sub-decision): board #2 keys its low-battery show off the lowBattery
+        // FLAG, which sensorImplausible() forces false, so a dead divider goes
+        // quiet on the car rather than pulsing a red warning at Lola.
         const uint16_t mv = batteryMonitor.batteryMv();
-        if (mv > 0) { // skip until the monitor has a real reading
+        if (batteryMonitor.sensorImplausible()) {
+            // Nothing sent on purpose. Keep this branch: an empty `if` here is
+            // the difference between "we chose silence" and "we forgot".
+        } else if (mv > 0) {
             uint8_t frame[4 + crsf::kBatteryPayloadLen];
             const uint16_t deciVolt = static_cast<uint16_t>(mv / 100); // mV -> 0.1V
             const size_t n = crsf::buildBatteryFrame(deciVolt, /*current*/ 0, /*capacity*/ 0,
@@ -1000,6 +1018,10 @@ void loop() {
         controlSnapshot.lowBattery = batteryMonitor.lowVoltageWarning();
         controlSnapshot.displayGear = static_cast<uint8_t>(virtualGearbox.currentGear() + 1);
         controlSnapshot.rpm = wheelSpeed.rpm();
+        // 0 = "no reading" on this wire too (pre-first-sample, or an
+        // implausible divider per OD-10). Board #2 drives its low-battery
+        // show off the lowBattery FLAG above, not this number, so a broken
+        // sensor makes the car quiet rather than falsely alarmed.
         controlSnapshot.batteryMv = batteryMonitor.batteryMv();
         controlSnapshot.ersPercent = ersSystem.energyPercent();
         controlSnapshot.ersDeploying = ersSystem.deploying();

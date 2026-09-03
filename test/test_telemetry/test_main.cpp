@@ -160,6 +160,134 @@ void test_battery_config_valid_rejects_bad_values() {
     TEST_ASSERT_FALSE(noHysteresis.valid());
 }
 
+// --- BatteryMonitor: sensor plausibility (fault-injection-3 / OD-10(a)) ---
+//
+// Pin millivolts convert as pinMv * 37 / 10 (default divider, no trim), so the
+// numbers below are chosen against the two DIVIDER FAULTS, not against battery
+// states: an open UPPER leg floats GPIO34 to ~0, an open LOWER leg pulls it
+// toward Vbat through the 27k and saturates the ADC at ~3.1-3.3 V.
+
+void test_battery_open_upper_leg_reads_implausible_not_flat() {
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 0; // divider's upper leg open: pin at ground
+    monitor.sample(0);
+
+    TEST_ASSERT_TRUE(monitor.sensorImplausible());
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv()); // "no reading", not 0 V
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());   // and NOT a low-battery lie
+}
+
+void test_battery_open_lower_leg_saturation_is_implausible_not_full() {
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    // ADC saturated near the top of the 11 dB range: 3200 * 3.7 = ~11841 mV.
+    // This is the case that made the finding gift-blocking -- untreated it
+    // reports a 100 %-full pack forever and the warning never fires.
+    sensor.pinMillivolts = 3200;
+    monitor.sample(0);
+
+    TEST_ASSERT_TRUE(monitor.sensorImplausible());
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv());
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
+}
+
+void test_battery_plausibility_band_boundaries() {
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 1081; // -> 4000 mV exactly: AT the floor, plausible
+    monitor.sample(0);
+    TEST_ASSERT_FALSE(monitor.sensorImplausible());
+    TEST_ASSERT_EQUAL_UINT16(4000, monitor.batteryMv());
+
+    sensor.pinMillivolts = 1080; // -> 3996 mV: below the floor
+    monitor.sample(100);
+    TEST_ASSERT_TRUE(monitor.sensorImplausible());
+
+    sensor.pinMillivolts = 2432; // -> 8998 mV: just under the ceiling
+    monitor.sample(200);
+    TEST_ASSERT_FALSE(monitor.sensorImplausible());
+    TEST_ASSERT_EQUAL_UINT16(8998, monitor.batteryMv());
+
+    sensor.pinMillivolts = 2433; // -> 9002 mV: over the ceiling
+    monitor.sample(300);
+    TEST_ASSERT_TRUE(monitor.sensorImplausible());
+}
+
+void test_battery_implausible_sample_never_enters_the_ema() {
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 2270; // 8399 mV, healthy
+    monitor.sample(0);
+    TEST_ASSERT_EQUAL_UINT16(8399, monitor.batteryMv());
+
+    sensor.pinMillivolts = 0; // divider breaks
+    monitor.sample(100);
+    monitor.sample(200);
+    monitor.sample(300);
+    TEST_ASSERT_TRUE(monitor.sensorImplausible());
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv());
+
+    // Recovery re-seeds EXACTLY. An EMA that had eaten the fault (or simply
+    // kept running) would report a blend here (~8274 for one step from 8399
+    // toward 7400 at emaShift 3), which would be a number nobody measured.
+    sensor.pinMillivolts = 2000; // 7400 mV
+    monitor.sample(400);
+    TEST_ASSERT_FALSE(monitor.sensorImplausible());
+    TEST_ASSERT_EQUAL_UINT16(7400, monitor.batteryMv());
+}
+
+void test_battery_implausible_clears_a_latched_warning_and_does_not_relatch() {
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 1865; // 6901 mV: genuinely low, and plausible
+    monitor.sample(0);
+    monitor.sample(3000); // sustained past warnDelayMs
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+
+    sensor.pinMillivolts = 0; // now the sensor breaks
+    monitor.sample(3100);
+    TEST_ASSERT_TRUE(monitor.sensorImplausible());
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning()); // no latched lie survives
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.batteryMv());
+
+    // Sensor comes back on a still-low pack: the warning must re-qualify from
+    // scratch (delay restarts) rather than reappearing instantly from a latch.
+    sensor.pinMillivolts = 1865;
+    monitor.sample(3200);
+    TEST_ASSERT_FALSE(monitor.lowVoltageWarning());
+    monitor.sample(6200); // warnDelayMs after the first plausible low sample
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+}
+
+void test_battery_6900mv_still_warns_above_the_floor() {
+    // The floor must not swallow a genuinely low pack: 6900 mV is 3.45 V/cell,
+    // deep in warning territory and far above implausibleBelowMv.
+    FakeVoltageSensor sensor;
+    BatteryMonitor monitor(sensor);
+
+    sensor.pinMillivolts = 1865; // 6901 mV
+    monitor.sample(0);
+    TEST_ASSERT_FALSE(monitor.sensorImplausible());
+    monitor.sample(3000);
+    TEST_ASSERT_TRUE(monitor.lowVoltageWarning());
+}
+
+void test_battery_config_valid_rejects_bad_plausibility_bounds() {
+    BatteryConfig floorAboveWarn;
+    floorAboveWarn.implausibleBelowMv = 7000; // == warnMv: could never warn
+    TEST_ASSERT_FALSE(floorAboveWarn.valid());
+
+    BatteryConfig ceilingInsideHysteresis;
+    ceilingInsideHysteresis.implausibleAboveMv = 7400; // == warnMv + hysteresis
+    TEST_ASSERT_FALSE(ceilingInsideHysteresis.valid()); // could never clear
+}
+
 // --- WheelSpeed ---
 
 void test_wheel_first_update_seeds_without_spike() {
@@ -274,6 +402,13 @@ int main(int, char**) {
     RUN_TEST(test_battery_brief_sag_does_not_warn);
     RUN_TEST(test_battery_warning_clears_only_above_hysteresis);
     RUN_TEST(test_battery_config_valid_rejects_bad_values);
+    RUN_TEST(test_battery_open_upper_leg_reads_implausible_not_flat);
+    RUN_TEST(test_battery_open_lower_leg_saturation_is_implausible_not_full);
+    RUN_TEST(test_battery_plausibility_band_boundaries);
+    RUN_TEST(test_battery_implausible_sample_never_enters_the_ema);
+    RUN_TEST(test_battery_implausible_clears_a_latched_warning_and_does_not_relatch);
+    RUN_TEST(test_battery_6900mv_still_warns_above_the_floor);
+    RUN_TEST(test_battery_config_valid_rejects_bad_plausibility_bounds);
     RUN_TEST(test_wheel_first_update_seeds_without_spike);
     RUN_TEST(test_wheel_rpm_from_pulse_period);
     RUN_TEST(test_wheel_first_ever_edge_has_no_period);

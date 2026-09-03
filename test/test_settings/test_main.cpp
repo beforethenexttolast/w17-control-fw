@@ -188,7 +188,7 @@ void test_crc_matches_crsf_implementation() {
 
 // --- blob v2: the btpad sub-config (docs/bt_showoff_design.md §3.3) ---
 // (Version-pin and v1-header-rejection coverage lives in the migration tests
-// below -- test_blob_version_is_2_after_gimbal_decay_addition and
+// below -- test_blob_version_is_3_after_battery_plausibility_bounds and
 // test_migration_v1_version_byte_on_v2_sized_blob_rejected apply to the whole
 // unified six-group v2, btpad included; a btpad-specific duplicate was
 // dropped at the 2026-08-17 reconciliation.)
@@ -316,11 +316,13 @@ void test_loader_crc_valid_but_invalid_settings_returns_defaults() {
 // version pin, v1 migration behavior, and the new field through every gate.
 // ---------------------------------------------------------------------------
 
-void test_blob_version_is_2_after_gimbal_decay_addition() {
-    // Layout-change pin: adding Settings::gimbalDecay REQUIRED this bump.
-    // If this fails, someone changed the layout or reverted the version --
-    // either way the persisted-blob compatibility story must be re-checked.
-    TEST_ASSERT_EQUAL_UINT8(2, settings::kBlobVersion);
+void test_blob_version_is_3_after_battery_plausibility_bounds() {
+    // Layout-change pin: adding Settings::gimbalDecay required the 1 -> 2 bump,
+    // and BatteryConfig's implausibleBelow/AboveMv (OD-10(a), 2026-09-03)
+    // required 2 -> 3. If this fails, someone changed the layout or reverted
+    // the version -- either way the persisted-blob compatibility story must be
+    // re-checked before it ships.
+    TEST_ASSERT_EQUAL_UINT8(3, settings::kBlobVersion);
 }
 
 // The v1 struct layout, recreated member-for-member (same types, same order,
@@ -413,7 +415,7 @@ int main(int, char**) {
     RUN_TEST(test_loader_crc_corrupt_returns_defaults);
     RUN_TEST(test_loader_unsupported_version_returns_defaults);
     RUN_TEST(test_loader_crc_valid_but_invalid_settings_returns_defaults);
-    RUN_TEST(test_blob_version_is_2_after_gimbal_decay_addition);
+    RUN_TEST(test_blob_version_is_3_after_battery_plausibility_bounds);
     RUN_TEST(test_migration_authentic_v1_blob_yields_complete_defaults);
     RUN_TEST(test_migration_v1_version_byte_on_v2_sized_blob_rejected);
     RUN_TEST(test_out_of_range_gimbal_decay_blob_rejected_wholesale);

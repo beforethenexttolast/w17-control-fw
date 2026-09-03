@@ -63,7 +63,14 @@ static_assert(kDefaults.valid(), "default Settings are invalid");
 // rule, applied twice, and no v3 is needed. A stored v1 blob fails the guard
 // chain (its length AND version both differ) -> complete compiled defaults,
 // all-or-nothing as always; re-tune and `save` once on v2.
-inline constexpr uint8_t kBlobVersion = 2;
+// v3 (2026-09-03): telemetry::BatteryConfig gained implausibleBelowMv /
+// implausibleAboveMv (the sensor-plausibility band, finding fault-injection-3 /
+// OD-10(a)). That is a LAYOUT change -- sizeof(Settings) grew by 4 bytes -- and
+// the rule above is unconditional, so the version bumps even though no v2 blob
+// can exist on hardware yet (A2 is NOT-EXECUTED; nothing has been flashed or
+// saved). The length gate would already reject a stored v2 blob; the bump is
+// the belt to that suspenders, and keeps "version byte == layout" true.
+inline constexpr uint8_t kBlobVersion = 3;
 inline constexpr size_t kBlobLen = 1 + sizeof(Settings) + 1;
 
 // CRC-8 poly 0xD5, the same algorithm CRSF/link2 use, DUPLICATED here so

@@ -27,6 +27,23 @@ uint16_t BatteryMonitor::batteryMv() const {
 void BatteryMonitor::sample(uint32_t nowMs) {
     const uint16_t batteryMvSample = convertPinToBatteryMv(sensor_.readPinMillivolts());
 
+    // --- Sensor plausibility first (OD-10(a), finding fault-injection-3). A
+    // reading outside the band is a broken divider, not a battery state, so it
+    // must not enter the EMA (which would drag the average toward a lie for
+    // seconds after recovery), must not qualify the warn timer, and must not
+    // leave a latched warning standing. Reporting NOTHING is the honest
+    // output; every consumer already treats 0 mV as "no reading".
+    if (batteryMvSample < config_.implausibleBelowMv ||
+        batteryMvSample > config_.implausibleAboveMv) {
+        implausible_ = true;
+        seeded_ = false;       // batteryMv() -> 0
+        emaAccumulator_ = 0;
+        warning_ = false;      // never latch a low-battery lie on a dead sensor
+        belowSince_ = false;
+        return;
+    }
+    implausible_ = false;
+
     if (!seeded_) {
         // Seed from the first sample: starting the EMA at 0 would both
         // misreport the voltage and fire a spurious low-voltage warning for
