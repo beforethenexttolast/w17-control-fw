@@ -25,7 +25,7 @@
 # same scan, with the same patterns and the same nm, is also run over a build
 # that MUST trip it:
 #   * esp32dev_tuning (the bench console env) must report console:: hits;
-#   * esp32dev (the Wokwi sim env) -- when present -- must report sim hits.
+#   * esp32dev_sim (the Wokwi sim env) -- when present -- must report sim hits.
 # If a control build comes back clean, this script fails with exit 4 (VACUOUS)
 # instead of reporting a green delivery image, because at that point it has
 # proven nothing about the delivery image either.
@@ -130,7 +130,11 @@ if [ -z "$NM" ]; then
     if command -v xtensa-esp32-elf-nm > /dev/null 2>&1; then
         NM="$(command -v xtensa-esp32-elf-nm)"
     else
-        for candidate in "$HOME"/.platformio/packages/toolchain-xtensa-esp32*/bin/xtensa-esp32-elf-nm; do
+        # PlatformIO installs the cross toolchain under ~/.platformio/packages.
+        # The package name has changed across releases (toolchain-xtensa-esp32,
+        # toolchain-xtensa32, ...), so glob the family rather than one name; the
+        # BINARY name is the stable part.
+        for candidate in "$HOME"/.platformio/packages/toolchain-*/bin/xtensa-esp32-elf-nm; do
             if [ -x "$candidate" ]; then NM="$candidate"; break; fi
         done
     fi
