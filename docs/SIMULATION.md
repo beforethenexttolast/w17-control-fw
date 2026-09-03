@@ -264,15 +264,18 @@ PLATFORMIO_BUILD_FLAGS="-DW17_SIM_WDT_STALL" pio run -e esp32dev_sim   # then st
 pio run -e esp32dev_sim                                                # REBUILD after, so
                                                                        # wokwi.toml's elf is
                                                                        # the clean sim again
-pio run -e esp32dev -e esp32dev_tuning                                 # and these too, see below
+pio run -e esp32dev -e esp32dev_tuning -e esp32dev_btshowoff -e esp32dev_simbt  # and these too
 ```
 
 **Gotcha found 2026-08-04:** setting `PLATFORMIO_BUILD_FLAGS` changes PlatformIO's project
-checksum, which makes it **wipe every environment's build directory**, not just the one being
-built. So the stall build silently deletes `.pio/build/esp32dev/` and
-`.pio/build/esp32dev_tuning/`, and the clean rebuild afterwards deletes them again. Rebuild all
-three when you are done, or the next ELF scan will read "0 matches" off files that do not
-exist.
+checksum, which makes it **wipe every environment's build directory** — all **five** ESP32
+envs (`esp32dev`, `esp32dev_sim`, `esp32dev_tuning`, `esp32dev_btshowoff`, `esp32dev_simbt`),
+not just the three delivery-lineage ones this note originally tracked. So the stall build
+silently deletes `.pio/build/esp32dev/` and `.pio/build/esp32dev_tuning/` (and the two BT
+envs' build dirs along with them), and the clean rebuild afterwards deletes them again.
+Rebuild all **five** when you are done, or the next ELF scan will read "0 matches" off files
+that do not exist — including `BT1_BENCH_GATE.md`'s RAM/flash numbers and ELF quarantine
+spot-check, which are read off `esp32dev_btshowoff`'s and `esp32dev_tuning`'s build output.
 
 **Re-verified 2026-08-04 (build-level, no run):** the stall build compiles clean, and a
 `strings` scan of freshly built ELFs proves the injector is where it should be and nowhere else
