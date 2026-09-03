@@ -49,14 +49,14 @@ which situation you're in.
 > for one), so a plain diff cannot tell normative drift from local commentary on its own; a
 > human still has to read the reported diff. **This repo's `.github/workflows/ci.yml`
 > `link2-drift` job now calls `tools/link2_copy_check.sh --strict --sibling /tmp/sibling`**
-> directly (fixed 2026-09-03, commit `1ccfc81`) — it no longer re-implements its own diff loop
+> directly (fixed 2026-09-03, commit `02359a4`) — it no longer re-implements its own diff loop
 > over the four shared files plus the doc, so **a red `link2-drift` job now means CODE
 > drift**: one of the four shared files under `lib/link2/` differs between the two checkouts.
 > The false-alarm failure mode this callout used to warn about (the job hard-failing on
 > legitimate doc-only prose) is fixed at the job level now, not just something to read past.
 >
 > The doc tier is still only reported, never fatal, and right now it is **not** prose-only:
-> commit `1ccfc81` added a new paragraph to `docs/link2_protocol.md`'s State matrix
+> commit `02359a4` added a new paragraph to `docs/link2_protocol.md`'s State matrix
 > (`~:198-209`, "BT_SOLO boots have no rows of their own…") describing what a BT_SOLO-mode
 > link2 frame looks like to a receiver. `w17-soundlight-fw`'s copy of this document does not
 > yet carry that paragraph, so — correcting any earlier claim that only ownership/tooling
