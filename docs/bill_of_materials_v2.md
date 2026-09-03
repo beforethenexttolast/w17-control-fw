@@ -41,14 +41,22 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
   `lib/config/include/config/PinMap.hpp:36-56`,
   `lib/bootmode/include/bootmode/BootMode.hpp:18-34`. A2 continuity/isolation rows:
   `project-review/13_phase_a_a2_no_power_checklist.md` §S4c, which also carries the part
-  caveat: the center position must connect the common to **exactly one** throw (a
-  make-before-break/shorting-type part reads as the "both grounded" harness fault and is
-  the wrong part) — no listing chosen yet, `[bench-TBD]` until one is on hand and its
-  terminal map is read off with a meter (§S4c's own instruction, since datasheets for
-  cheap slide switches don't reliably label common vs. throw). No price line here because
-  no part is picked. Until bought, §S4c's plausibility note stands: recording the selector
-  as NOT-ASSEMBLED is a valid pass, not a blocker — every delivery-lineage build resolves
-  to Drive whether or not the switch exists.
+  caveat: the center position must connect the common to **exactly one** throw at rest. A
+  make-before-break/shorting-type part only bridges two throws **momentarily, while
+  physically in transit** between positions — at rest, which is what the firmware samples
+  (10 ms after a settled boot read, switch stationary, `src/main.cpp:696-730`) and what
+  A2's MS1 row checks (one beep per position, switch alone), a shorting part reads no
+  differently from a non-shorting one. So this is not automatically "the wrong part" —
+  soften that to "check it against MS1"; either type is acceptable once MS1 confirms one
+  beep per position with no wire on the unused terminal. **An ON-OFF-ON SPDT (centre-off)**
+  — common + two throws, three terminals total — satisfies the identical truth table
+  (beep on one throw at a time, OPEN at center) and is easier to source than a
+  purpose-built SP3T; either part family is fine for this application. No listing chosen
+  yet, `[bench-TBD]` until one is on hand and its terminal map is read off with a meter
+  (§S4c's own instruction, since datasheets for cheap slide switches don't reliably label
+  common vs. throw). No price line here because no part is picked. Until bought, §S4c's
+  plausibility note stands: recording the selector as NOT-ASSEMBLED is a valid pass, not a
+  blocker — every delivery-lineage build resolves to Drive whether or not the switch exists.
 
 ## 3. Drive / ESC / Motor
 - **Hobbywing QuicRun 10BL120 + Rocket 540 V3 sensored combo** `17.5T` ×1 — ~5,620 ₴ — **motor included**, set ESC to sensored mode
