@@ -68,7 +68,14 @@ its own CI as of **2026-07-25** (`2d22f85`, the `link2-drift` job in
 tree — and runs *this* repo's `tools/link2_copy_check.sh --strict` against its own checkout.
 `--strict` means an absent sibling or a missing checker fails **loudly** (exit 2,
 COULD-NOT-CHECK) rather than passing quietly. This repo owns the protocol and the script;
-soundlight owns the enforcement, and it now exists.
+soundlight owns the enforcement, and it now exists. **This repo's own `link2-drift` job**
+(`.github/workflows/ci.yml`) clones the soundlight checkout the other direction and now
+calls the same `tools/link2_copy_check.sh --strict` (fixed 2026-09-03 — it previously
+re-implemented a plain `diff -u` on all four shared files including this document, which
+hard-failed CI on the this-repo-local prose the paragraph above calls out as legitimate;
+that was never the tiered design, just a job nobody had reconciled with the script after
+the script grew tiers). Both repos' CI now exercise the same two-tier logic, from opposite
+directions.
 
 ## Frame layout (17 bytes)
 
@@ -187,6 +194,19 @@ hazard-blinks. This is the NeverConnected-vs-Lost distinction the receiver alrea
 applies to *this* link's staleness, applied one level up to the CRSF link. **DRIVE boots
 are byte-unchanged**: `failsafe` is the FSM state, exactly the main matrix, test-pinned
 (a never-linked DRIVE boot still transmits `failsafe = 1`, today's behavior).
+
+**BT_SOLO boots have no rows of their own — they emit exactly the main matrix above,
+byte-unchanged from DRIVE.** All three per-frame policies pass BT_SOLO straight through
+to the DRIVE behavior: `armSwitchInput()` only forces the switch false in Showcase, so in
+BT_SOLO `controls.armSwitch` is live and is the BT pad's arm ritual, not a CRSF stick
+(`lib/bootmode/include/bootmode/BootMode.hpp:163-165`); `link2FailsafeFlag()` only
+narrows the rule in Showcase, so BT_SOLO reports the raw FSM `Safe` state exactly like
+DRIVE (`BootMode.hpp:194-196`); and `link2ShowcaseFlag()` — modeFlags bit0 — is false for
+every mode except Showcase, so a BT_SOLO frame never sets it
+(`BootMode.hpp:199-206`; "BtSolo NEVER sets it" is the comment's own words). A receiver
+therefore needs no BT_SOLO-specific handling: if `modeFlags` bit0 is 0, the three rows at
+the top of this section already describe the frame, regardless of which non-showcase boot
+mode produced it.
 
 `soundProfile` and `volume` are deliberately absent from this matrix: they are
 **configuration, not state**. The sender transmits its current persisted values in every
