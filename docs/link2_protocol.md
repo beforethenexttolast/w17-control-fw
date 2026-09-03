@@ -222,9 +222,13 @@ Frames are sent at a nominal **20 Hz** (every 50 ms). Receivers must tolerate ji
 must not phase-lock to the rate.
 
 **Mandatory staleness timeout:** if no CRC-valid frame arrives for **500 ms** (10 missed
-frames), the receiver must enter its own local failsafe — engine sound to idle/off,
-hazard blink. On a one-way link, a cut wire is otherwise indistinguishable from "the
-last state persists forever".
+frames), the receiver must enter its own local failsafe. On a one-way link, a cut wire is
+otherwise indistinguishable from "the last state persists forever". The protocol mandates
+the *timeout*, not the state behind it: board #2 zeroes the command fields and asserts
+failsafe, which makes the engine **silent** (never idling — its ignition authority is
+`armed || showcase`, and the projection clears both) under an **all-amber hazard blink** —
+the same behaviour the volume note above describes as "receiver silencing on link loss …
+always wins over `volume`".
 
 ## Worked example
 
