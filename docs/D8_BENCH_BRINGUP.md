@@ -89,6 +89,15 @@ hardware on first power.
 
 ## Phase 3b — Boot-mode selector (SP3T, GPIO27/GPIO32) — skip if not wired
 
+> **Stop — BT1 must be open. This phase IS BT1's first item, not a precondition BT1 waits
+> on.** Flashing a `W17_BT_SHOWOFF`-family image and booting the SOLO position brings up the
+> pad stack (`btPadSource.begin()`, `src/main.cpp:813-815`) — that is BT code running on
+> powered hardware, which `BT1_BENCH_GATE.md`'s own gate line forbids before BT1 is opened by
+> the owner. Confirm `BT1_BENCH_GATE.md`'s gate (A2 closed, Phase B approved) before flashing
+> anything below, the same as every other first-flash step in this document. **Actuators stay
+> disconnected** here exactly as in Phase 3 — ESC signal disconnected, servos disconnected,
+> wheels off ground — boot mode changes nothing about that.
+
 **Applies only if the §S4c selector from the A2 checklist is physically wired AND you are
 bench-testing a `W17_BT_SHOWOFF`-family image** (`esp32dev_btshowoff` or `esp32dev_simbt`).
 The three delivery-lineage builds (`esp32dev`, `esp32dev_tuning`, `esp32dev_sim`) never read
@@ -99,10 +108,12 @@ reconnect-without-input probe): `BT1_BENCH_GATE.md` — this phase is BT1's boot
 not a substitute for the rest of it.
 
 - [ ] **Flash `esp32dev_btshowoff`** (real Bluepad32/BTstack pad; needs the physical switch)
-      **or `esp32dev_simbt`** (same `W17_BT_SHOWOFF` main wiring, scripted `SimPadFeeder`
-      instead of a real pad — proves the boot-mode/arm-gate wiring with no Bluetooth hardware
-      at all, and is the env to use if the SP3T isn't wired yet but the strap logic needs
-      exercising).
+      to exercise the selector below. **`esp32dev_simbt` cannot be used for this step:** under
+      `-DW17_SIM_PAD_FEEDER` the strap read is skipped entirely and `g_bootMode` is forced to
+      `BtSolo` unconditionally (`src/main.cpp:711-715`) — it boots BT_SOLO no matter what the
+      selector reads. That makes it useful for exercising BT_SOLO pad/arm-gate wiring with no
+      Bluetooth hardware at all (see `BT1_BENCH_GATE.md`), but it proves nothing about the
+      selector itself.
 - [ ] **Selector at CENTER (LAPTOP):** boot resolves to **Drive**, byte-identical to a plain
       `esp32dev` boot (`BootMode.hpp` center = both straps open on internal pull-ups →
       `StrapReading::DrivePosition` → Drive). CRSF UART opens normally; console (if the
@@ -116,11 +127,21 @@ not a substitute for the rest of it.
       Confirm the car **cannot arm by any input** — `armSwitchInput()` structurally returns
       `false` in Showcase (`BootMode.hpp` Policy 1), so the arm gate's neutral-seen latch can
       never set and the ESC never leaves neutral, regardless of what the handset or pad sends.
-- [ ] **Ambiguous / both-grounded / disconnect one strap mid-read:** must resolve to **Drive**
-      (`combineStrapPins()`, `BootMode.hpp:118-136` — the fail-toward-Drive rule; both-grounded
-      is a harness fault the part cannot produce, and still resolves to Drive, not to something
-      more armed). If it does not, this is a bench finding, not a documentation gap — stop and
+- [ ] **Ground both throws simultaneously with jumper wires (bypassing the switch itself) →
+      must resolve to Drive.** This is the both-grounded harness-fault case the SP3T part
+      cannot produce on its own (`combineStrapPins()`, `BootMode.hpp:125-136` — the
+      fail-toward-Drive rule) and is only reproducible by wiring around the part. If it
+      resolves to anything else, this is a bench finding, not a documentation gap — stop and
       report rather than proceeding to Phase 4.
+- [ ] **From SOLO or SHOW, disconnect the GROUNDED throw's wire and re-boot → must resolve to
+      Drive.** Removing the ground lets that pin's pull-up return it to Open, so both pins now
+      read Open (`combineStrapPins(Open, Open)` → `DrivePosition`, `BootMode.hpp:125-136`). If
+      it does not, stop and report as above.
+- [ ] **Disconnecting the IDLE throw's wire changes nothing, by design.** That pin was already
+      Open (floating on its pull-up, not grounded) before the disconnect, so removing its wire
+      leaves the reading — and the resolved mode — exactly as it was. This is not a fault case
+      and is not gated on any particular outcome; do not treat "it didn't switch to Drive" as a
+      finding here.
 - [ ] Record which of SOLO/SHOW physically corresponds to which slider throw (this is what A2's
       §S4c note calls "the labels" — A2 proves the wires, this phase proves what they mean).
 
@@ -277,8 +298,11 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
 3. **Save to NVS:** `save` (must print `saved`). `set` alone is RAM-only until this.
 4. **Read back the final values:** run `get steer.min`, `get steer.max`, `get steer.center`,
    `get steer.trim`, `get batt.ppt`, `get gimbal.decay`, `get sound.profile`,
-   `get sound.volume`, and `get gear.<N>.max` / `get gear.<N>.expo` for each gear (or
-   `status` for the summary — it prints all of these in one line).
+   `get sound.volume`, and `get gear.<N>.max` / `get gear.<N>.expo` for each gear. `status` is a
+   useful quick sanity read but is **not** a substitute for the per-gear `get`s: it prints a
+   7-line snapshot (`lib/console/src/Console.cpp:132-146`) that includes only gear 1
+   (`g1.max`/`g1.expo`) — the per-gear `get`s above are still required for the authoritative
+   multi-gear record.
 5. **Record those `get` values in the bring-up evidence** (A2 / Phase-B log) as the calibrated
    set — this is the authoritative record of what the car shipped with, **including the
    `sound.volume` the giftee will hear at first power-on**, not only the steering/battery
@@ -297,31 +321,31 @@ opens a UART0 console that can **change / save / reset** that blob; the delivery
      `docs/bt_showoff_design.md` §2.1). Positive control if the check ever looks too quiet:
      the same command against the `esp32dev_tuning` ELF must report a non-zero `console::`
      count.
-     > **`OWNER-DECISION(SHIP-IMAGE)` — not decided here.** This step assumes the shipped
-     > car runs plain `esp32dev`, which is what makes a single combined `0` the right pass
-     > condition: today's delivery build is both console-free and BT-free by construction
-     > (measured at this revision: `esp32dev` RAM 7.0%/22884 B, Flash 23.1%/302837 B of
-     > the default 1.25 MB app slot; `esp32dev_btshowoff` RAM 26.6%/87012 B, Flash
-     > 23.6%/741121 B of the 3 MB `huge_app.csv` slot it requires — `pio run -e <env>`,
-     > re-run this revision). If the SP3T selector from A2 §S4c is wired into the delivered
-     > car, it is **electrically inert on plain `esp32dev`** — that build never reads
-     > GPIO27/32 (`src/main.cpp:147-157`), so the switch would do nothing after gift day
-     > unless the ship image is instead `esp32dev_btshowoff` (or a future
-     > delivery-lineage image that reads the strap without shipping the tuning console).
-     > That choice is **not decided** by this document. Consequences either way: (a) ship
-     > `esp32dev`, selector present but inert (cheapest, smallest, best-tested image;
-     > Showcase/BT_SOLO stay bench-only forever unless revisited) — the combined spot-check
-     > above is exactly correct as written; (b) ship `esp32dev_btshowoff`, selector live —
-     > the combined grep above is **the wrong check**: `btpad`/`luepad`/`btstack` are
-     > then *expected* non-zero by design, so the spot-check must split into two
-     > independent assertions (`console::` count **must** still be `0` — verified this
-     > revision: `esp32dev_btshowoff`'s own `console::` count is `0`, since
-     > `W17_TUNING_CONSOLE` is a separate flag never set in that env; the BT-pattern count
-     > is expected **non-zero** and its exact value becomes the new positive control) plus
-     > the RAM/flash budget above and the `huge_app.csv` OTA-slot trade-off become the
-     > shipped car's real numbers, not a prototype's. Do not pick (a) or (b) by default —
-     > record the owner's answer here when it exists, and update this step's pass
-     > condition to match.
+     > **`OWNER-DECISION(SHIP-IMAGE)` — ruled 2026-09-03 (OD-2).** The ship image is **plain
+     > `esp32dev` by default**; upgrading to `esp32dev_btshowoff` is conditional on
+     > **BT1 (`BT1_BENCH_GATE.md`) having PASSED before handover** — not a free choice made at
+     > flash time. Until BT1 passes, this step's single combined `0` spot-check is the correct
+     > and only pass condition: today's delivery build is both console-free and BT-free by
+     > construction (measured at this revision: `esp32dev` RAM 7.0%/22884 B, Flash
+     > 23.1%/302837 B of the default 1.25 MB app slot; `esp32dev_btshowoff` RAM 26.6%/87012 B,
+     > Flash 23.6%/741121 B of the 3 MB `huge_app.csv` slot it requires — `pio run -e <env>`,
+     > re-run this revision if the code has changed). If the SP3T selector from A2 §S4c is
+     > wired into the delivered car but the ship image stays `esp32dev` (the OD-2 default), the
+     > switch is **electrically inert** — that build never reads GPIO27/32
+     > (`src/main.cpp:147-157`) — **by design under OD-2**, not an oversight to flag.
+     >
+     > **If BT1 passes before handover and the owner exercises the upgrade path:** re-run this
+     > step against `esp32dev_btshowoff` instead of `esp32dev`. The single combined grep above
+     > becomes **the wrong check** there — `btpad`/`luepad`/`btstack` are then *expected*
+     > non-zero by design — so split into two independent assertions: `console::` count
+     > **must** still be `0` (verified this revision: `esp32dev_btshowoff`'s own `console::`
+     > count is `0`, since `W17_TUNING_CONSOLE` is a separate flag never set in that env) and
+     > the BT-pattern count, expected **non-zero**, becomes the new positive control (`216`
+     > combined / `btpad` alone `27` this revision — `BT1_BENCH_GATE.md`'s resource table). The
+     > RAM/flash budget above and the `huge_app.csv` no-OTA-slot trade-off then become the
+     > shipped car's real numbers, not a prototype's. **Record the BT1 PASS date and evidence
+     > here** before switching the ship image in practice — OD-2 conditions the upgrade on that
+     > evidence existing, not on the owner's say-so alone.
 8. **Verify the tuning is still live on the plain build** — the delivery firmware loaded the
    NVS blob at boot: steering sits at the trimmed center, the battery reading matches the
    calibrated `batt.ppt`, the gears feel as tuned (low gear gentle, top gear full), the
