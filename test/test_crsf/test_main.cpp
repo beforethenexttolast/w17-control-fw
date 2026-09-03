@@ -570,9 +570,15 @@ void test_assembler_resynchronises_after_a_frame_cut_mid_payload() {
     }
     TEST_ASSERT_TRUE(sawInvalid); // the mis-framed span failed CRC, as designed
 
-    // THE POINT: the frame after that parses. Recovery does not wait for an
-    // accidental 0xC8 in payload data, so a cut mid-frame costs at most the
-    // two frames involved (~40 ms), far inside the 500 ms failsafe budget.
+    // THE POINT: the frame after that parses. Recovery rides the CRC boundary
+    // rather than waiting for an accidental 0xC8 in payload data, so in the
+    // tested cases a cut mid-frame cost at most the two frames involved
+    // (~40 ms at 50 Hz), far inside the 500 ms failsafe budget. "At most two"
+    // is what these cases measured, not a proof for every byte pattern: the
+    // assembler returns to WaitingForSync after each completed buffer
+    // (lib/crsf/src/CrsfFrameAssembler.cpp) and then hunts for the next 0xC8,
+    // which can itself be a payload byte, so an adversarial stream could chain
+    // longer. The margin is what carries the argument -- 500 ms is 25 frames.
     CrsfFrameAssembler::FeedResult last = CrsfFrameAssembler::FeedResult::Incomplete;
     for (size_t i = 0; i < sizeof(frame); ++i) {
         last = assembler.feedByte(frame[i]);
@@ -602,10 +608,12 @@ void test_receiver_survives_a_burst_of_garbage_between_good_frames() {
     // Recovery, measured rather than assumed: the burst ends with an open
     // "0xC8 0x18" header, so the assembler is mid-payload and EATS the next
     // good frame (it reports CorruptFrame at that frame's CRC boundary). The
-    // one after it parses. Worst case is therefore two frames -- ~40 ms at
-    // 50 Hz -- and the 500 ms failsafe budget covers it with an order of
-    // magnitude to spare, which is why no inter-byte staleness reset is
-    // needed inside the assembler.
+    // one after it parses. In the tested cases recovery cost at most two frames
+    // -- ~40 ms at 50 Hz -- against a 500 ms failsafe budget (25 frames), which
+    // is why no inter-byte staleness reset is needed inside the assembler. Two
+    // is the measured cost of these cases, not a bound over all byte patterns
+    // (see the resync test above); the order-of-magnitude margin is the
+    // argument, and a stall long enough to eat it is the failsafe FSM's job.
     uint16_t second[crsf::kNumChannels];
     fillChannels(second, crsf::kChannelRawMax);
     buildValidFrame(second, frame);
