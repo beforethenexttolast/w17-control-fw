@@ -36,6 +36,19 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
   *Cost option: a fanless ~250 mW nano (ES24TX Slim / BetaFPV Micro / Ranger Nano) is cheaper + lighter for the PC route — your files list it as an equal pick.*
   https://www.aliexpress.com/item/1005007477012165.html
 - *Transmitters: DualShock (gift-time, via PC) + TX16S (bench/backup) — owned.*
+- **SP3T slide switch (common + 3 throws)** `[owner-shopping]` — the boot-mode selector
+  (Drive/Solo/Show), OWNER-RATIFIED(D3-SHOW-SELECT) 2026-08-20. Firmware side:
+  `lib/config/include/config/PinMap.hpp:36-56`,
+  `lib/bootmode/include/bootmode/BootMode.hpp:18-34`. A2 continuity/isolation rows:
+  `project-review/13_phase_a_a2_no_power_checklist.md` §S4c, which also carries the part
+  caveat: the center position must connect the common to **exactly one** throw (a
+  make-before-break/shorting-type part reads as the "both grounded" harness fault and is
+  the wrong part) — no listing chosen yet, `[bench-TBD]` until one is on hand and its
+  terminal map is read off with a meter (§S4c's own instruction, since datasheets for
+  cheap slide switches don't reliably label common vs. throw). No price line here because
+  no part is picked. Until bought, §S4c's plausibility note stands: recording the selector
+  as NOT-ASSEMBLED is a valid pass, not a blocker — every delivery-lineage build resolves
+  to Drive whether or not the switch exists.
 
 ## 3. Drive / ESC / Motor
 - **Hobbywing QuicRun 10BL120 + Rocket 540 V3 sensored combo** `17.5T` ×1 — ~5,620 ₴ — **motor included**, set ESC to sensored mode
