@@ -15,7 +15,7 @@ submodule). The two boards are flashed independently, from two separate Platform
 so nothing at flash time enforces that they carry matching protocol code. **The wire format
 itself does the enforcing, and it is stricter than "ignore fields you don't know":**
 
-- `lib/link2/include/link2/Link2Frame.hpp:60-63` — `kPayloadLen = 14`, `kFrameLen = 17`
+- `lib/link2/include/link2/Link2Frame.hpp:67-68` — `kPayloadLen = 14`, `kFrameLen = 17`
   (start + length + 14-byte payload + CRC-8, poly `0xD5`).
 - Board #2's decoder checks the **length byte before the version byte**
   (`w17-soundlight-fw/lib/link2/src/Link2Codec.cpp:56-58` in the one-shot decode path, and the
