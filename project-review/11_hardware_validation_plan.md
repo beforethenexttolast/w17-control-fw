@@ -74,7 +74,7 @@ expected observations, and stop conditions spelled out per item.
 | B2.1 | Power up with **no CRSF** → expect ESC neutral, DRS closed, steering centered. | — |
 | B2.2 | Bring the link up **with the throttle stick forward** → motor command stays off until the stick returns to neutral (**ArmGate**) and the rearm window elapses. | R09 |
 | B2.3 | Confirm the **ESC arms every boot** with the neutral-hold sequence (motor still disconnected); reconcile `bootArmHoldMs=2000` against the QuicRun 10BL120 manual; confirm **forward/brake** ESC mode (not forward/reverse). | R09 |
-| B2.4 | Confirm worst-case **failsafe detection latency** at the chosen RP1 packet rate + LQ=0 burst stays within the ~540 ms budget (D8 Phase 2). | — |
+| B2.4 | Confirm worst-case **failsafe detection latency** at the chosen RP1 packet rate + LQ=0 burst stays within up to ~540 ms worst-case detection against the 500 ms budget (D8 Phase 2). | — |
 
 ### B3. Actuators (bench, unloaded) & board #2
 | # | Do | R## |
