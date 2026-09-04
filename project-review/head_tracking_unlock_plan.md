@@ -60,7 +60,7 @@ place in both documents, 2026-07-14).
 
 | Domain | Value | Owner | Status |
 |---|---|---|---|
-| iPhone local motion-sample freshness | currently **500 ms** (`iPhone_rc/FPVHUDApp/Models/MotionState.swift:82`, `staleAfter = 0.5`) [C] | Codex | **RESOLVED canonically 2026-07-14 (rev `84532ed`, contract §3):** before any active mapping, the iPhone must stop packet generation when its Core Motion sample is older than **250 ms**; the current 500 ms behavior is acceptable for the log-only phase only; `timestamp_ms` stays send-time (diagnostics), receive time stays stale authority; **no sample-age field in v1** (adding one later = deliberate schema/example/mirror revision). The sender change itself is future Codex implementation work, gated as part of the active milestone |
+| iPhone local motion-sample freshness | currently **500 ms** (`iPhone_rc/FPVHUDApp/Models/MotionState.swift:112`, `staleAfter: TimeInterval = 0.5`, used at `:122`) [C] | Codex | **RESOLVED canonically 2026-07-14 (rev `84532ed`, contract §3):** before any active mapping, the iPhone must stop packet generation when its Core Motion sample is older than **250 ms**; the current 500 ms behavior is acceptable for the log-only phase only; `timestamp_ms` stays send-time (diagnostics), receive time stays stale authority; **no sample-age field in v1** (adding one later = deliberate schema/example/mirror revision). The sender change itself is future Codex implementation work, gated as part of the active milestone |
 | Packet `timeout_ms` advisory hint | app default **250 ms** | Codex (sender) | diagnostic hint only; never authority |
 | Mapper receive-time stale authority | **300 ms, fixed** | mapper (PC side) | ratified; boundary table above |
 
