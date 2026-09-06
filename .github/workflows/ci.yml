@@ -36,7 +36,7 @@ jobs:
 
       # Two numbers that must agree, checked instead of assumed: the number of
       # RUN_TEST registrations the script above counts, and the number of cases
-      # `pio test` actually ran. They agree today (356/356). If the script ever
+      # `pio test` actually ran. They agree today (360/360). If the script ever
       # develops a blind spot -- a definition shape it cannot see, a disabled
       # registration it still counts -- this comparison is what notices, because
       # the blind spot would move one number and not the other.
