@@ -19,7 +19,7 @@ Supersedes v1. Prices are approximate UAH snapshots from the saved cart (they fl
 # A. AliExpress order (ships to UA) — ~17,400 ₴
 
 ## 1. Video / FPV
-- **BL-M8812EU2 USB WiFi module** `High-Power` ×1 — ~697 ₴ — provides the WiFi AP (camera has no radio)
+- **BL-M8812EU2 USB WiFi module** `High-Power` ×1 — ~697 ₴ — joins the GCS box's hosted 5 GHz Mobile Hotspot as a station (camera has no radio); the box's dual-band adapter hosts the AP — see `w17-gcs-box-guide.md` §5 and its 2026-08-17 Addendum
   https://www.aliexpress.com/item/1005007386940533.html
 - **5.8 GHz U.FL linear omni antennas** `70mm / 5pcs` ×1 — ~139 ₴
   https://www.aliexpress.com/item/1005004050120482.html
